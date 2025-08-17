@@ -1,0 +1,15 @@
+schemaVersion: 1
+id: defend_common
+name: "Recharge"
+type: skill
+rarity: common
+cost: 0
+copies: 3
+targeting: self
+exhaust: false
+expires_after_turns: 0
+effects:
+  - kind: energy
+    amount: 1
+
+

@@ -1,0 +1,17 @@
+schemaVersion: 1
+id: overclock_mythic
+name: "Overclock"
+type: skill
+rarity: mythic
+cost: 1
+copies: 1
+targeting: ally
+exhaust: true
+expires_after_turns: 0
+effects:
+  - kind: energy
+    amount: 2
+  - kind: speed
+    amount: 2
+
+
