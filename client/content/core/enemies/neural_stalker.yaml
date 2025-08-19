@@ -1,0 +1,22 @@
+schemaVersion: 1
+id: neural_stalker
+name: "Neural Stalker"
+title: "AI Assassin"
+description: "Nimble AI assassin, skeletal frame with hacking tendrils."
+role: utility
+theme: "Debuffer / Harasser – punishes energy usage."
+isPlayer: false
+stats:
+  hp: 45
+  maxHp: 45
+  energy: 4
+  maxEnergy: 4
+mechanics:
+  - "Attacks drain player energy"
+  - "Applies 'jammed' debuff (reduces accuracy)"
+  - "Teleports between slots ignoring movement cost"
+tags: ["ai", "assassin", "elite", "enemy", "debuffer"]
+startingDeck:
+  - "blast_rare"
+  - "defend_common"
+  - "overclock_mythic"

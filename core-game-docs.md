@@ -135,3 +135,80 @@ decay:
   per_turn: 1
 ```
 
+
+
+# Combat Spec — Block Persistence, Fortify, and DoTs (Update)
+
+## Block Persistence (Per-Card % Decay, Ceiling)
+- **Each Block source is a layer** with its own `decay_percent` defined by the **card that created it**.
+- **End of turn**: each layer loses `ceil(current_amount * effective_decay_percent)`.
+- **Rounding:** decay uses **round up (ceiling)** before subtracting.
+- **Effective decay** = card’s `decay_percent` **minus** any Fortify reductions on the unit (see below), floored by a global minimum (e.g., **min 5–10%** unless an effect explicitly sets 0%).
+
+### Fortify (Decay Reduction)
+- **Fortify** is a status on the character that **reduces the decay %** of *all* their Block layers.
+- Stacking: reductions are **additive**; **duration refreshes** on reapply (no additive duration unless a card says “extend”).
+- Apply Fortify after reading the layer’s base `decay_percent`, then clamp to the global min decay floor.
+
+### Example (YAML-style content)
+```yaml
+# Card that grants Block with its own decay rate
+id: dawn_aegis
+name: "Dawn Aegis"
+type: skill
+effects:
+  - kind: grant_block_layer
+    amount: 12
+    decay_percent: 20        # per-card decay before Fortify reductions
+```
+
+```yaml
+# Fortify that reduces decay for all layers on the unit
+id: fortify_minor
+name: "Fortify (Minor)"
+type: status
+duration_turns: 2
+stacking: add_reduction
+effects:
+  - kind: reduce_block_decay_percent
+    amount: 10               # -10% to effective decay
+meta:
+  min_decay_floor_percent: 5
+```
+
+---
+
+## Interactions
+
+### Multi-Hit
+- **Yes** — resolve each hit sequentially; Block absorbs per hit from the unit’s current layers.
+
+### DoTs (Damage over Time)
+- **Bleed**: ticks at end of turn; **does not bypass Block** (Block reduces tick).
+- **Shock**: ticks at end of turn; **does not bypass Block** (Block reduces tick). (Optional side-effect: accuracy/Speed debuff.)
+- **Radiation**: ticks at end of turn; **bypasses Block** (direct HP damage).
+- DoTs **stack additively**; each tick resolves **after Block decay** at end of turn.
+- Tooltip examples:
+  - *“Bleed 3 — deals 3 at end of turn (reduced by Block).”*
+  - *“Radiation 2 — deals 2 at end of turn (ignores Block).”*
+
+### Suggested Order of Operations (Hit)
+1) Pre-mitigation (Vulnerable/Weakened, resists)  
+2) Block absorb from current layers  
+3) Piercing/true portions (if modeled separately)  
+4) On-hit triggers (Thorns, on-break)  
+5) HP loss
+
+### End-of-Turn Order
+1) **Block decay** per layer using **ceil** and Fortify reductions  
+2) **DoT ticks** (Bleed/Shock reduced by remaining Block; Radiation ignores Block)  
+3) Duration decay for statuses
+
+---
+
+## Notes & Guardrails
+- Keep a **global min decay floor** (e.g., 5–10%) to avoid “infinite Block” when Fortify stacks.
+- Document rounding: **ceil** for decay, **floor** for damage math, and surface this in tooltips.
+- Keep Fortify taxonomy small (e.g., Minor/Major/Plating) to avoid near-duplicate effects.
+
+---

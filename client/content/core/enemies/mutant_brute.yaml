@@ -1,0 +1,23 @@
+schemaVersion: 1
+id: mutant_brute
+name: "Mutant Brute"
+title: "Radborn Berserker"
+description: "A hulking creature twisted by radiation, with reinforced bone growths and toxic blood."
+role: tank
+theme: "High-HP tank enemy that absorbs damage and retaliates."
+# sprite: "/assets/game/enemies/mutant_brute.png" # No sprite file available yet
+isPlayer: false
+stats:
+  hp: 60
+  maxHp: 60
+  energy: 2
+  maxEnergy: 2
+mechanics:
+  - "High health pool"
+  - "Damage reflection"
+  - "Toxic retaliation"
+tags: ["mutant", "brute", "tank", "enemy", "radiation"]
+startingDeck:
+  - "strike_common"
+  - "defend_common"
+  - "defend_common"

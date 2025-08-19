@@ -1,0 +1,23 @@
+schemaVersion: 1
+id: kael_tactician
+name: "Kael"
+title: "Wasteland Tactician"
+description: "Human rebel leader with hacked drones and improvised explosives."
+role: support
+theme: "Support / Utility – battlefield control."
+isPlayer: true
+stats:
+  hp: 90
+  maxHp: 90
+  energy: 5
+  maxEnergy: 5
+mechanics:
+  - "Summons drone assists"
+  - "Buffs ally accuracy/energy regen"
+  - "Sets traps that punish enemy slot movement"
+tags: ["tactician", "support", "drones", "traps"]
+startingDeck:
+  - "defend_common"
+  - "strike_common"
+  - "overclock_mythic"
+  - "defend_common"

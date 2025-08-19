@@ -1,0 +1,22 @@
+schemaVersion: 1
+id: rogue_ai_drone
+name: "Rogue AI Drone"
+title: "Corrupted Sentinel"
+description: "A malfunctioning security drone with glitching weaponry and exposed circuits."
+role: support
+theme: "Tech enemy that buffs other enemies and has defensive capabilities."
+isPlayer: false
+stats:
+  hp: 40
+  maxHp: 40
+  energy: 3
+  maxEnergy: 3
+mechanics:
+  - "Shield generation"
+  - "Enemy buff abilities"
+  - "Tech-based attacks"
+tags: ["ai", "drone", "tech", "enemy", "support"]
+startingDeck:
+  - "defend_common"
+  - "blast_rare"
+  - "overclock_mythic"

@@ -1,0 +1,23 @@
+schemaVersion: 1
+id: scrapling_swarm
+name: "Scrapling Swarm"
+title: "Feral Scrap Machines"
+description: "Small, feral machines cobbled from rusted parts, glowing erratic cores."
+role: dps
+theme: "Swarm DPS – weak individually, dangerous in numbers."
+sprite: "/assets/game/enemies/swarm.png"
+isPlayer: false
+stats:
+  hp: 15
+  maxHp: 15
+  energy: 5
+  maxEnergy: 5
+mechanics:
+  - "Multi-hit attacks (chip block down)"
+  - "High speed/low health"
+  - "Accuracy penalties at range"
+tags: ["machine", "swarm", "normal", "enemy", "dps"]
+startingDeck:
+  - "strike_common"
+  - "strike_common"
+  - "strike_common"

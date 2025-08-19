@@ -1,0 +1,20 @@
+schemaVersion: 1
+id: goblin_scout
+name: "Goblin Scout"
+title: "Wasteland Raider"
+description: "A nimble scavenger armed with makeshift weapons and crude armor."
+role: dps
+theme: "Fast, low-HP enemy that swarms with numbers."
+isPlayer: false
+stats:
+  hp: 25
+  maxHp: 25
+  energy: 2
+  maxEnergy: 2
+mechanics:
+  - "Quick attacks"
+  - "Low health but high speed"
+tags: ["goblin", "scout", "raider", "enemy"]
+startingDeck:
+  - "strike_common"
+  - "strike_common"

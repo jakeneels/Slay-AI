@@ -147,6 +147,17 @@ function playCard(state: BattleState, by: CharacterId, cardId: CardId, targetIds
   const perTargetLogs: string[] = [];
   const defeatLogs: string[] = [];
   for (const targetId of targetIds) {
+    // Range check if applicable
+    if (card.range !== undefined) {
+      const a = findCharacter(s, by).char;
+      const t = findCharacter(s, targetId).char;
+      const aSlot = a.slot ?? 0;
+      const tSlot = t.slot ?? 0;
+      if (Math.abs(aSlot - tSlot) > card.range) {
+        perTargetLogs.push(`${t.name} is out of range`);
+        continue;
+      }
+    }
     const { char: target } = findCharacter(s, targetId);
     const report = applyCardEffectsAndReport(target, card);
     s = updateCharacter(s, report.updated);

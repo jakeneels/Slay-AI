@@ -1,0 +1,24 @@
+schemaVersion: 1
+id: jacob_techblade
+name: "Jacob"
+title: "Techblade Vanguard"
+description: "Futuristic warrior wielding EMP sword + energy shield, clad in light energy armor."
+role: tank
+theme: "Tank / Bruiser – thrives on blocking and countering."
+isPlayer: true
+sprite: "/assets/game/allies/jacob.png"
+stats:
+  hp: 120
+  maxHp: 120
+  energy: 3
+  maxEnergy: 3
+mechanics:
+  - "Generates block efficiently"
+  - "Fortify scaling"
+  - "Energy reflection on shield counters"
+tags: ["warrior", "tech", "vanguard", "tank"]
+startingDeck:
+  - "defend_common"
+  - "defend_common"
+  - "strike_common"
+  - "overclock_mythic"

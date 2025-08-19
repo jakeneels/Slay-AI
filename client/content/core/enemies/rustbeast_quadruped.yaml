@@ -1,0 +1,22 @@
+schemaVersion: 1
+id: rustbeast_quadruped
+name: "Rustbeast Quadruped"
+title: "Scrap-Mutant Beast"
+description: "Scrap-mutant machine-beast, glowing green targeting core."
+role: tank
+theme: "Bruiser / Pressure – advances relentlessly."
+isPlayer: false
+stats:
+  hp: 65
+  maxHp: 65
+  energy: 3
+  maxEnergy: 3
+mechanics:
+  - "Ignores slot movement penalties"
+  - "Forces backline forward (pressure)"
+  - "Applies bleed/shock on multi-hit claws"
+tags: ["beast", "machine", "elite", "enemy", "bruiser"]
+startingDeck:
+  - "strike_common"
+  - "strike_common"
+  - "defend_common"

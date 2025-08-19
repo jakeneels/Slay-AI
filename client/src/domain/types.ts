@@ -2,6 +2,7 @@ export type CharacterId = string;
 export type CardId = string;
 
 export type Rarity = 'common' | 'rare' | 'mythic';
+export type Line = 'front' | 'back';
 
 export interface CharacterStats {
   maxHealth: number;
@@ -16,6 +17,11 @@ export interface CharacterState {
   stats: CharacterStats;
   currentHealth: number;
   currentEnergy: number;
+  /** Optional sprite image url for Pixi canvas rendering */
+  spriteUrl?: string;
+  /** Formation line and horizontal slot for battlefield layout */
+  line?: Line; // defaults to 'front'
+  slot?: number; // 0-based position within its line
   deck: CardId[]; // full draw pile at combat start (with duplicates representing rarity weighting)
   drawPile: CardId[];
   hand: CardId[];
@@ -39,6 +45,8 @@ export interface CardDefinitionBase {
   exhausts?: boolean;
   targetSide: TargetSide;
   targeting: Targeting;
+  /** Optional max horizontal distance in slots (0..3). If undefined, unlimited. */
+  range?: number;
 }
 
 export interface DamageEffect {

@@ -1,0 +1,23 @@
+schemaVersion: 1
+id: fanatic_zealot
+name: "Fanatic Zealot"
+title: "AI Worshipper"
+description: "Human worshipper of AI overlords, armed with stolen tech relics."
+role: dps
+theme: "Aggressive Frontliner – reckless but high damage."
+sprite: "/assets/game/enemies/fanatic-zealot.png"
+isPlayer: false
+stats:
+  hp: 30
+  maxHp: 30
+  energy: 3
+  maxEnergy: 3
+mechanics:
+  - "Gains attack buffs when injured"
+  - "Can 'advance' slots aggressively"
+  - "Poor defense"
+tags: ["human", "fanatic", "normal", "enemy", "aggressive"]
+startingDeck:
+  - "blast_rare"
+  - "strike_common"
+  - "strike_common"

@@ -1,0 +1,22 @@
+schemaVersion: 1
+id: nyx_corrupter
+name: "Nyx"
+title: "Radborn Corrupter"
+description: "Survivor mutated by radiation, glowing with toxic energy, body partly armored with metallic growths."
+role: utility
+theme: "DoT / Debuffer – wears down enemies over time."
+isPlayer: true
+stats:
+  hp: 100
+  maxHp: 100
+  energy: 3
+  maxEnergy: 3
+mechanics:
+  - "Inflicts Radiation (ignores block, stacks)"
+  - "Plus bleed/shock variants that respect block"
+  - "Can spread contamination across enemy slots"
+tags: ["mutant", "radiation", "dot", "debuffer"]
+startingDeck:
+  - "strike_common"
+  - "defend_common"
+  - "blast_rare"
