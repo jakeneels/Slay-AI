@@ -1,6 +1,9 @@
 // Pure PIXI.js game - NO REACT
 const { Application, Graphics, Text, Rectangle } = PIXI;
 
+// Import animations
+import { registerCharacterSprite, playAttackAnimation } from './animations.js';
+
 const WIDTH = 1200;
 const HEIGHT = 800;
 
@@ -9,14 +12,40 @@ let gameState = {
   characters: [],
   cardLibrary: {},
   characterLibrary: {},
+  cardInstances: {}, // Store unique card instances
   selectedCardId: null,
   currentPlayerId: '',
   turnIndex: 0,
   combatLog: [],
   isProcessingTurn: false,
+  nextCardInstanceId: 1
 };
 
 let app = null;
+
+// Create a unique card instance from a template
+function createCardInstance(templateId) {
+  const template = gameState.cardLibrary[templateId];
+  if (!template) {
+    console.error('Card template not found:', templateId);
+    return null;
+  }
+  
+  const instanceId = `card_${gameState.nextCardInstanceId++}`;
+  const instance = {
+    instanceId: instanceId,
+    templateId: templateId,
+    ...template // Copy all properties from template
+  };
+  
+  gameState.cardInstances[instanceId] = instance;
+  return instanceId;
+}
+
+// Get card instance (falls back to template for backwards compatibility)
+function getCard(cardId) {
+  return gameState.cardInstances[cardId] || gameState.cardLibrary[cardId];
+}
 
 // Load YAML content
 async function loadContent() {
@@ -148,7 +177,7 @@ async function initGame() {
       maxHp: charDef.stats.maxHp,
       energy: charDef.stats.energy,
       maxEnergy: charDef.stats.maxEnergy,
-      hand: charDef.startingDeck || ['defend_common', 'strike_common'],
+      hand: (charDef.startingDeck || ['defend_common', 'strike_common']).map(createCardInstance),
       isPlayer: charDef.isPlayer,
     });
   });
@@ -162,7 +191,7 @@ async function initGame() {
       maxHp: charDef.stats.maxHp,
       energy: charDef.stats.energy,
       maxEnergy: charDef.stats.maxEnergy,
-      hand: charDef.startingDeck || ['strike_common'],
+      hand: (charDef.startingDeck || ['strike_common']).map(createCardInstance),
       isPlayer: charDef.isPlayer,
     });
   });
@@ -270,11 +299,14 @@ function drawCharacter(char, x, y) {
         if (!char.isPlayer && gameState.selectedCardId) {
           sprite.eventMode = 'static';
           sprite.cursor = 'pointer';
-          sprite.on('pointerdown', () => {
+          sprite.on('pointerdown', async () => {
             console.log('Enemy clicked:', char.id, 'selected card:', gameState.selectedCardId);
-            playCard(gameState.selectedCardId, char.id);
+            await playCard(gameState.selectedCardId, char.id);
           });
         }
+        
+        // Register sprite for animations
+        registerCharacterSprite(char.id, sprite);
         
         app.stage.addChild(sprite);
       }).catch(err => {
@@ -290,6 +322,7 @@ function drawCharacter(char, x, y) {
     });
     name.x = x + 100 - name.width/2; // Center under larger sprite
     name.y = y + 180; // Move down for larger sprites
+    name.eventMode = 'none'; // Make text non-interactive
     app.stage.addChild(name);
     
     // HP bar below name - wider and better positioned
@@ -313,6 +346,7 @@ function drawCharacter(char, x, y) {
     });
     hpText.x = x + 100 - hpText.width/2;
     hpText.y = y + 210;
+    hpText.eventMode = 'none'; // Make text non-interactive
     app.stage.addChild(hpText);
     
     // Segmented energy bar below HP
@@ -378,7 +412,7 @@ function drawPlayerHand(currentPlayer) {
   const y = 60; // Move player cards to top area
   
   cards.forEach((cardId, i) => {
-    const card = gameState.cardLibrary[cardId];
+    const card = getCard(cardId);
     if (!card) return;
     
     const x = startX + i * (cardW + spacing);
@@ -418,6 +452,7 @@ function drawPlayerHand(currentPlayer) {
     });
     name.x = x + 10;
     name.y = y + 10;
+    name.eventMode = 'none'; // Make text non-interactive
     app.stage.addChild(name);
     
     // Cost
@@ -427,6 +462,7 @@ function drawPlayerHand(currentPlayer) {
     });
     cost.x = x + 10;
     cost.y = y + 30;
+    cost.eventMode = 'none'; // Make text non-interactive
     app.stage.addChild(cost);
     
     // Effects
@@ -449,6 +485,7 @@ function drawPlayerHand(currentPlayer) {
     });
     effectText.x = x + 10;
     effectText.y = y + 50;
+    effectText.eventMode = 'none'; // Make text non-interactive
     app.stage.addChild(effectText);
   });
 }
@@ -469,10 +506,11 @@ function drawEnemyHand(currentPlayer) {
   });
   label.x = startX;
   label.y = y - 20; // Adjust label position for top area
+  label.eventMode = 'none'; // Make text non-interactive
   app.stage.addChild(label);
   
   cards.forEach((cardId, i) => {
-    const card = gameState.cardLibrary[cardId];
+    const card = getCard(cardId);
     if (!card) return;
     
     const x = startX + i * (cardW + spacing);
@@ -497,6 +535,7 @@ function drawEnemyHand(currentPlayer) {
     });
     name.x = x + 8;
     name.y = y + 8;
+    name.eventMode = 'none'; // Make text non-interactive
     app.stage.addChild(name);
     
     // Cost
@@ -506,6 +545,7 @@ function drawEnemyHand(currentPlayer) {
     });
     cost.x = x + 8;
     cost.y = y + 25;
+    cost.eventMode = 'none'; // Make text non-interactive
     app.stage.addChild(cost);
     
     // Effects
@@ -528,6 +568,7 @@ function drawEnemyHand(currentPlayer) {
     });
     effectText.x = x + 8;
     effectText.y = y + 40;
+    effectText.eventMode = 'none'; // Make text non-interactive
     app.stage.addChild(effectText);
   });
 }
@@ -540,16 +581,18 @@ function drawTurnInfo() {
   });
   turnText.x = 20;
   turnText.y = 20;
+  turnText.eventMode = 'none'; // Make text non-interactive
   app.stage.addChild(turnText);
   
   if (gameState.selectedCardId) {
-    const card = gameState.cardLibrary[gameState.selectedCardId];
+            const card = getCard(gameState.selectedCardId);
     const selectedText = new Text({
       text: `Selected: ${card.name} - Click enemy to attack!`,
       style: { fill: 0x22c55e, fontSize: 14 }
     });
     selectedText.x = 20;
     selectedText.y = 50;
+    selectedText.eventMode = 'none'; // Make text non-interactive
     app.stage.addChild(selectedText);
   }
   
@@ -573,6 +616,7 @@ function drawTurnInfo() {
   });
   btnText.x = WIDTH - btnW - 20 + (btnW - btnText.width) / 2;
   btnText.y = 20 + (btnH - btnText.height) / 2;
+  btnText.eventMode = 'none'; // Make text non-interactive
   app.stage.addChild(btnText);
 }
 
@@ -588,6 +632,7 @@ function drawCombatLog() {
   });
   logTitle.x = logX;
   logTitle.y = logY;
+  logTitle.eventMode = 'none'; // Make text non-interactive
   app.stage.addChild(logTitle);
   
   // Show recent log entries
@@ -599,6 +644,7 @@ function drawCombatLog() {
     });
     logEntry.x = logX;
     logEntry.y = logY + 20 + i * 15;
+    logEntry.eventMode = 'none'; // Make text non-interactive
     app.stage.addChild(logEntry);
   });
 }
@@ -608,16 +654,24 @@ function addToCombatLog(message) {
   console.log('Combat Log:', message);
 }
 
-function playCard(cardId, targetId) {
+async function playCard(cardId, targetId) {
   const currentPlayer = gameState.characters.find(c => c.id === gameState.currentPlayerId);
   const target = gameState.characters.find(c => c.id === targetId);
-  const card = gameState.cardLibrary[cardId];
+  const card = getCard(cardId);
   
   if (!currentPlayer || !target || !card) return;
   if (currentPlayer.energy < card.cost.energy) return;
   if (!currentPlayer.hand.includes(cardId)) return;
   
   addToCombatLog(`${currentPlayer.name} plays ${card.name}`);
+  
+  // Check if this is a damage attack to trigger animations
+  const isDamageCard = card.effects.some(effect => effect.kind === 'damage');
+  
+  // Play attack animation if it's a damage card
+  if (isDamageCard) {
+    await playAttackAnimation(currentPlayer.id, target.id, app);
+  }
   
   // Apply card effects
   card.effects.forEach(effect => {
@@ -713,7 +767,7 @@ async function processEnemyTurn(enemy) {
   
   // Find playable cards
   const playableCards = enemy.hand.filter(cardId => {
-    const card = gameState.cardLibrary[cardId];
+    const card = getCard(cardId);
     return card && enemy.energy >= card.cost.energy;
   });
   
@@ -728,12 +782,12 @@ async function processEnemyTurn(enemy) {
   const chosenCardId = playableCards[Math.floor(Math.random() * playableCards.length)];
   const chosenTarget = playerTargets[Math.floor(Math.random() * playerTargets.length)];
   
-  addToCombatLog(`${enemy.name} selects ${gameState.cardLibrary[chosenCardId].name}...`);
+  addToCombatLog(`${enemy.name} selects ${getCard(chosenCardId).name}...`);
   render();
   
   // Wait a bit then play the card
-  setTimeout(() => {
-    playCard(chosenCardId, chosenTarget.id);
+  setTimeout(async () => {
+    await playCard(chosenCardId, chosenTarget.id);
     render();
     
     // Wait a bit then end turn
