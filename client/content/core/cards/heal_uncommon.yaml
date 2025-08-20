@@ -1,0 +1,14 @@
+schemaVersion: 1
+id: heal_uncommon
+name: "Greater Heal"
+type: skill
+rarity: rare
+cost: 2
+copies: 2
+tags: [heal]
+targeting: self
+exhaust: false
+expires_after_turns: 0
+effects:
+  - kind: heal
+    amount: 8

@@ -2,6 +2,7 @@
  * Combat animations for attack effects
  */
 
+
 // Store character sprites for animation access
 const characterSprites = new Map();
 
@@ -22,7 +23,7 @@ export function animateAttackerShake(characterId) {
   const originalX = sprite.x;
   const shakeIntensity = 5;
   const shakeDuration = 300;
-  const shakeSteps = 5;
+  const shakeSteps = 1;
   const stepDuration = shakeDuration / shakeSteps;
 
   return new Promise((resolve) => {
@@ -47,7 +48,8 @@ export function animateAttackerShake(characterId) {
 /**
  * Animate damage spark effect on target
  */
-export function animateDamageSpark(characterId, app) {
+
+export function animateCharachterSpark(characterId, type, app) {
   const sprite = characterSprites.get(characterId);
   if (!sprite) return Promise.resolve();
 
@@ -64,10 +66,18 @@ export function animateDamageSpark(characterId, app) {
     const startY = Math.sin(angle) * 10;
     const endX = Math.cos(angle) * sparkLength;
     const endY = Math.sin(angle) * sparkLength;
-    
+
     spark.moveTo(startX, startY)
-         .lineTo(endX, endY)
-         .stroke({ width: 3, color: 0xffff00 }); // Yellow spark
+    .lineTo(endX, endY)
+
+    switch (type){
+        case 'damage':
+            spark.stroke({ width: 3, color: 0xffff00 }); // Yellow spark
+        case 'heal':
+            spark.stroke({ width: 3, color: 0x22c55e }); // Green spark
+        case 'buff':
+            spark.stroke({ width: 3, color: 0xa855f7 }); // Green spark
+    }
   }
   
   // Position spark at character center
@@ -109,5 +119,4 @@ export async function playAttackAnimation(attackerId, targetId, app) {
   
   // Then show damage spark on target (with slight delay)
   await new Promise(resolve => setTimeout(resolve, 100));
-  await animateDamageSpark(targetId, app);
 }

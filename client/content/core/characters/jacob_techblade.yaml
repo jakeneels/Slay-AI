@@ -12,6 +12,7 @@ stats:
   maxHp: 120
   energy: 3
   maxEnergy: 3
+  speed: 5
 mechanics:
   - "Generates block efficiently"
   - "Fortify scaling"

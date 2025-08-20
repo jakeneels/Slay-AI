@@ -212,3 +212,14 @@ meta:
 - Keep Fortify taxonomy small (e.g., Minor/Major/Plating) to avoid near-duplicate effects.
 
 ---
+
+
+
+#todo 
+
+- add damage and heal done to the animations.
+- game state can track the median hit and adjust size and color and impact traits based on that to account for hard hitting satistaction
+reroll play order every turn, take speed updates into account
+- need to add reshuffle
+
+- refactor to TS LOL

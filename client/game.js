@@ -2,7 +2,7 @@
 const { Application, Graphics, Text, Rectangle } = PIXI;
 
 // Import animations
-import { registerCharacterSprite, playAttackAnimation } from './animations.js';
+import { registerCharacterSprite, playAttackAnimation, animateCharachterSpark } from './animations.js';
 
 const WIDTH = 1200;
 const HEIGHT = 800;
@@ -18,7 +18,12 @@ let gameState = {
   turnIndex: 0,
   combatLog: [],
   isProcessingTurn: false,
-  nextCardInstanceId: 1
+  nextCardInstanceId: 1,
+  stats: {
+    cumulativeDamage: 0,
+    maxDamage: 0,
+
+  }
 };
 
 let app = null;
@@ -47,23 +52,51 @@ function getCard(cardId) {
   return gameState.cardInstances[cardId] || gameState.cardLibrary[cardId];
 }
 
+// Get color for card rarity
+function getRarityColor(rarity) {
+  switch (rarity.toLowerCase()) {
+    case 'common': return 0x22c55e;  // Green
+    case 'rare': return 0x3b82f6;     // Blue
+    case 'epic': return 0xa855f7;     // Purple
+    case 'legendary': return 0xf59e0b; // Orange/Gold
+    case 'mythic': return 0xff0080;   // Hot Pink
+    default: return 0xffffff;         // White fallback
+  }
+}
+
 // Load YAML content
 async function loadContent() {
   try {
     // Load cards
-    const cardFiles = [
+    const cardFiles = [ 
+      // cards should be children of parents, with some common cards that could be imported.
+      // should probably move away from the copies thing, chars can start with the basic attacks, like 3 of each then the cards are random. this way dilution is controlled by the player
       'content/core/cards/defend_common.yaml',
       'content/core/cards/blast_rare.yaml', 
       'content/core/cards/strike_common.yaml',
-      'content/core/cards/overclock_mythic.yaml'
+      'content/core/cards/overclock_mythic.yaml',
+      'content/core/cards/fireball_rare.yaml',
+      'content/core/cards/heal_uncommon.yaml'
     ];
+
+    /**
+     * targeting | aoe enum
+     * innate
+     * maxRange
+     * optimalRange 0-7
+     */
     
     const characterFiles = [
       'content/core/characters/jacob_techblade.yaml',
-      'content/core/characters/lira_sharpshooter.yaml',
+      'content/core/characters/didi_sharpshooter.yaml',
       'content/core/characters/kael_tactician.yaml',
       'content/core/characters/nyx_corrupter.yaml'
     ];
+    /**
+     * speed: influences with small randomness what order turn happen in. also how many slots can be moved for one energy
+     * durationTurnsPerStack:
+     * stacksPerApplication
+     */
     
     const enemyFiles = [
       'content/core/enemies/scrapling_swarm.yaml',
@@ -296,7 +329,7 @@ function drawCharacter(char, x, y) {
         console.log(`Loaded sprite for ${char.id}: ${texture.width}x${texture.height} -> ${sprite.width}x${sprite.height}`);
         
         // Make targetable if enemy and card selected
-        if (!char.isPlayer && gameState.selectedCardId) {
+        if (!char.isPlayer && gameState.selectedCardId) { // check targeting here jn
           sprite.eventMode = 'static';
           sprite.cursor = 'pointer';
           sprite.on('pointerdown', async () => {
@@ -384,7 +417,7 @@ function drawCharacter(char, x, y) {
            .closePath()
            .fill(0xffeb3b); // Bright yellow arrow
       arrow.x = x + 60; // Center above character
-      arrow.y = y - 10; // Above the character
+      arrow.y = y - 30; // Above the character
       app.stage.addChild(arrow);
     }
 }
@@ -466,7 +499,7 @@ function drawPlayerHand(currentPlayer) {
     app.stage.addChild(cost);
     
     // Effects
-    const effectsText = card.effects.map(effect => {
+    const effectsText = card.effects.map(effect => { // break this out
       switch (effect.kind) {
         case 'damage': return `Damage: ${effect.amount}`;
         case 'heal': return `Heal: ${effect.amount}`;
@@ -487,6 +520,31 @@ function drawPlayerHand(currentPlayer) {
     effectText.y = y + 50;
     effectText.eventMode = 'none'; // Make text non-interactive
     app.stage.addChild(effectText);
+    
+    // Add rarity indicator in top right corner
+    console.log('Card rarity check:', card.name, 'rarity:', card.rarity);
+    if (card.rarity) {
+      const rarityColor = getRarityColor(card.rarity);
+      const rarityIcon = new Graphics();
+      
+      // Draw a diamond shape for rarity
+      const iconSize = 8;
+      const iconX = x + cardW - 15;
+      const iconY = y + 8;
+      
+      console.log('Drawing rarity diamond for', card.name, 'color:', rarityColor.toString(16));
+      
+      rarityIcon.moveTo(iconX, iconY - iconSize)
+               .lineTo(iconX + iconSize, iconY)
+               .lineTo(iconX, iconY + iconSize)
+               .lineTo(iconX - iconSize, iconY)
+               .lineTo(iconX, iconY - iconSize)
+               .fill(rarityColor);
+      
+      app.stage.addChild(rarityIcon);
+    } else {
+      console.log('No rarity found for card:', card.name);
+    }
   });
 }
 
@@ -570,6 +628,26 @@ function drawEnemyHand(currentPlayer) {
     effectText.y = y + 40;
     effectText.eventMode = 'none'; // Make text non-interactive
     app.stage.addChild(effectText);
+    
+    // Add rarity indicator in top right corner
+    if (card.rarity) {
+      const rarityColor = getRarityColor(card.rarity);
+      const rarityIcon = new Graphics();
+      
+      // Draw a smaller diamond shape for enemy cards
+      const iconSize = 6;
+      const iconX = x + cardW - 12;
+      const iconY = y + 6;
+      
+      rarityIcon.moveTo(iconX, iconY - iconSize)
+               .lineTo(iconX + iconSize, iconY)
+               .lineTo(iconX, iconY + iconSize)
+               .lineTo(iconX - iconSize, iconY)
+               .lineTo(iconX, iconY - iconSize)
+               .fill(rarityColor);
+      
+      app.stage.addChild(rarityIcon);
+    }
   });
 }
 
@@ -585,7 +663,7 @@ function drawTurnInfo() {
   app.stage.addChild(turnText);
   
   if (gameState.selectedCardId) {
-            const card = getCard(gameState.selectedCardId);
+    const card = getCard(gameState.selectedCardId);
     const selectedText = new Text({
       text: `Selected: ${card.name} - Click enemy to attack!`,
       style: { fill: 0x22c55e, fontSize: 14 }
@@ -659,8 +737,14 @@ async function playCard(cardId, targetId) {
   const target = gameState.characters.find(c => c.id === targetId);
   const card = getCard(cardId);
   
-  if (!currentPlayer || !target || !card) return;
-  if (currentPlayer.energy < card.cost.energy) return;
+  if (!currentPlayer || !target || !card) {
+    console.log('skipping player, target or card falsey')
+    return;
+  };
+  if (currentPlayer.energy < card.cost.energy) {
+    console.log('skipping player doesnt have enough energy')
+    return;
+  };
   if (!currentPlayer.hand.includes(cardId)) return;
   
   addToCombatLog(`${currentPlayer.name} plays ${card.name}`);
@@ -669,34 +753,45 @@ async function playCard(cardId, targetId) {
   const isDamageCard = card.effects.some(effect => effect.kind === 'damage');
   
   // Play attack animation if it's a damage card
-  if (isDamageCard) {
-    await playAttackAnimation(currentPlayer.id, target.id, app);
-  }
+  await playAttackAnimation(currentPlayer.id, target.id, app);
+
+  // if (isDamageCard) {
+  //   await playAttackAnimation(currentPlayer.id, target.id, app);
+  // }
   
+  let sparkType = 'damage';
   // Apply card effects
   card.effects.forEach(effect => {
     switch (effect.kind) {
       case 'damage':
-        target.hp = Math.max(0, target.hp - effect.amount);
-        addToCombatLog(`${target.name} takes ${effect.amount} damage`);
+        const adjustedDamage = effect.amount; // add other modifiers
+        gameState.stats.cumulativeDamage += adjustedDamage;
+        target.hp = Math.max(0, target.hp - adjustedDamage);
+        addToCombatLog(`${target.name} takes ${adjustedDamage} damage`);
         if (target.hp <= 0) {
           addToCombatLog(`${target.name} is defeated!`);
         }
         break;
       case 'heal':
         const healTarget = card.targetSide === 'self' ? currentPlayer : target;
+        const adjustedHeal = effect.amount;
         healTarget.hp = Math.min(healTarget.maxHp, healTarget.hp + effect.amount);
+        gameState.stats.cumulativeHeal += adjustedHeal;
         addToCombatLog(`${healTarget.name} heals ${effect.amount} HP`);
+        sparkType = 'heal';
         break;
       case 'energy':
         currentPlayer.energy = Math.min(currentPlayer.maxEnergy, currentPlayer.energy + effect.amount);
         addToCombatLog(`${currentPlayer.name} gains ${effect.amount} energy`);
+        sparkType = 'energy';
         break;
       case 'speed':
         addToCombatLog(`${currentPlayer.name} gains ${effect.amount} speed`);
+        sparkType = 'energy'
         break;
     }
   });
+  await animateCharachterSpark(targetId, sparkType, app);
   
   // Consume energy and remove card from hand
   currentPlayer.energy -= card.cost.energy;
