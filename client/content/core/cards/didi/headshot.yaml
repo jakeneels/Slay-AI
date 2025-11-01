@@ -7,11 +7,15 @@ cost: 2
 copies: 2
 targeting: enemy
 maxRange: 7 
-
 exhaust: false
 expires_after_turns: 0
 effects:
   - kind: damage
     amount: 14
+animation:
+  damage:
+    projectileColor: 0xffffff  # White sniper bullet
+    projectileSpeed: 2000            # Very fast, precision shot
+    impactSize: 30             # Smaller, precise impact
 
 

@@ -12,5 +12,6 @@ expires_after_turns: 0
 effects:
   - kind: damage
     amount: 6
+# Melee attack - uses default melee slash animation (yellow/orange)
 
 

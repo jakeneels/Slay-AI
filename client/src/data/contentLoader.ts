@@ -8,16 +8,14 @@ import type { Card, CharacterDefinition, LoadedContent } from '../core/types.js'
  */
 export async function loadContent(): Promise<LoadedContent> {
   try {
-    // Load cards
+    // Load cards - include all existing YAML files
     const cardFiles: string[] = [ 
-      // cards should be children of parents, with some common cards that could be imported.
-      // should probably move away from the copies thing, chars can start with the basic attacks, like 3 of each then the cards are random. this way dilution is controlled by the player
       'content/core/cards/defend_common.yaml',
       'content/core/cards/blast_rare.yaml', 
       'content/core/cards/strike_common.yaml',
       'content/core/cards/overclock_mythic.yaml',
-      'content/core/cards/fireball_rare.yaml',
-      'content/core/cards/heal_uncommon.yaml'
+      'content/core/cards/heal_uncommon.yaml',
+      'content/core/cards/didi/headshot.yaml'
     ];
 
     /**
@@ -78,6 +76,38 @@ export async function loadContent(): Promise<LoadedContent> {
           targeting = 'single';
         }
         
+        // Parse optional animation config
+        let animationConfig: Card['animationConfig'] = undefined;
+        if (cardData.animation) {
+          animationConfig = {};
+          if (cardData.animation.damage) {
+            animationConfig.damage = {
+              projectileColor: cardData.animation.damage.projectileColor,
+              projectileSpeed: cardData.animation.damage.projectileSpeed,
+              impactSize: cardData.animation.damage.impactSize,
+            };
+            // Remove undefined fields
+            if (!animationConfig.damage.projectileColor) delete animationConfig.damage.projectileColor;
+            if (!animationConfig.damage.projectileSpeed) delete animationConfig.damage.projectileSpeed;
+            if (!animationConfig.damage.impactSize) delete animationConfig.damage.impactSize;
+            if (Object.keys(animationConfig.damage).length === 0) delete animationConfig.damage;
+          }
+          if (cardData.animation.heal) {
+            animationConfig.heal = {
+              particleColor: cardData.animation.heal.particleColor,
+              glowIntensity: cardData.animation.heal.glowIntensity,
+            };
+            // Remove undefined fields
+            if (!animationConfig.heal.particleColor) delete animationConfig.heal.particleColor;
+            if (!animationConfig.heal.glowIntensity) delete animationConfig.heal.glowIntensity;
+            if (Object.keys(animationConfig.heal).length === 0) delete animationConfig.heal;
+          }
+          // Remove animationConfig if it's empty
+          if (!animationConfig.damage && !animationConfig.heal) {
+            animationConfig = undefined;
+          }
+        }
+        
         cards[cardData.id] = {
           id: cardData.id,
           name: cardData.name,
@@ -92,7 +122,8 @@ export async function loadContent(): Promise<LoadedContent> {
           expires_after_turns: cardData.expires_after_turns || 0,
           maxRange: cardData.maxRange,
           optimalRange: cardData.optimalRange,
-          rarity: cardData.rarity
+          rarity: cardData.rarity,
+          animationConfig: animationConfig
         };
       } catch (e) {
         console.warn(`Failed to load ${file}:`, e);

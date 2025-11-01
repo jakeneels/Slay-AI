@@ -4,10 +4,77 @@ export interface CardCost {
   energy: number;
 }
 
-export interface CardEffect {
-  kind: 'damage' | 'heal' | 'energy' | 'speed';
+// Base effect interface - all effects have kind and amount
+export interface BaseCardEffect {
+  kind: string;
   amount: number;
 }
+
+// Specific effect types
+export interface DamageEffect extends BaseCardEffect {
+  kind: 'damage';
+  amount: number;
+}
+
+export interface HealEffect extends BaseCardEffect {
+  kind: 'heal';
+  amount: number;
+}
+
+export interface EnergyEffect extends BaseCardEffect {
+  kind: 'energy';
+  amount: number;
+}
+
+export interface SpeedEffect extends BaseCardEffect {
+  kind: 'speed';
+  amount: number;
+}
+
+export interface AoeDamageEffect extends BaseCardEffect {
+  kind: 'aoe_damage';
+  amount: number;
+}
+
+export interface BlockEffect extends BaseCardEffect {
+  kind: 'grant_block_layer';
+  amount: number; // Block amount
+  decay_percent?: number; // Decay percentage (default if not specified)
+}
+
+export interface StatusEffect extends BaseCardEffect {
+  kind: 'status';
+  status: string; // Status ID (e.g., 'disrupt', 'bleed', 'shock', 'radiation')
+  stacks?: number; // Number of stacks (default 1)
+}
+
+export interface ModifierEffect {
+  kind: 'modifier';
+  when?: {
+    target_has_tag?: string;
+    [key: string]: any;
+  };
+  apply: CardEffect[]; // Effects to apply when condition is met
+}
+
+export interface DeckInjectEffect {
+  kind: 'deck_inject';
+  target: 'allies' | 'self' | 'enemies';
+  card: string; // Card template ID to inject
+  copies?: number; // Number of copies (default 1)
+}
+
+// Union type for all card effects
+export type CardEffect = 
+  | DamageEffect 
+  | HealEffect 
+  | EnergyEffect 
+  | SpeedEffect 
+  | AoeDamageEffect 
+  | BlockEffect 
+  | StatusEffect 
+  | ModifierEffect 
+  | DeckInjectEffect;
 
 export interface Card {
   id: string;
@@ -24,6 +91,17 @@ export interface Card {
   expires_after_turns?: number;
   maxRange?: number;
   optimalRange?: number;
+  animationConfig?: {
+    damage?: {
+      projectileColor?: number;
+      projectileSpeed?: number;
+      impactSize?: number;
+    };
+    heal?: {
+      particleColor?: number;
+      glowIntensity?: number;
+    };
+  };
 }
 
 export interface CardInstance extends Card {
@@ -39,6 +117,22 @@ export interface CharacterStats {
   maxEnergy: number;
 }
 
+// Block layer - each block source has its own decay rate
+export interface BlockLayer {
+  amount: number; // Current remaining amount
+  baseAmount: number; // Original amount when block was granted (for decay calculation)
+  decay_percent: number; // Percentage to decay each turn (0-100)
+  source?: string; // Card ID that created this block (optional)
+}
+
+// Status effect on a character
+export interface Status {
+  id: string; // Status ID (e.g., 'disrupt', 'bleed', 'shock', 'radiation', 'fortify')
+  stacks: number; // Stack count
+  duration?: number; // Turns remaining (undefined = permanent)
+  metadata?: Record<string, any>; // Additional status data
+}
+
 export interface Character {
   id: string;
   name: string;
@@ -51,6 +145,8 @@ export interface Character {
   hand: string[]; // Array of card instance IDs
   drawCount: number; // Cards to draw per turn (default 3)
   maxHandSize: number; // Maximum hand size (default 5)
+  blockLayers: BlockLayer[]; // Current block layers
+  statuses: Status[]; // Active status effects
   isPlayer: boolean;
 }
 

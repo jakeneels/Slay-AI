@@ -1,12 +1,23 @@
 // Combat logic - card playing, turn management, enemy AI
 
 import type { Application } from 'pixi.js';
-import type { Character } from './types.js';
+import type { Character, CardEffect } from './types.js';
 import { getGameState } from './gameState.js';
 import { getCard } from './card.js';
 import { drawCards } from './deck.js';
 import { addToCombatLog } from './gameState.js';
-import { playAttackAnimation, animateCharachterSpark } from '../../animations.js';
+import { 
+  animateCharachterSpark, 
+  playDamageAnimation, 
+  playHealAnimation, 
+  animateDamageFlash,
+  animateEnhancedScreenShake,
+  animateCameraZoom,
+  animateParticles,
+  type AnimationConfig 
+} from '../../animations.js';
+import { applyDamageWithBlock, grantBlockLayer, decayBlockLayers } from './block.js';
+import { applyStatus, processDoTs, decayStatusDurations } from './status.js';
 
 let app: Application | null = null;
 
@@ -46,8 +57,42 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
     targets = gameState.characters.filter(c => c.isPlayer && c.hp > 0);
   } else if (card.targeting === 'self') {
     targets = [currentPlayer];
+  } else if (card.targeting === 'ally') {
+    // Ally targeting - can target any player character (including self if targetId is self)
+    if (!targetId) {
+      console.log('targetId required for ally targeting');
+      return;
+    }
+    const target = gameState.characters.find(c => c.id === targetId);
+    if (!target) {
+      console.log('target not found');
+      return;
+    }
+    // Validate that target is a player character
+    if (!target.isPlayer) {
+      console.log('ally targeting can only target player characters');
+      return;
+    }
+    targets = [target];
+  } else if (card.targeting === 'enemy') {
+    // Enemy targeting - can target any enemy character
+    if (!targetId) {
+      console.log('targetId required for enemy targeting');
+      return;
+    }
+    const target = gameState.characters.find(c => c.id === targetId);
+    if (!target) {
+      console.log('target not found');
+      return;
+    }
+    // Validate that target is an enemy
+    if (target.isPlayer) {
+      console.log('enemy targeting can only target enemy characters');
+      return;
+    }
+    targets = [target];
   } else {
-    // Single target mode - need targetId
+    // Default single target mode (backwards compatibility)
     if (!targetId) {
       console.log('targetId required for single target cards');
       return;
@@ -65,31 +110,140 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
     return;
   }
   
+  // Consume energy BEFORE processing effects (so failed effects still cost energy)
+  currentPlayer.energy -= card.cost.energy;
+  
   const exhaustText = card.exhaust ? ' (Exhaust)' : '';
   addToCombatLog(`${currentPlayer.name} plays ${card.name}${exhaustText}`);
   
-  // Play attack animation (use first target for single target, or current player for AOE)
-  const animationTarget = targets.length === 1 ? targets[0].id : currentPlayer.id;
-  await playAttackAnimation(currentPlayer.id, animationTarget, app);
+  // Render immediately after state changes to show updated energy/card state
+  if (renderCallback) {
+    renderCallback();
+  }
   
-  // Apply effects to all targets
-  for (const target of targets) {
-    let sparkType: 'damage' | 'heal' | 'buff' | 'energy' = 'damage';
+  // Animation will be handled per-effect in the effect processing loop below
+  
+  // Process all effects (including modifiers which may add more effects)
+  const effectsToProcess: CardEffect[] = [...card.effects];
+  let effectIndex = 0;
+  
+  while (effectIndex < effectsToProcess.length) {
+    const effect = effectsToProcess[effectIndex];
+    effectIndex++;
     
-    // Apply card effects
-    card.effects.forEach(effect => {
+    // Handle modifier effects (conditional effects)
+    if (effect.kind === 'modifier') {
+      // Check if condition is met
+      let conditionMet = true;
+      if (effect.when?.target_has_tag) {
+        // Check if target has the tag
+        const targetChar = targets.length > 0 ? targets[0] : currentPlayer;
+        const cardData = gameState.cardLibrary[targetChar.id] || gameState.characterLibrary[targetChar.id];
+        conditionMet = cardData?.tags?.includes(effect.when.target_has_tag) || false;
+      }
+      
+      if (conditionMet && effect.apply) {
+        // Add conditional effects to process
+        effectsToProcess.push(...effect.apply);
+      }
+      continue;
+    }
+    
+    // Handle deck injection
+    if (effect.kind === 'deck_inject') {
+      const injectTarget = effect.target === 'self' 
+        ? [currentPlayer]
+        : effect.target === 'allies'
+        ? gameState.characters.filter(c => c.isPlayer && c.hp > 0)
+        : gameState.characters.filter(c => !c.isPlayer && c.hp > 0);
+      
+      const copies = effect.copies || 1;
+      injectTarget.forEach(target => {
+        for (let i = 0; i < copies; i++) {
+          target.deck.push(effect.card);
+        }
+        addToCombatLog(`${target.name} gains ${copies} ${effect.card} in deck`);
+      });
+      continue;
+    }
+    
+    // Apply effects to all targets
+    // For AOE effects, animate on all targets in parallel
+    const animationPromises: Promise<void>[] = [];
+    
+    for (const target of targets) {
+      let sparkType: 'damage' | 'heal' | 'buff' | 'energy' = 'damage';
+      let animationPromise: Promise<void> | null = null;
+      
       switch (effect.kind) {
         case 'damage':
           const adjustedDamage = effect.amount; // add other modifiers
           gameState.stats.cumulativeDamage += adjustedDamage;
-          target.hp = Math.max(0, target.hp - adjustedDamage);
-          addToCombatLog(`${target.name} takes ${adjustedDamage} damage`);
+          const actualDamage = applyDamageWithBlock(target, adjustedDamage);
+          if (actualDamage > 0) {
+            addToCombatLog(`${target.name} takes ${actualDamage} damage`);
+            // Render immediately to show updated HP
+            if (renderCallback) {
+              renderCallback();
+            }
+            // Play enhanced damage animation sequence
+            animationPromise = Promise.all([
+              playDamageAnimation(
+                currentPlayer.id,
+                target.id,
+                actualDamage,
+                app,
+                card.targeting,
+                card.animationConfig as AnimationConfig | undefined,
+                card.type
+              ),
+              animateDamageFlash(app, actualDamage),
+              animateEnhancedScreenShake(app, actualDamage),
+              // Camera zoom for big hits
+              actualDamage >= 15 ? animateCameraZoom(app, 1.08, 200, 100) : Promise.resolve()
+            ]).then(() => undefined);
+          }
           if (target.hp <= 0) {
             addToCombatLog(`${target.name} is defeated!`);
+            // Camera focus on defeated enemy
+            animateCameraZoom(app, 1.15, 300, 400).catch(() => {});
           }
           break;
+          
+        case 'aoe_damage':
+          // AOE damage is similar to regular damage but might have different modifiers
+          const aoeDamage = effect.amount;
+          gameState.stats.cumulativeDamage += aoeDamage;
+          const actualAoEDamage = applyDamageWithBlock(target, aoeDamage);
+          if (actualAoEDamage > 0) {
+            addToCombatLog(`${target.name} takes ${actualAoEDamage} AOE damage`);
+            // Render immediately to show updated HP
+            if (renderCallback) {
+              renderCallback();
+            }
+            // Play enhanced AOE damage animation
+            animationPromise = Promise.all([
+              playDamageAnimation(
+                currentPlayer.id,
+                target.id,
+                actualAoEDamage,
+                app,
+                'aoe',
+                card.animationConfig as AnimationConfig | undefined,
+                card.type
+              ),
+              animateParticles(target.id, 'fire', 20, app) // AOE uses fire particles
+            ]).then(() => undefined);
+          }
+          if (target.hp <= 0) {
+            addToCombatLog(`${target.name} is defeated!`);
+            animateCameraZoom(app, 1.15, 300, 400).catch(() => {});
+          }
+          break;
+          
         case 'heal':
-          const healTarget = card.targetSide === 'self' ? currentPlayer : target;
+          // Use the target from targeting logic (already determined correctly)
+          const healTarget = target;
           const adjustedHeal = effect.amount;
           healTarget.hp = Math.min(healTarget.maxHp, healTarget.hp + effect.amount);
           if (!gameState.stats.cumulativeHeal) {
@@ -98,26 +252,123 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
           gameState.stats.cumulativeHeal += adjustedHeal;
           addToCombatLog(`${healTarget.name} heals ${effect.amount} HP`);
           sparkType = 'heal';
+          // Render immediately to show updated HP
+          if (renderCallback) {
+            renderCallback();
+          }
+          // Play heal animation with particles
+          animationPromise = Promise.all([
+            playHealAnimation(
+              healTarget.id,
+              effect.amount,
+              app,
+              card.targeting,
+              card.animationConfig as AnimationConfig | undefined
+            ),
+            animateParticles(healTarget.id, 'healing', 15, app)
+          ]).then(() => undefined);
           break;
+          
         case 'energy':
           currentPlayer.energy = Math.min(currentPlayer.maxEnergy, currentPlayer.energy + effect.amount);
           addToCombatLog(`${currentPlayer.name} gains ${effect.amount} energy`);
           sparkType = 'energy';
+          // Render immediately to show updated energy
+          if (renderCallback) {
+            renderCallback();
+          }
+          // Use legacy spark animation for energy
+          animationPromise = animateCharachterSpark(currentPlayer.id, sparkType, app);
           break;
+          
         case 'speed':
           addToCombatLog(`${currentPlayer.name} gains ${effect.amount} speed`);
           sparkType = 'energy';
+          // Render immediately (for visual consistency)
+          if (renderCallback) {
+            renderCallback();
+          }
+          // Use legacy spark animation for speed
+          animationPromise = animateCharachterSpark(currentPlayer.id, sparkType, app);
+          break;
+          
+        case 'grant_block_layer':
+          // Use the target from targeting logic (already determined correctly)
+          const blockTarget = target;
+          grantBlockLayer(
+            blockTarget,
+            effect.amount,
+            effect.decay_percent || 50,
+            card.id
+          );
+          sparkType = 'heal';
+          // Render immediately to show updated block
+          if (renderCallback) {
+            renderCallback();
+          }
+          // Use legacy spark animation for block
+          animationPromise = animateCharachterSpark(blockTarget.id, sparkType, app);
+          break;
+          
+        case 'status':
+          // Use the target from targeting logic (already determined correctly)
+          const statusTarget = target;
+          const statusId = effect.status;
+          applyStatus(
+            statusTarget,
+            statusId,
+            effect.stacks || 1,
+            undefined, // duration from status definition if needed
+            undefined // metadata if needed
+          );
+          sparkType = 'buff';
+          // Render immediately to show updated status
+          if (renderCallback) {
+            renderCallback();
+          }
+          
+          // Choose particle type based on status
+          let particleType = 'healing'; // default
+          if (statusId === 'bleed' || statusId === 'shock') {
+            particleType = 'fire';
+          } else if (statusId === 'radiation') {
+            particleType = 'shadow';
+          } else if (statusId === 'fortify') {
+            particleType = 'ice';
+          }
+          
+          // Animate status with particles
+          animationPromise = Promise.all([
+            animateCharachterSpark(statusTarget.id, sparkType, app),
+            animateParticles(statusTarget.id, particleType, 10, app)
+          ]).then(() => undefined);
           break;
       }
-    });
+      
+      // Add animation promise to array for parallel execution (for AOE)
+      if (animationPromise) {
+        animationPromises.push(animationPromise);
+      } else if (effect.kind !== 'damage' && effect.kind !== 'aoe_damage' && effect.kind !== 'heal') {
+        // Legacy spark animation for other effects
+        animationPromises.push(animateCharachterSpark(target.id, sparkType, app));
+      }
+    }
     
-    // Animate spark on target
-    await animateCharachterSpark(target.id, sparkType, app);
+    // Wait for all animations to complete (parallel for AOE, sequential for single target)
+    if (animationPromises.length > 0) {
+      if (card.targeting === 'allEnemies' || card.targeting === 'allAllies' || card.targeting === 'aoe') {
+        // For AOE, run animations in parallel
+        await Promise.all(animationPromises);
+      } else {
+        // For single target, run sequentially for better visual clarity
+        for (const promise of animationPromises) {
+          await promise;
+        }
+      }
+    }
   }
   
-  // Consume energy
-  currentPlayer.energy -= card.cost.energy;
-  
+  // Energy was already consumed above, before effects were processed
   // Remove card instance from hand
   currentPlayer.hand = currentPlayer.hand.filter(id => id !== cardId);
   
@@ -134,6 +385,7 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
   // Clear selection
   gameState.selectedCardId = null;
   
+  // Final render after card is removed from hand (this is redundant but ensures consistency)
   if (renderCallback) {
     renderCallback();
   }
@@ -168,6 +420,18 @@ export function endTurn(renderCallback?: () => void): void {
   // Restore energy
   const nextPlayer = livingCharacters[nextIndex];
   nextPlayer.energy = nextPlayer.maxEnergy;
+  
+  // End of turn processing for all characters
+  for (const character of gameState.characters) {
+    // Decay block layers
+    decayBlockLayers(character);
+    
+    // Process DoT effects (bleed, shock, radiation)
+    processDoTs(character);
+    
+    // Decay status durations
+    decayStatusDurations(character);
+  }
   
   // Handle card expiration before drawing new cards
   // Check all characters for expired cards
