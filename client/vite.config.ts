@@ -4,6 +4,9 @@ import { defineConfig } from 'vite'
 export default defineConfig({
   plugins: [],
   server: {
-    open: '/game.html'
+    open: '/game.html',
+    hmr: {
+      overlay: true
+    }
   }
 })
