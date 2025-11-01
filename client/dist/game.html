@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slay AI - Pure PIXI Game</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: #0f0f0f;
+            color: white;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+        .subtitle {
+            color: #9ca3af;
+            font-size: 0.875rem;
+            margin-bottom: 1rem;
+        }
+        .game-container {
+            border: 1px solid #374151;
+            border-radius: 8px;
+            background: #0a0a0a;
+            padding: 1rem;
+        }
+        #gameCanvas {
+            display: block;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Slay AI — Pure PIXI Game</h1>
+        <p class="subtitle">Pure PIXI.js with no React - Click cards to select, click enemies to attack, use End Turn button.</p>
+        <div class="game-container">
+            <div id="gameCanvas"></div>
+        </div>
+    </div>
+
+    <script type="module" src="/game.ts"></script>
+</body>
+</html>

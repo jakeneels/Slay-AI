@@ -1,0 +1,20 @@
+schemaVersion: 1
+id: chain_lightning_rare
+name: "Chain Lightning"
+type: skill
+rarity: rare
+cost: 4
+copies: 1
+targeting: allEnemies
+exhaust: false
+expires_after_turns: 0
+effects:
+  - kind: damage
+    amount: 12
+animation:
+  damage:
+    projectileColor: 0x00ffff  # Cyan/blue lightning
+    projectileSpeed: 1500      # Very fast lightning
+    impactSize: 40             # Electric impact burst
+
+
