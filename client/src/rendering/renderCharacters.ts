@@ -14,6 +14,21 @@ import { createEnergyIcon } from './icons/energyIcon.js';
 const BATTLE_Y_OFFSET = 300;
 const SPACING = 140;
 
+/** Threshold: energy 1–ENERGY_ICON_THRESHOLD shows individual icons; above shows "N × icon" text */
+export const ENERGY_ICON_THRESHOLD = 6;
+export const ENERGY_ICON_SIZE = 14;
+export const ENERGY_ICON_GAP = 4;
+
+/** Whether to render energy as individual icons (true) or as "N × icon" text (false) */
+export function shouldUseEnergyIcons(energy: number): boolean {
+  return energy <= ENERGY_ICON_THRESHOLD;
+}
+
+/** Calculate the pixel width of the energy icon row when using individual icons */
+export function calculateEnergyIconRowWidth(energy: number, iconSize = ENERGY_ICON_SIZE, iconGap = ENERGY_ICON_GAP): number {
+  return energy * iconSize + Math.max(0, energy - 1) * iconGap;
+}
+
 // Map to store character sprites for AOE highlighting
 const characterSpriteMap = new Map<string, SpriteImpl>();
 
@@ -459,24 +474,23 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
     app.stage.addChild(blockText);
   }
   
-  // Energy under HP bar: icon instances (1-6) or "N × [icon]" (7+)
+  // Energy under HP bar: icon instances (1-ENERGY_ICON_THRESHOLD) or "N × [icon]" (above)
   const energyRowY = hpBarY + hpBarHeight + 6;
-  const energyIconSize = 14;
-  const energyIconGap = 4;
-  const energyNumText = char.energy > 6
+  const useIcons = shouldUseEnergyIcons(char.energy);
+  const energyNumText = !useIcons
     ? new Text({ text: `${char.energy} ×`, style: { fill: 0xfbbf24, fontSize: 12, fontWeight: 'bold' } })
     : null;
-  const energyRowWidth = char.energy <= 5
-    ? char.energy * energyIconSize + Math.max(0, char.energy - 1) * energyIconGap
-    : (energyNumText!.width + 4 + energyIconSize);
-  let iconX = x + 100 - energyRowWidth / 2 + energyIconSize / 2;
-  if (char.energy <= 5) {
+  const energyRowWidth = useIcons
+    ? calculateEnergyIconRowWidth(char.energy)
+    : (energyNumText!.width + 4 + ENERGY_ICON_SIZE);
+  let iconX = x + 100 - energyRowWidth / 2 + ENERGY_ICON_SIZE / 2;
+  if (useIcons) {
     for (let i = 0; i < char.energy; i++) {
-      const icon = createEnergyIcon(energyIconSize);
+      const icon = createEnergyIcon(ENERGY_ICON_SIZE);
       icon.x = iconX;
       icon.y = energyRowY;
       app.stage.addChild(icon);
-      iconX += energyIconSize + energyIconGap;
+      iconX += ENERGY_ICON_SIZE + ENERGY_ICON_GAP;
     }
   } else {
     energyNumText!.x = iconX;
@@ -484,7 +498,7 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
     energyNumText!.eventMode = 'none';
     app.stage.addChild(energyNumText!);
     iconX += energyNumText!.width + 4;
-    const icon = createEnergyIcon(energyIconSize);
+    const icon = createEnergyIcon(ENERGY_ICON_SIZE);
     icon.x = iconX;
     icon.y = energyRowY;
     app.stage.addChild(icon);

@@ -3,6 +3,7 @@
 import type { Application } from 'pixi.js';
 import { getGameState } from '../core/gameState.js';
 import { renderBackground } from './renderBackground.js';
+import { renderLanes } from './renderLanes.js';
 import { renderCharacters } from './renderCharacters.js';
 import { renderHand } from './renderHand.js';
 import { renderTurnInfo, renderCombatLog } from './renderUI.js';
@@ -31,7 +32,8 @@ export function render(): void {
   
   const gameState = getGameState();
   app.stage.removeChildren();
-  
+  app.stage.sortableChildren = true;
+
   // Check if current player is dead and advance turn if needed
   const currentPlayer = gameState.characters.find(c => c.id === gameState.currentPlayerId);
   if (!currentPlayer || currentPlayer.hp <= 0) {
@@ -43,6 +45,7 @@ export function render(): void {
   }
   
   renderBackground(app);
+  renderLanes(app);
   renderCharacters(app, gameState);
   renderHand(app, gameState);
   renderTurnInfo(app, gameState);

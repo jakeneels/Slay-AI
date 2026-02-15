@@ -17,6 +17,6 @@ mechanics:
   - "Teleports between slots ignoring movement cost"
 tags: ["ai", "assassin", "elite", "enemy", "debuffer"]
 startingDeck:
-  - "blast_rare"
-  - "defend_common"
-  - "overclock_mythic"
+  - "blast"
+  - "defend"
+  - "overclock"

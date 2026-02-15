@@ -1,11 +1,14 @@
 schemaVersion: 1
-id: chain_lightning_rare
+id: chain_lightning
 name: "Chain Lightning"
 type: skill
-rarity: rare
+rarity: legendary
 cost: 4
 copies: 1
-targeting: allEnemies
+targeting: aoe
+aoeSlots: 4
+maxRange: 6
+# optimalRange: 3
 exhaust: false
 expires_after_turns: 0
 effects:
@@ -16,5 +19,5 @@ animation:
     projectileColor: 0x00ffff  # Cyan/blue lightning
     projectileSpeed: 1500      # Very fast lightning
     impactSize: 40             # Electric impact burst
-
+# Long-range AOE - lightning arcs across the battlefield
 

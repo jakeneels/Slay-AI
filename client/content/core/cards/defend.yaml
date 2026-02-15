@@ -1,8 +1,8 @@
 schemaVersion: 1
-id: defend_common
+id: defend
 name: "Defend"
 type: skill
-rarity: common
+rarity: legendary     #common, rare, epic, legendary, mythic.
 cost: 1
 copies: 3
 targeting: ally
@@ -12,6 +12,5 @@ effects:
   - kind: grant_block_layer
     amount: 8
     decay_percent: 20
-# Grants block - shield will appear when played. Can target self or any ally.
-
+# Grants block - no range limit on ally-targeting support cards
 

@@ -1,0 +1,20 @@
+schemaVersion: 1
+id: shockwave
+name: "Shockwave"
+type: skill
+rarity: epic
+cost: 2
+copies: 2
+targeting: aoe
+aoeSlots: 2
+maxRange: 3
+# optimalRange: 1
+exhaust: false
+expires_after_turns: 0
+effects:
+  - kind: damage
+    amount: 5
+  - kind: knockback
+    amount: 1
+# Close-range AOE - shockwave ripples outward, pushes enemies back
+

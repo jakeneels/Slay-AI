@@ -37,6 +37,7 @@ export function createMockCharacter(overrides?: Partial<Character>): Character {
     blockLayers: overrides?.blockLayers || [],
     statuses: overrides?.statuses || [],
     isPlayer: overrides?.isPlayer ?? true,
+    slotIndex: overrides?.slotIndex ?? 0,
     ...overrides
   };
 }

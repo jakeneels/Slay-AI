@@ -9,6 +9,7 @@ import { getSelectedCardId } from '../core/gameState.js';
 import { endTurn, moveCharacterForward, moveCharacterBack } from '../core/combat.js';
 import { render as renderCallback } from './renderer.js';
 import type { Card, Character } from '../core/types.js';
+import { createEnergyIcon } from './icons/energyIcon.js';
 
 /**
  * Render turn information and controls
@@ -88,50 +89,30 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
     }
   }
   
-  // Movement buttons - only for ally turns (current player is ally)
-  const btnH = 40;
-  const moveBtnW = 100;
-  const endTurnBtnW = 120;
+  // Movement buttons - compact, placed just below the card hand
+  const moveBtnH = 28;
+  const moveBtnW = 80;
+  const moveBtnGap = 8;
+  const moveBtnY = 166; // just below the player cards (y=60 + cardH=100 + 6px gap)
   const isAllyTurn = currentPlayer?.isPlayer === true;
   const isCurrentPlayerAlive = currentPlayer && currentPlayer.hp > 0;
   const moveCost = currentPlayer ? (gameState.characterLibrary[currentPlayer.id]?.stats?.moveEnergyCost ?? 1) : 1;
   const canMove = isAllyTurn && isCurrentPlayerAlive && currentPlayer && currentPlayer.energy >= moveCost;
 
   if (isAllyTurn && currentPlayer) {
-    // Move Forward
-    const moveFwdBtn = new Graphics();
-    moveFwdBtn.roundRect(0, 0, moveBtnW, btnH, 8).fill(canMove ? 0x22c55e : 0x4b5563);
-    moveFwdBtn.x = WIDTH - endTurnBtnW - moveBtnW * 2 - 60;
-    moveFwdBtn.y = 20;
-    moveFwdBtn.zIndex = 1500;
-    moveFwdBtn.eventMode = 'static';
-    moveFwdBtn.cursor = 'pointer';
-    moveFwdBtn.hitArea = new Rectangle(0, 0, moveBtnW, btnH);
-    moveFwdBtn.on('pointerdown', () => {
-      if (canMove && currentPlayer && moveCharacterForward(currentPlayer.id, renderCallback)) {
-        renderCallback();
-      }
-    });
-    app.stage.addChild(moveFwdBtn);
-    const moveFwdText = new Text({
-      text: `▶ Fwd (${moveCost})`,
-      style: { fill: 0xffffff, fontSize: 12, fontWeight: 'bold' }
-    });
-    moveFwdText.x = moveFwdBtn.x + (moveBtnW - moveFwdText.width) / 2;
-    moveFwdText.y = 20 + (btnH - moveFwdText.height) / 2;
-    moveFwdText.eventMode = 'none';
-    moveFwdText.zIndex = 1501;
-    app.stage.addChild(moveFwdText);
+    // Centre the pair of buttons horizontally
+    const totalMoveBtnW = moveBtnW * 2 + moveBtnGap;
+    const moveBtnStartX = (WIDTH - totalMoveBtnW) / 2;
 
-    // Move Back
+    // ◀ Back (left button – moves away from enemies)
     const moveBackBtn = new Graphics();
-    moveBackBtn.roundRect(0, 0, moveBtnW, btnH, 8).fill(canMove ? 0x22c55e : 0x4b5563);
-    moveBackBtn.x = WIDTH - endTurnBtnW - moveBtnW - 40;
-    moveBackBtn.y = 20;
+    moveBackBtn.roundRect(0, 0, moveBtnW, moveBtnH, 6).fill(0x1f2937).stroke({ width: 1, color: canMove ? 0x22c55e : 0x4b5563 });
+    moveBackBtn.x = moveBtnStartX;
+    moveBackBtn.y = moveBtnY;
     moveBackBtn.zIndex = 1500;
     moveBackBtn.eventMode = 'static';
     moveBackBtn.cursor = 'pointer';
-    moveBackBtn.hitArea = new Rectangle(0, 0, moveBtnW, btnH);
+    moveBackBtn.hitArea = new Rectangle(0, 0, moveBtnW, moveBtnH);
     moveBackBtn.on('pointerdown', () => {
       if (canMove && currentPlayer && moveCharacterBack(currentPlayer.id, renderCallback)) {
         renderCallback();
@@ -139,26 +120,76 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
     });
     app.stage.addChild(moveBackBtn);
     const moveBackText = new Text({
-      text: `◀ Back (${moveCost})`,
-      style: { fill: 0xffffff, fontSize: 12, fontWeight: 'bold' }
+      text: '◀ Back',
+      style: { fill: 0xffffff, fontSize: 11, fontWeight: 'bold' }
     });
-    moveBackText.x = moveBackBtn.x + (moveBtnW - moveBackText.width) / 2;
-    moveBackText.y = 20 + (btnH - moveBackText.height) / 2;
+    const backIconSize = 11;
+    const backIconGap = 2;
+    const backTotalCostW = moveCost * backIconSize + Math.max(0, moveCost - 1) * backIconGap;
+    const backContentW = moveBackText.width + 4 + backTotalCostW;
+    const backContentX = moveBackBtn.x + (moveBtnW - backContentW) / 2;
+    moveBackText.x = backContentX;
+    moveBackText.y = moveBtnY + (moveBtnH - moveBackText.height) / 2;
     moveBackText.eventMode = 'none';
     moveBackText.zIndex = 1501;
     app.stage.addChild(moveBackText);
+    for (let ei = 0; ei < moveCost; ei++) {
+      const icon = createEnergyIcon(backIconSize);
+      icon.x = backContentX + moveBackText.width + 4 + ei * (backIconSize + backIconGap);
+      icon.y = moveBtnY + (moveBtnH - backIconSize) / 2;
+      icon.zIndex = 1501;
+      app.stage.addChild(icon);
+    }
+
+    // ▶ Fwd (right button – moves toward enemies)
+    const moveFwdBtn = new Graphics();
+    moveFwdBtn.roundRect(0, 0, moveBtnW, moveBtnH, 6).fill(0x1f2937).stroke({ width: 1, color: canMove ? 0x22c55e : 0x4b5563 });
+    moveFwdBtn.x = moveBtnStartX + moveBtnW + moveBtnGap;
+    moveFwdBtn.y = moveBtnY;
+    moveFwdBtn.zIndex = 1500;
+    moveFwdBtn.eventMode = 'static';
+    moveFwdBtn.cursor = 'pointer';
+    moveFwdBtn.hitArea = new Rectangle(0, 0, moveBtnW, moveBtnH);
+    moveFwdBtn.on('pointerdown', () => {
+      if (canMove && currentPlayer && moveCharacterForward(currentPlayer.id, renderCallback)) {
+        renderCallback();
+      }
+    });
+    app.stage.addChild(moveFwdBtn);
+    const moveFwdText = new Text({
+      text: 'Fwd ▶',
+      style: { fill: 0xffffff, fontSize: 11, fontWeight: 'bold' }
+    });
+    const fwdIconSize = 11;
+    const fwdIconGap = 2;
+    const fwdTotalCostW = moveCost * fwdIconSize + Math.max(0, moveCost - 1) * fwdIconGap;
+    const fwdContentW = moveFwdText.width + 4 + fwdTotalCostW;
+    const fwdContentX = moveFwdBtn.x + (moveBtnW - fwdContentW) / 2;
+    moveFwdText.x = fwdContentX;
+    moveFwdText.y = moveBtnY + (moveBtnH - moveFwdText.height) / 2;
+    moveFwdText.eventMode = 'none';
+    moveFwdText.zIndex = 1501;
+    app.stage.addChild(moveFwdText);
+    for (let ei = 0; ei < moveCost; ei++) {
+      const icon = createEnergyIcon(fwdIconSize);
+      icon.x = fwdContentX + moveFwdText.width + 4 + ei * (fwdIconSize + fwdIconGap);
+      icon.y = moveBtnY + (moveBtnH - fwdIconSize) / 2;
+      icon.zIndex = 1501;
+      app.stage.addChild(icon);
+    }
   }
 
   // End turn button
-  const btnW = 120;
+  const endBtnW = 120;
+  const endBtnH = 36;
   const btn = new Graphics();
-  btn.roundRect(0, 0, btnW, btnH, 8).fill(0x3b82f6);
-  btn.x = WIDTH - btnW - 20;
+  btn.roundRect(0, 0, endBtnW, endBtnH, 8).fill(0x3b82f6);
+  btn.x = WIDTH - endBtnW - 20;
   btn.y = 20;
   btn.zIndex = 1500;
   btn.eventMode = 'static';
   btn.cursor = 'pointer';
-  btn.hitArea = new Rectangle(0, 0, btnW, btnH);
+  btn.hitArea = new Rectangle(0, 0, endBtnW, endBtnH);
   btn.on('pointerdown', () => {
     endTurn(renderCallback);
   });
@@ -168,8 +199,8 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
     text: 'End Turn',
     style: { fill: 0xffffff, fontSize: 14, fontWeight: 'bold' }
   });
-  btnText.x = WIDTH - btnW - 20 + (btnW - btnText.width) / 2;
-  btnText.y = 20 + (btnH - btnText.height) / 2;
+  btnText.x = WIDTH - endBtnW - 20 + (endBtnW - btnText.width) / 2;
+  btnText.y = 20 + (endBtnH - btnText.height) / 2;
   btnText.eventMode = 'none';
   btnText.zIndex = 1501;
   app.stage.addChild(btnText);

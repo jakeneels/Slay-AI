@@ -1,11 +1,14 @@
 schemaVersion: 1
-id: fireball_uncommon
+id: fireball
 name: "Fireball"
 type: skill
-rarity: uncommon
+rarity: legendary    #common, rare, epic, legendary, mythic.
 cost: 3
 copies: 2
-targeting: allEnemies
+targeting: aoe
+aoeSlots: 3
+maxRange: 6
+# optimalRange: 3
 exhaust: false
 expires_after_turns: 0
 effects:
@@ -16,5 +19,5 @@ animation:
     projectileColor: 0xff4400  # Bright fire orange-red
     projectileSpeed: 1200      # Fast fireball
     impactSize: 50             # Medium-large explosive impact
-
+# Ranged AOE - lob a fireball at medium range for best effect
 

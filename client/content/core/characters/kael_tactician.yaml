@@ -17,7 +17,7 @@ mechanics:
   - "Sets traps that punish enemy slot movement"
 tags: ["tactician", "support", "drones", "traps"]
 startingDeck:
-  - "defend_common"
-  - "strike_common"
-  - "overclock_mythic"
-  - "defend_common"
+  - "defend"
+  - "strike"
+  - "overclock"
+  - "defend"

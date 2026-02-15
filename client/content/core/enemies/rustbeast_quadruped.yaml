@@ -17,6 +17,6 @@ mechanics:
   - "Applies bleed/shock on multi-hit claws"
 tags: ["beast", "machine", "elite", "enemy", "bruiser"]
 startingDeck:
-  - "strike_common"
-  - "strike_common"
-  - "defend_common"
+  - "strike"
+  - "strike"
+  - "defend"

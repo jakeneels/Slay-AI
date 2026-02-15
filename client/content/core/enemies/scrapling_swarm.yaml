@@ -18,6 +18,6 @@ mechanics:
   - "Accuracy penalties at range"
 tags: ["machine", "swarm", "normal", "enemy", "dps"]
 startingDeck:
-  - "strike_common"
-  - "strike_common"
-  - "strike_common"
+  - "strike"
+  - "strike"
+  - "strike"

@@ -16,5 +16,5 @@ mechanics:
   - "Low health but high speed"
 tags: ["goblin", "scout", "raider", "enemy"]
 startingDeck:
-  - "strike_common"
-  - "strike_common"
+  - "strike"
+  - "strike"

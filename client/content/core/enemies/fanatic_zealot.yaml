@@ -18,6 +18,6 @@ mechanics:
   - "Poor defense"
 tags: ["human", "fanatic", "normal", "enemy", "aggressive"]
 startingDeck:
-  - "blast_rare"
-  - "strike_common"
-  - "strike_common"
+  - "blast"
+  - "strike"
+  - "strike"

@@ -1,12 +1,13 @@
 schemaVersion: 1
-id: blast_rare
+id: blast
 name: "Blast"
 type: attack
 rarity: rare
 cost: 2
 copies: 2
 targeting: enemy
-maxRange: 7 
+maxRange: 7
+# optimalRange: 4
 exhaust: false
 expires_after_turns: 0
 effects:
@@ -17,5 +18,5 @@ animation:
     projectileColor: 0xff6600  # Orange/red explosive projectile
     projectileSpeed: 1000      # Fast but visible explosion
     impactSize: 60             # Large explosive impact
-
+# Long-range single-target nuke - best at medium-far distance
 

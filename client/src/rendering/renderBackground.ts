@@ -17,6 +17,7 @@ export function renderBackground(app: Application): void {
     bgSprite.y = 0;
     bgSprite.width = WIDTH;
     bgSprite.height = HEIGHT;
+    bgSprite.zIndex = -1000; // Keep background behind everything
     app.stage.addChildAt(bgSprite, 0); // Add at bottom layer
   }).catch(err => {
     console.warn('Failed to load background map:', err);

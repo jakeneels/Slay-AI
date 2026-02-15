@@ -4,10 +4,24 @@ export interface CardCost {
   energy: number;
 }
 
+// Per-effect targeting — determines who each individual effect applies to.
+// Defaults to 'target' (inherits the card's interaction targeting).
+export type EffectTarget =
+  | 'target'       // whoever the card targets (default)
+  | 'self'         // always the caster
+  | 'allAllies'    // all living allies of caster
+  | 'allEnemies'   // all living enemies of caster
+  | 'aoe';         // AOE from primary target (uses effect-level aoeSlots)
+
+export type AoePattern = 'adjacent' | 'spread';
+
 // Base effect interface - all effects have kind and amount
 export interface BaseCardEffect {
   kind: string;
   amount: number;
+  effectTarget?: EffectTarget;  // defaults to 'target' when omitted
+  aoeSlots?: number;            // 2/3/4, only relevant when effectTarget is 'aoe'
+  aoePattern?: AoePattern;      // how AOE slots are selected (default 'adjacent')
 }
 
 // Specific effect types
@@ -57,6 +71,11 @@ export interface ModifierEffect {
   apply: CardEffect[]; // Effects to apply when condition is met
 }
 
+export interface KnockbackEffect extends BaseCardEffect {
+  kind: 'knockback';
+  amount: number; // Number of slots to push the target back (away from caster)
+}
+
 export interface DeckInjectEffect {
   kind: 'deck_inject';
   target: 'allies' | 'self' | 'enemies';
@@ -73,6 +92,7 @@ export type CardEffect =
   | AoeDamageEffect 
   | BlockEffect 
   | StatusEffect 
+  | KnockbackEffect
   | ModifierEffect 
   | DeckInjectEffect;
 
@@ -83,6 +103,7 @@ export interface Card {
   effects: CardEffect[];
   targetSide: 'self' | 'ally' | 'enemy';
   targeting: 'single' | 'aoe' | 'self' | 'ally' | 'enemy' | 'allEnemies' | 'allAllies';
+  aoeSlots?: number; // Number of slots to hit with AOE (2, 3, or 4). Defaults to 3 if not specified.
   rarity?: string;
   copies?: number;
   type?: 'attack' | 'skill' | 'power' | 'summon';
@@ -115,6 +136,7 @@ export interface CharacterStats {
   maxHp: number;
   energy: number;
   maxEnergy: number;
+  moveEnergyCost?: number; // Energy cost to move forward or back one slot
 }
 
 // Block layer - each block source has its own decay rate
@@ -148,6 +170,7 @@ export interface Character {
   blockLayers: BlockLayer[]; // Current block layers
   statuses: Status[]; // Active status effects
   isPlayer: boolean;
+  slotIndex: number; // Position on battlefield (0 = leftmost ally / rightmost enemy)
 }
 
 export interface CharacterDefinition extends Character {

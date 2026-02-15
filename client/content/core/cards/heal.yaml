@@ -1,8 +1,8 @@
 schemaVersion: 1
-id: heal_uncommon
-name: "Greater Heal"
+id: heal
+name: "Heal"
 type: skill
-rarity: rare
+rarity: rare        #common, rare, epic, legendary, mythic.
 cost: 2
 copies: 2
 tags: [heal]
@@ -16,3 +16,4 @@ animation:
   heal:
     particleColor: 0x22c55e  # Bright green healing particles
     glowIntensity: 0.4       # Stronger glow for greater heal
+# Support spell - no range limit on ally-targeting

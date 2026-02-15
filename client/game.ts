@@ -98,25 +98,43 @@ async function initGame(): Promise<void> {
   const playerCharacters = Object.values(characters).filter(c => c.isPlayer).slice(0, 2);
   const enemyCharacters = Object.values(characters).filter(c => !c.isPlayer).slice(0, 2);
   
+  // Add extra fanatic zealot + fanatic sprinter as last enemy
+  const zealotDef = characters['fanatic_zealot'];
+  const sprinterDef = characters['fanatic_sprinter'];
+  if (zealotDef) {
+    enemyCharacters.push(zealotDef);
+  }
+  if (sprinterDef) {
+    enemyCharacters.push(sprinterDef);
+  }
+  
   console.log('Player characters found:', playerCharacters.map(c => c.name));
   console.log('Enemy characters found:', enemyCharacters.map(c => c.name));
   
   gameState.characters = [];
-  
-  // Get AOE card IDs - only include AOE cards for testing
-  const aoeCardIds = ['shockwave', 'fireball', 'chain_lightning'].filter(id => 
-    gameState.cardLibrary[id]
-  );
-  
-  console.log('AOE cards for testing:', aoeCardIds);
 
-  // Build a deck with exactly one copy of each AOE card
-  const testDeck = [...aoeCardIds]; // One of each AOE card
+  // Build deck from full card pool - variety of AOE, single-target, defense, and support
+  const poolCardIds = [
+    'strike', 'defend',           // basics
+    'blast',                      // single-target damage
+    'shockwave', 'fireball', 'chain_lightning',  // AOE
+    'heal', 'overclock',          // support
+  ];
+  const testDeck: string[] = [];
+  for (const id of poolCardIds) {
+    const card = gameState.cardLibrary[id];
+    if (!card) continue;
+    const copies = card.copies ?? 1;
+    for (let i = 0; i < copies; i++) {
+      testDeck.push(id);
+    }
+  }
+  console.log('Deck pool:', poolCardIds.filter(id => gameState.cardLibrary[id]), '->', testDeck.length, 'cards');
   
-  // Add player characters
-  playerCharacters.forEach(charDef => {
-    // Give each character one copy of every card for testing
-    const deck = shuffleArray([...testDeck]); // Shuffle a copy
+  // Add player characters - slots 0-3 (ally side)
+  playerCharacters.forEach((charDef, i) => {
+    const deck = shuffleArray([...testDeck]);
+    deck.push('overclock'); // Insert after randomizer for testing
     const character: Character = {
       id: charDef.id,
       name: charDef.name,
@@ -127,11 +145,12 @@ async function initGame(): Promise<void> {
       deck: deck,
       discardPile: [],
       hand: [],
-      drawCount: 3,
+      drawCount: 5,
       maxHandSize: 5,
       blockLayers: [],
       statuses: [],
       isPlayer: charDef.isPlayer,
+      slotIndex: i,
     };
     
     // Draw initial hand
@@ -140,12 +159,11 @@ async function initGame(): Promise<void> {
     gameState.characters.push(character);
   });
   
-  // Add enemy characters
-  enemyCharacters.forEach(charDef => {
-    // Give each character one copy of every card for testing
-    const deck = shuffleArray([...testDeck]); // Shuffle a copy
+  // Add enemy characters - slots 4-7 (enemy side)
+  enemyCharacters.forEach((charDef, i) => {
+    const deck = shuffleArray([...testDeck]);
     const character: Character = {
-      id: charDef.id,
+      id: i >= 2 && charDef.id === 'fanatic_zealot' ? `fanatic_zealot_${i}` : charDef.id,
       name: charDef.name,
       hp: charDef.stats.hp,
       maxHp: charDef.stats.maxHp,
@@ -154,12 +172,18 @@ async function initGame(): Promise<void> {
       deck: deck,
       discardPile: [],
       hand: [],
-      drawCount: 3,
+      drawCount: 5,
       maxHandSize: 5,
       blockLayers: [],
       statuses: [],
       isPlayer: charDef.isPlayer,
+      slotIndex: 4 + i,
     };
+    
+    // Register cloned enemies in library so sprite lookup works
+    if (character.id !== charDef.id) {
+      gameState.characterLibrary[character.id] = charDef;
+    }
     
     // Draw initial hand
     drawCards(character, character.drawCount);

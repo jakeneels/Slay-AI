@@ -17,6 +17,6 @@ mechanics:
   - "Tech-based attacks"
 tags: ["ai", "drone", "tech", "enemy", "support"]
 startingDeck:
-  - "defend_common"
-  - "blast_rare"
-  - "overclock_mythic"
+  - "defend"
+  - "blast"
+  - "overclock"

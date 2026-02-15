@@ -140,6 +140,122 @@ export function resolveEffectTargets(
 }
 
 /**
+ * Get a card with template targeting overrides applied.
+ * Card instances copy properties at creation, but templates may be modified after loading.
+ */
+function getResolvedCard(cardId: string): Card | null {
+  const gameState = getGameState();
+  let card = getCard(cardId);
+  if (!card) return null;
+  if ('templateId' in card && card.templateId) {
+    const template = gameState.cardLibrary[card.templateId];
+    if (template) {
+      card = { 
+        ...card, 
+        targeting: template.targeting, 
+        targetSide: template.targetSide,
+        aoeSlots: template.aoeSlots
+      };
+    }
+  }
+  return card;
+}
+
+/**
+ * Resolve card-level targets based on targeting mode, relative to the caster.
+ * This is the single source of truth for target resolution — both player and enemy
+ * card plays use this, so "ally" always means "same side as caster" and "enemy"
+ * always means "opposite side from caster".
+ * Returns the target array, or null if targeting is invalid.
+ */
+export function resolveCardTargets(
+  card: Card,
+  caster: Character,
+  targetId: string | undefined
+): Character[] | null {
+  const gameState = getGameState();
+
+  switch (card.targeting) {
+    case 'allEnemies':
+      return gameState.characters.filter(c => c.isPlayer !== caster.isPlayer && c.hp > 0);
+
+    case 'allAllies':
+      return gameState.characters.filter(c => c.isPlayer === caster.isPlayer && c.hp > 0);
+
+    case 'self':
+      return [caster];
+
+    case 'aoe': {
+      if (!targetId) { console.log('targetId required for AOE targeting'); return null; }
+      const primaryTarget = gameState.characters.find(c => c.id === targetId);
+      if (!primaryTarget) { console.log('primary target not found'); return null; }
+
+      // Validate target is on the correct side relative to caster
+      const cardTargetSide = card.targetSide || 'enemy';
+      const targetIsAllied = primaryTarget.isPlayer === caster.isPlayer;
+      if ((cardTargetSide === 'ally') !== targetIsAllied) {
+        console.log(`AOE targeting: target on wrong side (expected ${cardTargetSide})`);
+        return null;
+      }
+
+      // absoluteSide for calculateAoeTargets: 'ally' = isPlayer chars, 'enemy' = !isPlayer chars
+      const absoluteSide: 'enemy' | 'ally' = primaryTarget.isPlayer ? 'ally' : 'enemy';
+      return calculateAoeTargets(targetId, absoluteSide, card.aoeSlots ?? 3);
+    }
+
+    case 'ally': {
+      if (!targetId) { console.log('targetId required for ally targeting'); return null; }
+      const target = gameState.characters.find(c => c.id === targetId);
+      if (!target) { console.log('target not found'); return null; }
+      if (target.isPlayer !== caster.isPlayer) {
+        console.log('ally targeting can only target allied characters');
+        return null;
+      }
+      return [target];
+    }
+
+    case 'enemy': {
+      if (!targetId) { console.log('targetId required for enemy targeting'); return null; }
+      const target = gameState.characters.find(c => c.id === targetId);
+      if (!target) { console.log('target not found'); return null; }
+      if (target.isPlayer === caster.isPlayer) {
+        console.log('enemy targeting can only target opposing characters');
+        return null;
+      }
+      return [target];
+    }
+
+    default: {
+      if (!targetId) { console.log('targetId required for single target cards'); return null; }
+      const target = gameState.characters.find(c => c.id === targetId);
+      if (!target) { console.log('target not found'); return null; }
+      return [target];
+    }
+  }
+}
+
+/**
+ * Determine which characters an AI-controlled caster should consider as targets
+ * for a given card, based on the card's targeting mode (relative to caster).
+ */
+function getAITargetCandidates(card: Card, caster: Character): Character[] {
+  const gameState = getGameState();
+
+  switch (card.targeting) {
+    case 'self':
+    case 'allAllies':
+    case 'allEnemies':
+      return [caster]; // these modes don't need a specific targetId
+    case 'ally':
+      return gameState.characters.filter(c => c.isPlayer === caster.isPlayer && c.hp > 0);
+    case 'enemy':
+    case 'aoe':
+    default:
+      return gameState.characters.filter(c => c.isPlayer !== caster.isPlayer && c.hp > 0);
+  }
+}
+
+/**
  * Get move energy cost for a character (from def, default 1)
  */
 function getMoveEnergyCost(characterId: string): number {
@@ -254,6 +370,37 @@ export function moveCharacterBack(characterId: string, renderCallback?: () => vo
 }
 
 /**
+ * Apply knockback to a target, pushing them back (away from caster) by up to `amount` slots.
+ * Each step requires a free space — stops early if blocked or at grid edge.
+ * Returns the number of slots actually moved.
+ *
+ * "Back" for an enemy (isPlayer=false) = +1 slotIndex (away from allies)
+ * "Back" for an ally  (isPlayer=true)  = -1 slotIndex (away from enemies)
+ */
+export function applyKnockback(target: Character, amount: number): number {
+  const gameState = getGameState();
+  const allLiving = gameState.characters.filter(c => c.hp > 0 && c.id !== target.id);
+  const direction = target.isPlayer ? -1 : 1; // back direction
+  let slotsMoved = 0;
+
+  for (let step = 0; step < amount; step++) {
+    const nextSlot = target.slotIndex + direction;
+
+    // Boundary check
+    if (nextSlot < 0 || nextSlot >= MAX_SLOTS) break;
+
+    // Check if the slot is free (no living character occupies it)
+    const occupied = allLiving.some(c => c.slotIndex === nextSlot);
+    if (occupied) break;
+
+    target.slotIndex = nextSlot;
+    slotsMoved++;
+  }
+
+  return slotsMoved;
+}
+
+/**
  * Set the PIXI application (needed for animations)
  */
 export function setApp(application: Application): void {
@@ -268,22 +415,7 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
   
   const gameState = getGameState();
   const currentPlayer = gameState.characters.find(c => c.id === gameState.currentPlayerId);
-  let card = getCard(cardId);
-  
-  // If card is an instance, always use the template's targeting/targetSide/aoeSlots
-  // (instances copy properties at creation time, but we modify templates after loading)
-  if (card && 'templateId' in card && card.templateId) {
-    const template = gameState.cardLibrary[card.templateId];
-    if (template) {
-      // Merge: use instance-specific properties but override with template's targeting
-      card = { 
-        ...card, 
-        targeting: template.targeting, 
-        targetSide: template.targetSide,
-        aoeSlots: template.aoeSlots
-      };
-    }
-  }
+  const card = getResolvedCard(cardId);
   
   if (!currentPlayer || !card) {
     console.log('skipping player or card falsey', { currentPlayer: !!currentPlayer, card: !!card, cardName: card?.name });
@@ -296,104 +428,9 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
   }
   if (!currentPlayer.hand.includes(cardId)) return;
   
-  // Determine targets based on targeting mode
-  let targets: Character[] = [];
-  
-  if (card.targeting === 'allEnemies') {
-    targets = gameState.characters.filter(c => !c.isPlayer && c.hp > 0);
-  } else if (card.targeting === 'allAllies') {
-    targets = gameState.characters.filter(c => c.isPlayer && c.hp > 0);
-  } else if (card.targeting === 'aoe') {
-    // AOE targeting - requires primary target, calculates adjacent targets (hardcoded 3 slots for MVP)
-    if (!targetId) {
-      console.log('targetId required for AOE targeting');
-      return;
-    }
-    const primaryTarget = gameState.characters.find(c => c.id === targetId);
-    if (!primaryTarget) {
-      console.log('primary target not found');
-      return;
-    }
-    
-    // Determine target side based on card and caster perspective
-    // If card says 'enemy', that means target the caster's enemies
-    // If card says 'ally', that means target the caster's allies
-    let targetSide: 'enemy' | 'ally';
-    if (card.targetSide === 'ally') {
-      targetSide = 'ally';
-    } else {
-      // targetSide is 'enemy' - means "target my enemies"
-      // For player casters: enemies = !isPlayer
-      // For enemy casters: enemies = isPlayer (players are enemies to enemies)
-      targetSide = currentPlayer.isPlayer ? 'enemy' : 'ally';
-    }
-    
-    // Validate that primary target matches expected side
-    // targetSide interpretation:
-    // - 'ally' = getCharactersByPosition('ally') which returns isPlayer=true characters
-    // - 'enemy' = getCharactersByPosition('enemy') which returns isPlayer=false characters
-    // So regardless of caster, if targetSide='ally', target must be isPlayer=true
-    // And if targetSide='enemy', target must be isPlayer=false
-    const expectedIsPlayer = targetSide === 'ally';
-    if (primaryTarget.isPlayer !== expectedIsPlayer) {
-      console.log(`AOE targeting mismatch: caster is ${currentPlayer.isPlayer ? 'player' : 'enemy'}, targetSide is ${targetSide}, expected target isPlayer=${expectedIsPlayer}, but got isPlayer=${primaryTarget.isPlayer}, target name: ${primaryTarget.name}`);
-      return;
-    }
-    
-    // Calculate AOE targets based on card's aoeSlots (defaults to 3)
-    const aoeSlots = card.aoeSlots ?? 3;
-    targets = calculateAoeTargets(targetId, targetSide, aoeSlots);
-  } else if (card.targeting === 'self') {
-    targets = [currentPlayer];
-  } else if (card.targeting === 'ally') {
-    // Ally targeting - can target any player character (including self if targetId is self)
-    if (!targetId) {
-      console.log('targetId required for ally targeting');
-      return;
-    }
-    const target = gameState.characters.find(c => c.id === targetId);
-    if (!target) {
-      console.log('target not found');
-      return;
-    }
-    // Validate that target is a player character
-    if (!target.isPlayer) {
-      console.log('ally targeting can only target player characters');
-      return;
-    }
-    targets = [target];
-  } else if (card.targeting === 'enemy') {
-    // Enemy targeting - can target any enemy character
-    if (!targetId) {
-      console.log('targetId required for enemy targeting');
-      return;
-    }
-    const target = gameState.characters.find(c => c.id === targetId);
-    if (!target) {
-      console.log('target not found');
-      return;
-    }
-    // Validate that target is an enemy
-    if (target.isPlayer) {
-      console.log('enemy targeting can only target enemy characters');
-      return;
-    }
-    targets = [target];
-  } else {
-    // Default single target mode (backwards compatibility)
-    if (!targetId) {
-      console.log('targetId required for single target cards');
-      return;
-    }
-    const target = gameState.characters.find(c => c.id === targetId);
-    if (!target) {
-      console.log('target not found');
-      return;
-    }
-    targets = [target];
-  }
-  
-  if (targets.length === 0) {
+  // Determine targets based on targeting mode (relative to caster)
+  const targets = resolveCardTargets(card, currentPlayer, targetId);
+  if (!targets || targets.length === 0) {
     console.log('no valid targets');
     return;
   }
@@ -480,8 +517,8 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
       const injectTarget = effect.target === 'self' 
         ? [currentPlayer]
         : effect.target === 'allies'
-        ? gameState.characters.filter(c => c.isPlayer && c.hp > 0)
-        : gameState.characters.filter(c => !c.isPlayer && c.hp > 0);
+        ? gameState.characters.filter(c => c.isPlayer === currentPlayer.isPlayer && c.hp > 0)
+        : gameState.characters.filter(c => c.isPlayer !== currentPlayer.isPlayer && c.hp > 0);
       
       const copies = effect.copies || 1;
       injectTarget.forEach(target => {
@@ -673,6 +710,26 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
             animateParticles(statusTarget.id, particleType, 10, app)
           ]).then(() => undefined);
           break;
+
+        case 'knockback':
+          const knockbackTarget = target;
+          const slotsMoved = applyKnockback(knockbackTarget, effect.amount);
+          if (slotsMoved > 0) {
+            addToCombatLog(`${knockbackTarget.name} is knocked back ${slotsMoved} slot${slotsMoved > 1 ? 's' : ''}!`);
+            sparkType = 'buff';
+            // Render immediately to show updated position
+            if (renderCallback) {
+              renderCallback();
+            }
+            // Impact particles on the knocked-back target
+            animationPromise = Promise.all([
+              animateCharachterSpark(knockbackTarget.id, 'damage', app),
+              animateParticles(knockbackTarget.id, 'ice', 12, app)
+            ]).then(() => undefined);
+          } else {
+            addToCombatLog(`${knockbackTarget.name} can't be knocked back (no space)!`);
+          }
+          break;
       }
       
       // Add animation promise to array for parallel execution (for AOE)
@@ -835,10 +892,9 @@ export async function processEnemyTurn(enemy: Character, renderCallback?: () => 
     renderCallback();
   }
   
-  // Find valid targets (living player characters)
-  const playerTargets = gameState.characters.filter(c => c.isPlayer && c.hp > 0);
-
-  if (playerTargets.length === 0) {
+  // Check if combat should end (all player characters dead)
+  const livingPlayers = gameState.characters.filter(c => c.isPlayer && c.hp > 0);
+  if (livingPlayers.length === 0) {
     logAllAlliesDead();
     addToCombatLog(`${enemy.name} has no targets!`);
     gameState.isProcessingTurn = false;
@@ -846,9 +902,9 @@ export async function processEnemyTurn(enemy: Character, renderCallback?: () => 
     return;
   }
   
-  // Find playable cards
+  // Find playable cards (resolve templates so targeting mode is correct)
   const playableCards = enemy.hand.filter(cardId => {
-    const card = getCard(cardId);
+    const card = getResolvedCard(cardId);
     return card && enemy.energy >= card.cost.energy;
   });
   
@@ -860,19 +916,20 @@ export async function processEnemyTurn(enemy: Character, renderCallback?: () => 
   }
   
   // Simple AI: pick a random playable card and random valid target (respecting range)
-  // Shuffle playable cards to try different ones if range blocks the first pick
   const shuffledCards = [...playableCards].sort(() => Math.random() - 0.5);
   let chosenCardId: string | null = null;
   let chosenTarget: Character | null = null;
   
   for (const candidateCardId of shuffledCards) {
-    const candidateCard = getCard(candidateCardId);
+    const candidateCard = getResolvedCard(candidateCardId);
     if (!candidateCard) continue;
     
-    // Filter targets by range
-    let validTargets = playerTargets;
-    if (candidateCard.maxRange && candidateCard.targeting !== 'self') {
-      validTargets = playerTargets.filter(t => 
+    // Use shared helper to determine target candidates (relative to caster)
+    let validTargets = getAITargetCandidates(candidateCard, enemy);
+    
+    // Filter by range if applicable
+    if (candidateCard.maxRange && !['self', 'allAllies', 'allEnemies'].includes(candidateCard.targeting)) {
+      validTargets = validTargets.filter(t => 
         Math.abs(enemy.slotIndex - t.slotIndex) <= candidateCard.maxRange!
       );
     }
@@ -885,27 +942,13 @@ export async function processEnemyTurn(enemy: Character, renderCallback?: () => 
   }
   
   if (!chosenCardId || !chosenTarget) {
-    addToCombatLog(`${enemy.name} has no targets in range`);
+    addToCombatLog(`${enemy.name} has no valid targets`);
     gameState.isProcessingTurn = false;
     setTimeout(() => endTurn(renderCallback), 1500);
     return;
   }
   
-  let chosenCard = getCard(chosenCardId);
-  
-  // If card is an instance, use template values for targeting (same fix as in playCard)
-  if (chosenCard && 'templateId' in chosenCard && chosenCard.templateId) {
-    const template = gameState.cardLibrary[chosenCard.templateId];
-    if (template) {
-      chosenCard = { 
-        ...chosenCard, 
-        targeting: template.targeting, 
-        targetSide: template.targetSide,
-        aoeSlots: template.aoeSlots
-      };
-    }
-  }
-  
+  const chosenCard = getResolvedCard(chosenCardId);
   if (chosenCard) {
     addToCombatLog(`${enemy.name} selects ${chosenCard.name}...`);
   }

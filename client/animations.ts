@@ -303,7 +303,7 @@ export function animateImpactBurst(
   // Create initial flash/ring effect (more subtle)
   const flash = new Graphics();
   flash.circle(0, 0, 20)
-    .fill({ color: 0xffffff, alpha: 0.3 });
+    .fill({ color: 0xffffff });
   flash.x = centerX;
   flash.y = centerY;
   app.stage.addChild(flash);
@@ -777,24 +777,26 @@ export async function playDamageAnimation(
   
   // For enemy/ally targeting, choose animation based on card type and config
   if (targeting === 'enemy' || targeting === 'ally') {
-    // Shake attacker
-    await animateAttackerShake(attackerId);
-    
     // If projectileColor is set in config, it's a ranged attack (even for attack type cards)
     // Otherwise, attack type cards use melee slash, skill/power use projectile
     if (config?.damage?.projectileColor !== undefined) {
-      // Ranged attack - show projectile with custom color
-      const projectilePromise = animateProjectileTrail(attackerId, targetId, app, config?.damage);
-      await projectilePromise;
+      // Ranged attack - shake and projectile fire together
+      await Promise.all([
+        animateAttackerShake(attackerId),
+        animateProjectileTrail(attackerId, targetId, app, config?.damage)
+      ]);
     } else if (cardType === 'attack') {
-      // Melee attack - show slash
-      await animateMeleeSlash(attackerId, targetId, app, config?.damage);
-      // Small delay for slash to be visible
-      await new Promise(resolve => setTimeout(resolve, 50));
+      // Melee attack - shake and slash together
+      await Promise.all([
+        animateAttackerShake(attackerId),
+        animateMeleeSlash(attackerId, targetId, app, config?.damage)
+      ]);
     } else {
-      // Ranged/skill attack - show projectile (default red)
-      const projectilePromise = animateProjectileTrail(attackerId, targetId, app, config?.damage);
-      await projectilePromise;
+      // Ranged/skill attack - shake and projectile fire together
+      await Promise.all([
+        animateAttackerShake(attackerId),
+        animateProjectileTrail(attackerId, targetId, app, config?.damage)
+      ]);
     }
     
     // Impact effects

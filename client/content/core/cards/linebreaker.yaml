@@ -1,0 +1,19 @@
+schemaVersion: 1
+id: linebreaker
+name: "Line Breaker"
+type: attack
+rarity: epic     #common, rare, epic, legendary, and mythic.
+cost: 1
+copies: 2
+tags: [basic]
+targeting: enemy
+maxRange: 1
+# optimalRange: 1
+exhaust: true
+expires_after_turns: 0
+effects:
+  - kind: damage
+    amount: 18
+  - kind: knockback
+    amount: 2
+# Pure melee - heavy hit that smashes enemies back up to 2 slots
