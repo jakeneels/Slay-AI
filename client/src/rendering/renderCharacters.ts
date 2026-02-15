@@ -8,6 +8,8 @@ import { playCard, calculateAoeTargets, getCharactersByPosition } from '../core/
 import { render as renderCallback } from './renderer.js';
 import { registerCharacterSprite } from '../../animations.js';
 import { getTotalBlock } from '../core/block.js';
+import { MAX_SLOTS, calculateRangeModifier } from '../core/constants.js';
+import { createEnergyIcon } from './icons/energyIcon.js';
 
 const BATTLE_Y_OFFSET = 300;
 const SPACING = 140;
@@ -21,26 +23,26 @@ const characterSpriteMap = new Map<string, SpriteImpl>();
 export function renderCharacters(app: Application, gameState: GameState): void {
   const battleY = 800 - BATTLE_Y_OFFSET; // Move characters down towards bottom
   const width = 1200;
+  const leftBase = 100;
+  const rightBase = width - 200;
   
   // Clear sprite map for this render cycle
   characterSpriteMap.clear();
   
-  // Use full lists (including dead) so slot positions stay fixed when allies die
-  const allPlayers = gameState.characters.filter(c => c.isPlayer);
-  const allEnemies = gameState.characters.filter(c => !c.isPlayer);
+  // Fixed 8 slots (0-7): allies 0-3, enemies 4-7
+  const allies = gameState.characters.filter(c => c.isPlayer && c.hp > 0).sort((a, b) => a.slotIndex - b.slotIndex);
+  const enemies = gameState.characters.filter(c => !c.isPlayer && c.hp > 0).sort((a, b) => a.slotIndex - b.slotIndex);
+  const availableWidth = rightBase - leftBase;
+  const slotSpacing = MAX_SLOTS > 1 ? availableWidth / (MAX_SLOTS - 1) : 0;
   
-  // Draw players on the left side - only living, but at fixed slot positions
-  allPlayers.forEach((char, slotIndex) => {
-    if (char.hp <= 0) return;
-    const x = 100 + slotIndex * SPACING;
+  allies.forEach((char) => {
+    const x = leftBase + char.slotIndex * slotSpacing;
     const y = battleY;
     renderCharacter(app, gameState, char, x, y);
   });
   
-  // Draw enemies on the right side - only living, but at fixed slot positions
-  allEnemies.forEach((char, slotIndex) => {
-    if (char.hp <= 0) return;
-    const x = width - 200 - slotIndex * SPACING;
+  enemies.forEach((char) => {
+    const x = leftBase + char.slotIndex * slotSpacing;
     const y = battleY;
     renderCharacter(app, gameState, char, x, y);
   });
@@ -90,12 +92,23 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
         if (card) {
           const isAoe = card.targeting === 'aoe';
           const targetSide = card.targetSide === 'ally' ? 'ally' : 'enemy';
-          const canTarget = 
+          let canTarget = 
             (card.targeting === 'enemy' && !char.isPlayer) ||
             (card.targeting === 'ally' && char.isPlayer) ||
             (card.targeting === 'self' && char.id === gameStateForCard.currentPlayerId) ||
             (card.targeting === 'single' && !char.isPlayer) || // Default single target = enemy for backwards compat
             (isAoe && ((targetSide === 'enemy' && !char.isPlayer) || (targetSide === 'ally' && char.isPlayer)));
+          
+          // Range check: if card has maxRange, verify target is within range of caster
+          if (canTarget && card.maxRange && card.targeting !== 'self') {
+            const caster = gameStateForCard.characters.find(c => c.id === gameStateForCard.currentPlayerId);
+            if (caster) {
+              const distance = Math.abs(caster.slotIndex - char.slotIndex);
+              if (distance > card.maxRange) {
+                canTarget = false;
+              }
+            }
+          }
           
           if (canTarget) {
             sprite.eventMode = 'static';
@@ -141,6 +154,39 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
               const newHeight = originalSpriteHeight * 1.1;
               sprite.x = centerX - newWidth / 2;
               sprite.y = centerY - newHeight / 2;
+
+              // Range modifier badge (shows % damage when hovering target)
+              if (card.optimalRange !== undefined && card.targeting !== 'self') {
+                const caster = gameStateForCard.characters.find(c => c.id === gameStateForCard.currentPlayerId);
+                if (caster) {
+                  const distance = Math.abs(caster.slotIndex - char.slotIndex);
+                  const modifier = calculateRangeModifier(distance, card.optimalRange);
+                  const pct = Math.round(modifier * 100);
+                  const isOptimal = distance === card.optimalRange;
+                  const badgeColor = isOptimal ? 0x22c55e : modifier >= 1.0 ? 0xfbbf24 : 0xef4444;
+                  const badgeTextColor = isOptimal ? 0x22c55e : modifier >= 1.0 ? 0xfbbf24 : 0xff6b6b;
+
+                  const badge = new Graphics();
+                  badge.roundRect(0, 0, 48, 20, 6)
+                    .fill({ color: 0x111827, alpha: 0.85 })
+                    .stroke({ width: 1.5, color: badgeColor, alpha: 0.8 });
+                  badge.x = centerX - 24;
+                  badge.y = centerY - originalSpriteHeight / 2 - 28;
+                  badge.eventMode = 'none';
+                  app.stage.addChild(badge);
+                  highlightGraphics.push(badge);
+
+                  const badgeText = new Text({
+                    text: `${pct}%`,
+                    style: { fill: badgeTextColor, fontSize: 12, fontWeight: 'bold' }
+                  });
+                  badgeText.x = badge.x + 24 - badgeText.width / 2;
+                  badgeText.y = badge.y + 3;
+                  badgeText.eventMode = 'none';
+                  app.stage.addChild(badgeText);
+                  highlightGraphics.push(badgeText as any);
+                }
+              }
               
               // Add primary target highlight (based on original size, positioned at center)
               const padding = 8;
@@ -413,70 +459,35 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
     app.stage.addChild(blockText);
   }
   
-  // Segmented energy bar below HP - polished design
-  const energyBarY = y + 222; // Adjusted for taller HP bar
-  const energyBarHeight = 16;
-  const energyBarWidth = 90;
-  const energyBarX = x + 100 - energyBarWidth / 2;
-  const segmentWidth = energyBarWidth / char.maxEnergy;
-  const segmentSpacing = 3;
-  const actualSegmentWidth = segmentWidth - segmentSpacing;
-  const segmentRadius = 4;
-  
-  for (let i = 0; i < char.maxEnergy; i++) {
-    const segmentX = energyBarX + i * segmentWidth;
-    
-    // Shadow for each segment
-    const segmentShadow = new Graphics();
-    segmentShadow.roundRect(-0.5, -0.5, actualSegmentWidth + 1, energyBarHeight + 1, segmentRadius + 0.5)
-      .fill({ color: 0x000000, alpha: 0.3 });
-    segmentShadow.x = segmentX;
-    segmentShadow.y = energyBarY;
-    app.stage.addChild(segmentShadow);
-    
-    // Background segment
-    const segmentBg = new Graphics();
-    segmentBg.roundRect(0, 0, actualSegmentWidth, energyBarHeight, segmentRadius)
-      .fill(0x1a1a1a)
-      .stroke({ width: 1, color: 0x000000 });
-    segmentBg.x = segmentX;
-    segmentBg.y = energyBarY;
-    app.stage.addChild(segmentBg);
-    
-    // Inner dark border
-    const segmentInner = new Graphics();
-    segmentInner.roundRect(1, 1, actualSegmentWidth - 2, energyBarHeight - 2, segmentRadius - 1)
-      .fill(0x2a2a2a);
-    segmentInner.x = segmentX;
-    segmentInner.y = energyBarY;
-    app.stage.addChild(segmentInner);
-    
-    // Fill segment if we have energy for it
-    if (i < char.energy) {
-      // Main fill with vibrant blue
-      const segmentFill = new Graphics();
-      segmentFill.roundRect(1.5, 1.5, actualSegmentWidth - 3, energyBarHeight - 3, segmentRadius - 1)
-        .fill(0x3b82f6);
-      segmentFill.x = segmentX;
-      segmentFill.y = energyBarY;
-      app.stage.addChild(segmentFill);
-      
-      // Highlight gradient effect (lighter top portion)
-      const segmentHighlight = new Graphics();
-      segmentHighlight.roundRect(1.5, 1.5, actualSegmentWidth - 3, (energyBarHeight - 3) * 0.4, segmentRadius - 1)
-        .fill({ color: 0x60a5fa, alpha: 0.7 });
-      segmentHighlight.x = segmentX;
-      segmentHighlight.y = energyBarY;
-      app.stage.addChild(segmentHighlight);
-      
-      // Subtle glow effect
-      const segmentGlow = new Graphics();
-      segmentGlow.roundRect(0.5, 0.5, actualSegmentWidth - 1, energyBarHeight - 1, segmentRadius - 0.5)
-        .stroke({ width: 1, color: 0x60a5fa, alpha: 0.4 });
-      segmentGlow.x = segmentX;
-      segmentGlow.y = energyBarY;
-      app.stage.addChild(segmentGlow);
+  // Energy under HP bar: icon instances (1-6) or "N × [icon]" (7+)
+  const energyRowY = hpBarY + hpBarHeight + 6;
+  const energyIconSize = 14;
+  const energyIconGap = 4;
+  const energyNumText = char.energy > 6
+    ? new Text({ text: `${char.energy} ×`, style: { fill: 0xfbbf24, fontSize: 12, fontWeight: 'bold' } })
+    : null;
+  const energyRowWidth = char.energy <= 5
+    ? char.energy * energyIconSize + Math.max(0, char.energy - 1) * energyIconGap
+    : (energyNumText!.width + 4 + energyIconSize);
+  let iconX = x + 100 - energyRowWidth / 2 + energyIconSize / 2;
+  if (char.energy <= 5) {
+    for (let i = 0; i < char.energy; i++) {
+      const icon = createEnergyIcon(energyIconSize);
+      icon.x = iconX;
+      icon.y = energyRowY;
+      app.stage.addChild(icon);
+      iconX += energyIconSize + energyIconGap;
     }
+  } else {
+    energyNumText!.x = iconX;
+    energyNumText!.y = energyRowY;
+    energyNumText!.eventMode = 'none';
+    app.stage.addChild(energyNumText!);
+    iconX += energyNumText!.width + 4;
+    const icon = createEnergyIcon(energyIconSize);
+    icon.x = iconX;
+    icon.y = energyRowY;
+    app.stage.addChild(icon);
   }
   
   // Add turn indicator arrow if this is the current player

@@ -1,7 +1,7 @@
 // Content loading from YAML files
 
 import jsyaml from 'js-yaml';
-import type { Card, CharacterDefinition, LoadedContent } from '../core/types.js';
+import type { Card, CardEffect, CharacterDefinition, LoadedContent, EffectTarget, AoePattern } from '../core/types.js';
 
 /**
  * Load YAML content (cards and characters)
@@ -10,12 +10,15 @@ export async function loadContent(): Promise<LoadedContent> {
   try {
     // Load cards - include all existing YAML files
     const cardFiles: string[] = [ 
-      'content/core/cards/defend_common.yaml',
-      'content/core/cards/blast_rare.yaml', 
-      'content/core/cards/strike_common.yaml',
-      'content/core/cards/overclock_mythic.yaml',
-      'content/core/cards/heal_uncommon.yaml',
-      'content/core/cards/didi/headshot.yaml'
+      'content/core/cards/shockwave.yaml',
+      'content/core/cards/fireball.yaml',
+      'content/core/cards/chain_lightning.yaml',
+      'content/core/cards/strike.yaml',
+      'content/core/cards/defend.yaml',
+      'content/core/cards/blast.yaml',
+      'content/core/cards/heal.yaml',
+      'content/core/cards/overclock.yaml',
+      'content/core/cards/linebreaker.yaml'
     ];
 
     /**
@@ -41,7 +44,8 @@ export async function loadContent(): Promise<LoadedContent> {
       'content/core/enemies/scrapling_swarm.yaml',
       'content/core/enemies/fanatic_zealot.yaml',
       'content/core/enemies/rustbeast_quadruped.yaml',
-      'content/core/enemies/neural_stalker.yaml'
+      'content/core/enemies/neural_stalker.yaml',
+      'content/core/enemies/fanatic_sprinter.yaml'
     ];
     
     console.log('Enemy files to load:', enemyFiles);
@@ -69,6 +73,8 @@ export async function loadContent(): Promise<LoadedContent> {
         let targeting: 'single' | 'aoe' | 'self' | 'ally' | 'enemy' | 'allEnemies' | 'allAllies' = 'single';
         if (cardData.targeting === 'allEnemies' || cardData.targeting === 'allAllies') {
           targeting = cardData.targeting;
+        } else if (cardData.targeting === 'aoe') {
+          targeting = 'aoe';
         } else if (cardData.targeting === 'self' || cardData.targeting === 'ally' || cardData.targeting === 'enemy') {
           targeting = cardData.targeting;
         } else {
@@ -108,13 +114,30 @@ export async function loadContent(): Promise<LoadedContent> {
           }
         }
         
+        // Parse effects with per-effect targeting fields
+        const parsedEffects: CardEffect[] = (cardData.effects ?? []).map((e: any) => {
+          const parsed: any = { ...e };
+          // Carry over per-effect targeting if present
+          if (e.effectTarget) {
+            parsed.effectTarget = e.effectTarget as EffectTarget;
+          }
+          if (e.aoeSlots !== undefined) {
+            parsed.aoeSlots = e.aoeSlots;
+          }
+          if (e.aoePattern) {
+            parsed.aoePattern = e.aoePattern as AoePattern;
+          }
+          return parsed as CardEffect;
+        });
+
         cards[cardData.id] = {
           id: cardData.id,
           name: cardData.name,
           cost: { energy: cardData.cost },
-          effects: cardData.effects,
+          effects: parsedEffects,
           targetSide: targetSide,
           targeting: targeting,
+          aoeSlots: cardData.aoeSlots, // Optional: number of slots for AOE targeting (2, 3, or 4)
           copies: cardData.copies || 1,
           type: cardData.type,
           tags: cardData.tags || [],
@@ -135,6 +158,9 @@ export async function loadContent(): Promise<LoadedContent> {
         const response = await fetch(file);
         const yamlText = await response.text();
         const charData = jsyaml.load(yamlText) as any;
+        if (charData.stats && charData.stats.moveEnergyCost === undefined) {
+          charData.stats.moveEnergyCost = 1;
+        }
         characters[charData.id] = charData;
       } catch (e) {
         console.warn(`Failed to load ${file}:`, e);
@@ -152,6 +178,9 @@ export async function loadContent(): Promise<LoadedContent> {
         }
         const yamlText = await response.text();
         const charData = jsyaml.load(yamlText) as any;
+        if (charData.stats && charData.stats.moveEnergyCost === undefined) {
+          charData.stats.moveEnergyCost = 1;
+        }
         console.log(`Loaded enemy: ${charData.name} (${charData.id})`);
         characters[charData.id] = charData;
       } catch (e) {
