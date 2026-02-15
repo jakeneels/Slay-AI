@@ -110,6 +110,7 @@ export interface Card {
   tags?: string[];
   exhaust?: boolean;
   expires_after_turns?: number;
+  description?: string;
   maxRange?: number;
   optimalRange?: number;
   animationConfig?: {

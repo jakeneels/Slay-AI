@@ -11,10 +11,10 @@ maxRange: 3
 # optimalRange: 1
 exhaust: false
 expires_after_turns: 0
+description: "Close-range shockwave ripples outward, damaging and pushing enemies back."
 effects:
   - kind: damage
     amount: 5
   - kind: knockback
     amount: 1
-# Close-range AOE - shockwave ripples outward, pushes enemies back
 

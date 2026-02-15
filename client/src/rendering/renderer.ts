@@ -7,6 +7,7 @@ import { renderLanes } from './renderLanes.js';
 import { renderCharacters } from './renderCharacters.js';
 import { renderHand } from './renderHand.js';
 import { renderTurnInfo, renderCombatLog } from './renderUI.js';
+import { renderCardTooltip } from './renderCardTooltip.js';
 
 let app: Application | null = null;
 
@@ -50,5 +51,6 @@ export function render(): void {
   renderHand(app, gameState);
   renderTurnInfo(app, gameState);
   renderCombatLog(app, gameState);
+  renderCardTooltip(app);
 }
 

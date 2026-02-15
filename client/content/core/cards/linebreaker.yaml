@@ -11,9 +11,9 @@ maxRange: 1
 # optimalRange: 1
 exhaust: true
 expires_after_turns: 0
+description: "Pure melee — a devastating hit that smashes enemies back up to 2 slots."
 effects:
   - kind: damage
     amount: 18
   - kind: knockback
     amount: 2
-# Pure melee - heavy hit that smashes enemies back up to 2 slots
