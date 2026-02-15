@@ -1,0 +1,10 @@
+schemaVersion: 1
+id: shield_generator
+name: "Shield Generator"
+description: "Personal energy barrier. +25% block amount."
+slot: armor
+rarity: rare
+modifiers:
+  - target: block_amount
+    op: multiply
+    value: 1.25

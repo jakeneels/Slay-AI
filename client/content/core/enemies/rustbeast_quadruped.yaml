@@ -11,12 +11,15 @@ stats:
   maxHp: 65
   energy: 3
   maxEnergy: 3
+  speed: 0
+  suppression: 2
+  suppressionResist: 1
 mechanics:
   - "Ignores slot movement penalties"
   - "Forces backline forward (pressure)"
   - "Applies bleed/shock on multi-hit claws"
 tags: ["beast", "machine", "elite", "enemy", "bruiser"]
 startingDeck:
-  - "strike_common"
-  - "strike_common"
-  - "defend_common"
+  - "strike"
+  - "strike"
+  - "defend"

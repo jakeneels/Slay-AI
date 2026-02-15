@@ -12,12 +12,15 @@ stats:
   maxHp: 60
   energy: 2
   maxEnergy: 2
+  speed: 0
+  suppression: 2
+  suppressionResist: 1
 mechanics:
   - "High health pool"
   - "Damage reflection"
   - "Toxic retaliation"
 tags: ["mutant", "brute", "tank", "enemy", "radiation"]
 startingDeck:
-  - "strike_common"
-  - "defend_common"
-  - "defend_common"
+  - "strike"
+  - "defend"
+  - "defend"

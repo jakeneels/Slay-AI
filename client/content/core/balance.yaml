@@ -1,0 +1,42 @@
+schemaVersion: 1
+profile: "default"
+
+# ── Global modifiers ─────────────────────────────────────────────────
+# These apply to every character / every calculation.
+# Tweak a value here and it affects the whole game instantly.
+# Supported ops per entry: set, add, multiply, min, max
+global:
+  # Combat output
+  damage_dealt:     { multiply: 1.0 }     # Global damage multiplier
+  damage_received:  { multiply: 1.0 }     # Global incoming damage multiplier
+  heal_amount:      { multiply: 1.0 }     # Global heal multiplier
+  block_amount:     { multiply: 1.0 }     # Global block multiplier
+
+  # Range system
+  range_optimal_bonus:   { set: 0.20 }    # +20% at optimal range
+  range_penalty_per_slot: { set: 0.10 }   # -10% per slot from optimal
+  range_modifier_min:    { set: 0.70 }    # Floor: 70%
+  range_modifier_max:    { set: 1.20 }    # Cap: 120%
+
+  # Suppression system
+  suppression_distance:         { set: 2 }   # Proximity threshold (slots)
+  suppression_ranged_threshold: { set: 4 }   # Cards with maxRange >= this are ranged
+  suppression_base_cost:        { set: 1 }   # Base extra energy when suppressed
+  suppression_stack_cost:       { set: 1 }   # Extra energy per suppression stack
+
+# ── Per-team modifiers ───────────────────────────────────────────────
+# Apply to all characters on a side.
+teams:
+  player: {}
+  enemy:
+    maxHp: { multiply: 1.0 }              # Scale all enemy HP at once
+
+# ── Per-character modifiers ──────────────────────────────────────────
+# Use character IDs as keys.
+characters: {}
+  # Example overrides (uncomment to test):
+  # jacob_techblade:
+  #   maxEnergy: { add: 1 }               # Jacob gets +1 max energy
+  #   suppression_base_cost: { set: 0 }   # Jacob immune to suppression
+  # didi_sharpshooter:
+  #   damage_dealt: { multiply: 1.15 }    # Didi does 15% more damage

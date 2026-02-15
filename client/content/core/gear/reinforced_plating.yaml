@@ -1,0 +1,10 @@
+schemaVersion: 1
+id: reinforced_plating
+name: "Reinforced Plating"
+description: "Heavy composite armor plating. +15 max HP."
+slot: armor
+rarity: common
+modifiers:
+  - target: maxHp
+    op: add
+    value: 15

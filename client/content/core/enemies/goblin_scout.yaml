@@ -11,10 +11,13 @@ stats:
   maxHp: 25
   energy: 2
   maxEnergy: 2
+  speed: 2
+  suppression: 0
+  suppressionResist: 0
 mechanics:
   - "Quick attacks"
   - "Low health but high speed"
 tags: ["goblin", "scout", "raider", "enemy"]
 startingDeck:
-  - "strike_common"
-  - "strike_common"
+  - "strike"
+  - "strike"

@@ -11,12 +11,15 @@ stats:
   maxHp: 45
   energy: 4
   maxEnergy: 4
+  speed: 1
+  suppression: 1
+  suppressionResist: 2
 mechanics:
   - "Attacks drain player energy"
   - "Applies 'jammed' debuff (reduces accuracy)"
   - "Teleports between slots ignoring movement cost"
 tags: ["ai", "assassin", "elite", "enemy", "debuffer"]
 startingDeck:
-  - "blast_rare"
-  - "defend_common"
-  - "overclock_mythic"
+  - "blast"
+  - "defend"
+  - "overclock"

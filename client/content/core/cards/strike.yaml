@@ -1,17 +1,18 @@
 schemaVersion: 1
-id: strike_common
+id: strike
 name: "Strike"
 type: attack
 rarity: common
 cost: 1
-copies: 4
+copies: 3
 tags: [basic]
 targeting: enemy
+maxRange: 2
+# optimalRange: 1
 exhaust: false
 expires_after_turns: 0
+description: "Melee attack — best at point-blank, can reach 2 slots."
 effects:
   - kind: damage
     amount: 6
-# Melee attack - uses default melee slash animation (yellow/orange)
-
 

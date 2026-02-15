@@ -8,18 +8,21 @@ theme: "Tank / Bruiser – thrives on blocking and countering."
 isPlayer: true
 sprite: "/assets/game/allies/jacob.png"
 stats:
-  hp: 120
+  hp: 90
   maxHp: 120
-  energy: 3
-  maxEnergy: 3
-  speed: 5
+  energy: 6
+  maxEnergy: 7
+  speed: 1
+  suppression: 2
+  suppressionResist: 1
 mechanics:
   - "Generates block efficiently"
   - "Fortify scaling"
   - "Energy reflection on shield counters"
 tags: ["warrior", "tech", "vanguard", "tank"]
 startingDeck:
-  - "defend_common"
-  - "defend_common"
-  - "strike_common"
-  - "overclock_mythic"
+  - "defend"
+  - "strike"
+  - "shield_dome"
+  - "linebreaker"
+  - "energy_lasso"

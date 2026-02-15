@@ -103,9 +103,10 @@ export function animateCharachterSpark(characterId: string, type: 'damage' | 'he
     }
   }
   
-  // Position spark at character center
-  spark.x = sprite.x + sprite.width / 2;
-  spark.y = sprite.y + sprite.height / 2;
+  // Position spark at character center - use getBounds() for accurate center
+  const spriteBounds = sprite.getBounds();
+  spark.x = spriteBounds.x + spriteBounds.width / 2;
+  spark.y = spriteBounds.y + spriteBounds.height / 2;
   spark.alpha = 1;
   
   app.stage.addChild(spark);
@@ -150,11 +151,13 @@ export function animateProjectileTrail(
   const projectileColor = config?.projectileColor ?? 0xff4444; // Default red
   const speed = config?.projectileSpeed ?? 1200; // pixels per second (faster)
   
-  // Calculate positions
-  const startX = attackerSprite.x + attackerSprite.width / 2;
-  const startY = attackerSprite.y + attackerSprite.height / 2;
-  const endX = targetSprite.x + targetSprite.width / 2;
-  const endY = targetSprite.y + targetSprite.height / 2;
+  // Calculate positions - use getBounds() for more accurate center if sprite has anchor offset
+  const attackerBounds = attackerSprite.getBounds();
+  const targetBounds = targetSprite.getBounds();
+  const startX = attackerBounds.x + attackerBounds.width / 2;
+  const startY = attackerBounds.y + attackerBounds.height / 2;
+  const endX = targetBounds.x + targetBounds.width / 2;
+  const endY = targetBounds.y + targetBounds.height / 2;
   
   const dx = endX - startX;
   const dy = endY - startY;
@@ -292,13 +295,15 @@ export function animateImpactBurst(
   
   const impactSize = config?.impactSize ?? 50;
   const burstColor = 0xff6600; // Brighter orange
-  const centerX = targetSprite.x + targetSprite.width / 2;
-  const centerY = targetSprite.y + targetSprite.height / 2;
+  // Use getBounds() for more accurate center if sprite has anchor offset
+  const targetBounds = targetSprite.getBounds();
+  const centerX = targetBounds.x + targetBounds.width / 2;
+  const centerY = targetBounds.y + targetBounds.height / 2;
   
-  // Create initial flash/ring effect
+  // Create initial flash/ring effect (more subtle)
   const flash = new Graphics();
   flash.circle(0, 0, 20)
-    .fill({ color: 0xffffff, alpha: 0.8 });
+    .fill({ color: 0xffffff });
   flash.x = centerX;
   flash.y = centerY;
   app.stage.addChild(flash);
@@ -332,18 +337,18 @@ export function animateImpactBurst(
   
   return new Promise((resolve) => {
     const startTime = performance.now();
-    const flashDuration = 100;
-    const particleDuration = 500;
+    const flashDuration = 50;
+    const particleDuration = 250;
     
     function animate() {
       const elapsed = performance.now() - startTime;
       const flashProgress = Math.min(elapsed / flashDuration, 1);
       const particleProgress = Math.min(elapsed / particleDuration, 1);
       
-      // Animate flash (quick fade out)
+      // Animate flash (quick fade out, more subtle)
       if (flashProgress < 1) {
-        flash.alpha = (1 - flashProgress) * 0.8;
-        flash.scale.set(1 + flashProgress * 2);
+        flash.alpha = (1 - flashProgress) * 0.3;
+        flash.scale.set(1 + flashProgress * 1); // Reduced from 2 to 1
       } else if (flashProgress >= 1 && flash.alpha > 0) {
         app.stage.removeChild(flash);
       }
@@ -398,8 +403,10 @@ export function animateFloatingNumber(
     }
   });
   
-  const startX = targetSprite.x + targetSprite.width / 2;
-  const startY = targetSprite.y + targetSprite.height / 4;
+  // Use getBounds() for more accurate center if sprite has anchor offset
+  const targetBounds = targetSprite.getBounds();
+  const startX = targetBounds.x + targetBounds.width / 2;
+  const startY = targetBounds.y + targetBounds.height / 4;
   
   numberText.x = startX - numberText.width / 2;
   numberText.y = startY;
@@ -410,7 +417,7 @@ export function animateFloatingNumber(
   
   return new Promise((resolve) => {
     const startTime = performance.now();
-    const duration = 1000;
+    const duration = 600;
     const floatDistance = 60;
     
     function animate() {
@@ -472,7 +479,7 @@ export function animateScreenShake(app: Application, intensity: number = 5, dura
 /**
  * Animate character flash (brief red flash for damage)
  */
-export function animateCharacterFlash(characterId: string, color: number = 0xff0000, duration: number = 250): Promise<void> {
+export function animateCharacterFlash(characterId: string, color: number = 0xff0000, duration: number = 150): Promise<void> {
   const sprite = characterSprites.get(characterId);
   if (!sprite) return Promise.resolve();
   
@@ -541,8 +548,10 @@ export function animateHealingParticles(
   
   const particles: Array<{ graphics: Graphics; vy: number; vx: number; startX: number; startY: number }> = [];
   
-  const centerX = targetSprite.x + targetSprite.width / 2;
-  const centerY = targetSprite.y + targetSprite.height / 2;
+  // Use getBounds() for more accurate center if sprite has anchor offset
+  const targetBounds = targetSprite.getBounds();
+  const centerX = targetBounds.x + targetBounds.width / 2;
+  const centerY = targetBounds.y + targetBounds.height / 2;
   
   // Create particles
   for (let i = 0; i < particleCount; i++) {
@@ -604,8 +613,10 @@ export function animateGlowAura(
   
   const glowIntensity = config?.glowIntensity ?? 0.3;
   const glowColor = 0x22c55e; // Green
-  const centerX = targetSprite.x + targetSprite.width / 2;
-  const centerY = targetSprite.y + targetSprite.height / 2;
+  // Use getBounds() for more accurate center if sprite has anchor offset
+  const targetBounds = targetSprite.getBounds();
+  const centerX = targetBounds.x + targetBounds.width / 2;
+  const centerY = targetBounds.y + targetBounds.height / 2;
   
   const glow = new Graphics();
   const radius = Math.max(targetSprite.width, targetSprite.height) * 0.6;
@@ -657,10 +668,13 @@ export function animateMeleeSlash(
   if (!attackerSprite || !targetSprite) return Promise.resolve();
   
   const slashColor = config?.projectileColor ?? 0xffdd44; // Yellow/orange slash
-  const attackerCenterX = attackerSprite.x + attackerSprite.width / 2;
-  const attackerCenterY = attackerSprite.y + attackerSprite.height / 2;
-  const targetCenterX = targetSprite.x + targetSprite.width / 2;
-  const targetCenterY = targetSprite.y + targetSprite.height / 2;
+  // Use getBounds() for more accurate center if sprite has anchor offset
+  const attackerBounds = attackerSprite.getBounds();
+  const targetBounds = targetSprite.getBounds();
+  const attackerCenterX = attackerBounds.x + attackerBounds.width / 2;
+  const attackerCenterY = attackerBounds.y + attackerBounds.height / 2;
+  const targetCenterX = targetBounds.x + targetBounds.width / 2;
+  const targetCenterY = targetBounds.y + targetBounds.height / 2;
   
   // Calculate angle from attacker to target
   const dx = targetCenterX - attackerCenterX;
@@ -763,24 +777,26 @@ export async function playDamageAnimation(
   
   // For enemy/ally targeting, choose animation based on card type and config
   if (targeting === 'enemy' || targeting === 'ally') {
-    // Shake attacker
-    await animateAttackerShake(attackerId);
-    
     // If projectileColor is set in config, it's a ranged attack (even for attack type cards)
     // Otherwise, attack type cards use melee slash, skill/power use projectile
     if (config?.damage?.projectileColor !== undefined) {
-      // Ranged attack - show projectile with custom color
-      const projectilePromise = animateProjectileTrail(attackerId, targetId, app, config?.damage);
-      await projectilePromise;
+      // Ranged attack - shake and projectile fire together
+      await Promise.all([
+        animateAttackerShake(attackerId),
+        animateProjectileTrail(attackerId, targetId, app, config?.damage)
+      ]);
     } else if (cardType === 'attack') {
-      // Melee attack - show slash
-      await animateMeleeSlash(attackerId, targetId, app, config?.damage);
-      // Small delay for slash to be visible
-      await new Promise(resolve => setTimeout(resolve, 50));
+      // Melee attack - shake and slash together
+      await Promise.all([
+        animateAttackerShake(attackerId),
+        animateMeleeSlash(attackerId, targetId, app, config?.damage)
+      ]);
     } else {
-      // Ranged/skill attack - show projectile (default red)
-      const projectilePromise = animateProjectileTrail(attackerId, targetId, app, config?.damage);
-      await projectilePromise;
+      // Ranged/skill attack - shake and projectile fire together
+      await Promise.all([
+        animateAttackerShake(attackerId),
+        animateProjectileTrail(attackerId, targetId, app, config?.damage)
+      ]);
     }
     
     // Impact effects
@@ -971,14 +987,14 @@ export function animateEnhancedScreenShake(
 export function animateDamageFlash(
   app: Application,
   damageAmount: number,
-  duration: number = 150
+  duration: number = 100
 ): Promise<void> {
   // Only flash for significant damage
   if (damageAmount < 5) return Promise.resolve();
   
   const overlay = new Graphics();
   overlay.rect(0, 0, app.screen.width, app.screen.height);
-  overlay.fill({ color: 0xff0000, alpha: 0.15 + (damageAmount / 100) * 0.2 }); // Scale opacity with damage
+  overlay.fill({ color: 0xff0000, alpha: 0.08 + (damageAmount / 100) * 0.12 }); // Reduced opacity for subtler flash
   overlay.zIndex = 9999; // On top
   app.stage.addChild(overlay);
   
@@ -1131,8 +1147,10 @@ export function animateParticles(
   
   const type = PARTICLE_TYPES[particleType] || PARTICLE_TYPES.fire;
   const particles: Particle[] = [];
-  const centerX = targetSprite.x + targetSprite.width / 2;
-  const centerY = targetSprite.y + targetSprite.height / 2;
+  // Use getBounds() for more accurate center if sprite has anchor offset
+  const targetBounds = targetSprite.getBounds();
+  const centerX = targetBounds.x + targetBounds.width / 2;
+  const centerY = targetBounds.y + targetBounds.height / 2;
   
   // Create particles
   for (let i = 0; i < count; i++) {

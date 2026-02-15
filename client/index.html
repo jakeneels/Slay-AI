@@ -13,7 +13,7 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }
         .container {
-            max-width: 1400px;
+            max-width: 1800px;
             margin: 0 auto;
         }
         h1 {
@@ -26,15 +26,154 @@
             font-size: 0.875rem;
             margin-bottom: 1rem;
         }
+        .game-row {
+            display: flex;
+            gap: 0;
+            align-items: flex-start;
+        }
         .game-container {
             border: 1px solid #374151;
             border-radius: 8px;
             background: #0a0a0a;
             padding: 1rem;
+            flex-shrink: 0;
         }
         #gameCanvas {
             display: block;
             margin: 0 auto;
+        }
+
+        /* Dev Panel */
+        #devPanel {
+            background: #111317;
+            border: 1px solid #374151;
+            border-left: none;
+            border-radius: 0 8px 8px 0;
+            overflow: hidden;
+            transition: width 0.25s ease;
+            flex-shrink: 0;
+            height: auto;
+            align-self: stretch;
+        }
+        #devPanel.collapsed {
+            width: 32px;
+        }
+        #devPanel.expanded {
+            width: 320px;
+        }
+        #devPanelToggle {
+            width: 32px;
+            height: 100%;
+            min-height: 60px;
+            background: #1a1d24;
+            border: none;
+            color: #9ca3af;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            letter-spacing: 2px;
+            user-select: none;
+            padding: 12px 0;
+        }
+        #devPanel.collapsed #devPanelToggle {
+            width: 100%;
+        }
+        #devPanel.expanded #devPanelToggle {
+            position: absolute;
+            right: 0;
+            top: 0;
+            height: 100%;
+            width: 32px;
+        }
+        #devPanelToggle:hover {
+            background: #252830;
+            color: #e5e7eb;
+        }
+        #devPanelInner {
+            position: relative;
+            height: 100%;
+        }
+        #devPanelContent {
+            padding: 12px;
+            overflow-y: auto;
+            max-height: 800px;
+            width: 288px;
+            font-size: 12px;
+        }
+        #devPanel.collapsed #devPanelContent {
+            display: none;
+        }
+        .dev-section {
+            margin-bottom: 16px;
+        }
+        .dev-section-title {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: #6b7280;
+            margin-bottom: 8px;
+            border-bottom: 1px solid #1f2937;
+            padding-bottom: 4px;
+        }
+        .dev-character-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: #60a5fa;
+            margin-bottom: 4px;
+            margin-top: 8px;
+        }
+        .dev-character-name.enemy {
+            color: #f87171;
+        }
+        .dev-deck-stats {
+            color: #9ca3af;
+            font-size: 11px;
+            margin-bottom: 4px;
+        }
+        .dev-card-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-bottom: 1px;
+        }
+        .dev-card-row:hover {
+            background: #1f2937;
+        }
+        .dev-card-name {
+            color: #d1d5db;
+            font-size: 11px;
+        }
+        .dev-card-count {
+            color: #6b7280;
+            font-size: 10px;
+            font-weight: 600;
+            min-width: 16px;
+            text-align: right;
+        }
+        .dev-card-cost {
+            color: #facc15;
+            font-size: 10px;
+            margin-left: 4px;
+        }
+        .dev-rarity-common { border-left: 2px solid #9ca3af; }
+        .dev-rarity-uncommon { border-left: 2px solid #22c55e; }
+        .dev-rarity-rare { border-left: 2px solid #3b82f6; }
+        .dev-rarity-epic { border-left: 2px solid #a855f7; }
+        .dev-rarity-legendary { border-left: 2px solid #f59e0b; }
+        .dev-pile-label {
+            font-size: 10px;
+            color: #4b5563;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 6px;
+            margin-bottom: 2px;
         }
     </style>
 </head>
@@ -42,8 +181,16 @@
     <div class="container">
         <h1>ai</h1>
         <p class="subtitle">Pure PIXI.js click enemies to attack, use End Turn button.</p>
-        <div class="game-container">
-            <div id="gameCanvas"></div>
+        <div class="game-row">
+            <div class="game-container">
+                <div id="gameCanvas"></div>
+            </div>
+            <div id="devPanel" class="expanded">
+                <div id="devPanelInner">
+                    <div id="devPanelContent"></div>
+                    <button id="devPanelToggle">DEV</button>
+                </div>
+            </div>
         </div>
     </div>
 

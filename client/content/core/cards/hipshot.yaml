@@ -1,0 +1,20 @@
+schemaVersion: 1
+id: hipshot
+name: "Hipshot"
+type: attack
+rarity: common
+cost: 2
+copies: 3
+tags: [basic]
+targeting: enemy
+maxRange: 6
+# optimalRange: 1
+exhaust: false
+expires_after_turns: 0
+description: "Versatile Ranged Attack — Can be used at close and medium range."
+effects:
+  - kind: damage
+    amount: 10
+  - kind: speed
+    amount: -1
+    effectTarget: target'

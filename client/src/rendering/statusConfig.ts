@@ -1,0 +1,272 @@
+// Status effect display configuration
+// Maps status IDs to their visual properties for rendering badges on characters.
+
+import { Graphics } from 'pixi.js';
+
+export type IconDrawFn = (g: Graphics, size: number) => void;
+
+export interface StatusDisplayConfig {
+  label: string;                // Human-readable name
+  description: string;          // Tooltip description of the effect
+  iconColor: number;            // Primary fill color for the icon
+  bgColor: number;              // Badge background tint
+  borderColor: number;          // Badge border color
+  drawIcons: IconDrawFn[];      // Icon drawing functions (supports multiple icons per badge)
+}
+
+// ── Icon drawing helpers ──────────────────────────────────────────────
+
+/** Bleed — three blood droplets */
+function drawBleedIcon(g: Graphics, size: number): void {
+  const s = size / 14;
+  // Center droplet (larger)
+  g.moveTo(7 * s, 1 * s)
+    .quadraticCurveTo(11 * s, 7 * s, 7 * s, 11 * s)
+    .quadraticCurveTo(3 * s, 7 * s, 7 * s, 1 * s)
+    .closePath()
+    .fill(0xef4444);
+  // Left small droplet
+  g.moveTo(2.5 * s, 5 * s)
+    .quadraticCurveTo(4.5 * s, 8 * s, 2.5 * s, 10 * s)
+    .quadraticCurveTo(0.5 * s, 8 * s, 2.5 * s, 5 * s)
+    .closePath()
+    .fill({ color: 0xef4444, alpha: 0.7 });
+  // Right small droplet
+  g.moveTo(11.5 * s, 5 * s)
+    .quadraticCurveTo(13.5 * s, 8 * s, 11.5 * s, 10 * s)
+    .quadraticCurveTo(9.5 * s, 8 * s, 11.5 * s, 5 * s)
+    .closePath()
+    .fill({ color: 0xef4444, alpha: 0.7 });
+}
+
+/** Shock — lightning bolt */
+function drawShockIcon(g: Graphics, size: number): void {
+  const s = size / 14;
+  g.moveTo(8 * s, 0)
+    .lineTo(4 * s, 6 * s)
+    .lineTo(7 * s, 6 * s)
+    .lineTo(5 * s, 14 * s)
+    .lineTo(11 * s, 5 * s)
+    .lineTo(8 * s, 5 * s)
+    .lineTo(10 * s, 0)
+    .closePath()
+    .fill(0xfbbf24)
+    .stroke({ width: 0.8, color: 0xd97706, alignment: 1 });
+}
+
+/** Radiation — trefoil hazard symbol (simplified) */
+function drawRadiationIcon(g: Graphics, size: number): void {
+  const s = size / 14;
+  const cx = 7 * s;
+  const cy = 7 * s;
+  const r = 5.5 * s;
+  // Three "petals" at 120° intervals
+  for (let i = 0; i < 3; i++) {
+    const angle = (i * 120 - 90) * Math.PI / 180;
+    const nextAngle = ((i * 120 + 40) - 90) * Math.PI / 180;
+    const x1 = cx + Math.cos(angle) * r;
+    const y1 = cy + Math.sin(angle) * r;
+    const x2 = cx + Math.cos(nextAngle) * r;
+    const y2 = cy + Math.sin(nextAngle) * r;
+    g.moveTo(cx, cy)
+      .lineTo(x1, y1)
+      .arcTo(
+        cx + Math.cos((angle + nextAngle) / 2) * r * 1.3,
+        cy + Math.sin((angle + nextAngle) / 2) * r * 1.3,
+        x2, y2, r * 0.6
+      )
+      .lineTo(cx, cy)
+      .closePath()
+      .fill(0x22c55e);
+  }
+  // Center dot
+  g.circle(cx, cy, 1.5 * s).fill(0x16a34a);
+}
+
+/** Fortify — small shield */
+function drawFortifyIcon(g: Graphics, size: number): void {
+  const s = size / 14;
+  g.moveTo(7 * s, 1 * s)
+    .lineTo(13 * s, 3 * s)
+    .lineTo(12 * s, 9 * s)
+    .lineTo(7 * s, 13 * s)
+    .lineTo(2 * s, 9 * s)
+    .lineTo(1 * s, 3 * s)
+    .closePath()
+    .fill(0x60a5fa)
+    .stroke({ width: 1, color: 0x3b82f6, alignment: 1 });
+}
+
+/** Disrupt — broken circle / static */
+function drawDisruptIcon(g: Graphics, size: number): void {
+  const s = size / 14;
+  const cx = 7 * s;
+  const cy = 7 * s;
+  const r = 5 * s;
+  // Draw broken arc segments
+  for (let i = 0; i < 4; i++) {
+    const startAngle = (i * 90 + 10) * Math.PI / 180;
+    const endAngle = (i * 90 + 70) * Math.PI / 180;
+    g.moveTo(
+      cx + Math.cos(startAngle) * r,
+      cy + Math.sin(startAngle) * r
+    )
+      .arc(cx, cy, r, startAngle, endAngle)
+      .stroke({ width: 2 * s, color: 0xc084fc });
+  }
+  // Center X
+  g.moveTo(5 * s, 5 * s).lineTo(9 * s, 9 * s)
+    .stroke({ width: 1.5 * s, color: 0xc084fc });
+  g.moveTo(9 * s, 5 * s).lineTo(5 * s, 9 * s)
+    .stroke({ width: 1.5 * s, color: 0xc084fc });
+}
+
+/** Suppressed — broken arrow (ranged attack disrupted) */
+function drawSuppressedIcon(g: Graphics, size: number): void {
+  const s = size / 14;
+  // Arrow shaft (broken in the middle)
+  // Left half of shaft
+  g.moveTo(1 * s, 7 * s)
+    .lineTo(5.5 * s, 7 * s)
+    .stroke({ width: 1.5 * s, color: 0xfb923c });
+  // Right half of shaft (offset down to show break)
+  g.moveTo(8.5 * s, 8 * s)
+    .lineTo(11 * s, 8 * s)
+    .stroke({ width: 1.5 * s, color: 0xfb923c });
+  // Arrowhead (on right end, pointing right)
+  g.moveTo(13 * s, 8 * s).lineTo(11 * s, 5 * s)
+    .stroke({ width: 1.2 * s, color: 0xfb923c });
+  g.moveTo(13 * s, 8 * s).lineTo(11 * s, 11 * s)
+    .stroke({ width: 1.2 * s, color: 0xfb923c });
+  // Fletching (on left end)
+  g.moveTo(1 * s, 7 * s).lineTo(3 * s, 4 * s)
+    .stroke({ width: 1 * s, color: 0xfb923c });
+  g.moveTo(1 * s, 7 * s).lineTo(3 * s, 10 * s)
+    .stroke({ width: 1 * s, color: 0xfb923c });
+  // X mark at the break point to emphasize disruption
+  g.moveTo(5.5 * s, 5 * s).lineTo(8.5 * s, 10 * s)
+    .stroke({ width: 1.2 * s, color: 0xef4444 });
+  g.moveTo(8.5 * s, 5 * s).lineTo(5.5 * s, 10 * s)
+    .stroke({ width: 1.2 * s, color: 0xef4444 });
+}
+
+/** Small energy bolt icon (used as secondary icon for suppression) */
+function drawEnergySmallIcon(g: Graphics, size: number): void {
+  const s = size / 14;
+  // Simple lightning bolt (energy)
+  g.moveTo(8 * s, 0)
+    .lineTo(4 * s, 7 * s)
+    .lineTo(7 * s, 7 * s)
+    .lineTo(6 * s, 14 * s)
+    .lineTo(10 * s, 6 * s)
+    .lineTo(7 * s, 6 * s)
+    .lineTo(8 * s, 0)
+    .closePath()
+    .fill(0x38bdf8)
+    .stroke({ width: 0.6, color: 0x0284c7, alignment: 1 });
+}
+
+/** Speed down — left-pointing broken arrow */
+function drawSpeedDownIcon(g: Graphics, size: number): void {
+  const s = size / 14;
+  g.moveTo(10 * s, 1 * s)
+    .lineTo(3 * s, 7 * s)
+    .lineTo(10 * s, 13 * s)
+    .lineTo(10 * s, 9 * s)
+    .lineTo(6 * s, 7 * s)
+    .lineTo(10 * s, 5 * s)
+    .closePath()
+    .fill(0xf87171)
+    .stroke({ width: 0.8, color: 0xdc2626, alignment: 1 });
+}
+
+/** Speed up — right-pointing arrow (teal, matches existing speed icon) */
+function drawSpeedUpIcon(g: Graphics, size: number): void {
+  const s = size / 14;
+  g.moveTo(4 * s, 1 * s)
+    .lineTo(11 * s, 7 * s)
+    .lineTo(4 * s, 13 * s)
+    .lineTo(4 * s, 9 * s)
+    .lineTo(8 * s, 7 * s)
+    .lineTo(4 * s, 5 * s)
+    .closePath()
+    .fill(0x2dd4bf)
+    .stroke({ width: 0.8, color: 0x0d9488, alignment: 1 });
+}
+
+// ── Registry ──────────────────────────────────────────────────────────
+
+export const STATUS_DISPLAY: Record<string, StatusDisplayConfig> = {
+  bleed: {
+    label: 'Bleed',
+    description: 'Takes damage equal to stacks at end of turn. Reduced by block.',
+    iconColor: 0xef4444,
+    bgColor: 0x3b1111,
+    borderColor: 0x7f1d1d,
+    drawIcons: [drawBleedIcon],
+  },
+  shock: {
+    label: 'Shock',
+    description: 'Takes damage equal to stacks at end of turn. Reduced by block.',
+    iconColor: 0xfbbf24,
+    bgColor: 0x3b2e11,
+    borderColor: 0x78350f,
+    drawIcons: [drawShockIcon],
+  },
+  radiation: {
+    label: 'Radiation',
+    description: 'Deals damage equal to stacks each turn (ignores block). Stacks halve each turn. Cannot be applied if target has block.',
+    iconColor: 0x22c55e,
+    bgColor: 0x113b1e,
+    borderColor: 0x166534,
+    drawIcons: [drawRadiationIcon],
+  },
+  fortify: {
+    label: 'Fortify',
+    description: 'Block decays slower. Each stack reduces block decay rate.',
+    iconColor: 0x60a5fa,
+    bgColor: 0x11223b,
+    borderColor: 0x1e3a5f,
+    drawIcons: [drawFortifyIcon],
+  },
+  disrupt: {
+    label: 'Disrupt',
+    description: 'Interferes with abilities. May increase costs or reduce effectiveness.',
+    iconColor: 0xc084fc,
+    bgColor: 0x2e1146,
+    borderColor: 0x581c87,
+    drawIcons: [drawDisruptIcon],
+  },
+  suppressed: {
+    label: 'Suppressed',
+    description: 'An enemy is too close. Ranged cards (range 4+) cost extra energy.',
+    iconColor: 0xfb923c,
+    bgColor: 0x3b2211,
+    borderColor: 0x9a3412,
+    drawIcons: [drawSuppressedIcon, drawEnergySmallIcon],
+  },
+  speed_up: {
+    label: 'Speed Up',
+    description: 'Increased movement speed. Move further per energy spent.',
+    iconColor: 0x2dd4bf,
+    bgColor: 0x113b33,
+    borderColor: 0x0d9488,
+    drawIcons: [drawSpeedUpIcon],
+  },
+  speed_down: {
+    label: 'Speed Down',
+    description: 'Reduced movement speed. Costs more energy to move.',
+    iconColor: 0xf87171,
+    bgColor: 0x3b1111,
+    borderColor: 0xdc2626,
+    drawIcons: [drawSpeedDownIcon],
+  },
+};
+
+/**
+ * Get the display config for a status ID.
+ * Returns undefined for unknown statuses (they won't render a badge).
+ */
+export function getStatusDisplay(statusId: string): StatusDisplayConfig | undefined {
+  return STATUS_DISPLAY[statusId];
+}

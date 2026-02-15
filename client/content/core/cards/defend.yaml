@@ -1,0 +1,16 @@
+schemaVersion: 1
+id: defend
+name: "Defend"
+type: skill
+rarity: rare     #common, rare, epic, legendary, mythic.
+cost: 1
+copies: 3
+targeting: ally
+exhaust: false
+expires_after_turns: 0
+description: "Grants a protective barrier to an ally. No range limit on support cards."
+effects:
+  - kind: grant_block_layer
+    amount: 8
+    decay_percent: 100
+

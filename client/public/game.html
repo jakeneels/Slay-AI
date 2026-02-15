@@ -7,46 +7,165 @@
     <style>
         body {
             margin: 0;
-            padding: 20px;
+            padding: 0;
             background: #0f0f0f;
             color: white;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            overflow: hidden;
         }
-        .container {
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-        h1 {
-            font-size: 2rem;
-            font-weight: bold;
-            margin-bottom: 0.5rem;
-        }
-        .subtitle {
-            color: #9ca3af;
-            font-size: 0.875rem;
-            margin-bottom: 1rem;
-        }
-        .game-container {
-            border: 1px solid #374151;
-            border-radius: 8px;
-            background: #0a0a0a;
-            padding: 1rem;
+        .game-row {
+            display: flex;
+            width: 100vw;
+            height: 100vh;
         }
         #gameCanvas {
             display: block;
-            margin: 0 auto;
+            margin: 0;
+            flex: 1;
+            min-width: 0;
+            height: 100vh;
         }
+
+        /* ── Dev Panel ── */
+        #devPanel {
+            background: #111317;
+            border-left: 1px solid #2a2d35;
+            overflow: hidden;
+            transition: width 0.25s ease;
+            flex-shrink: 0;
+            height: 100vh;
+            display: flex;
+            position: relative;
+        }
+        #devPanel.collapsed { width: 28px; }
+        #devPanel.expanded  { width: 340px; }
+
+        #devPanelToggle {
+            width: 28px;
+            min-height: 100%;
+            background: #16181e;
+            border: none;
+            color: #4b5563;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            letter-spacing: 2px;
+            user-select: none;
+            flex-shrink: 0;
+        }
+        #devPanelToggle:hover { background: #1e2028; color: #9ca3af; }
+
+        #devPanelContent {
+            flex: 1;
+            padding: 10px 12px;
+            overflow-y: auto;
+            font-size: 12px;
+            line-height: 1.45;
+        }
+        #devPanel.collapsed #devPanelContent { display: none; }
+
+        /* ── Section styles ── */
+        .dev-section { margin-bottom: 14px; }
+        .dev-section-body {
+            max-height: 240px;
+            overflow-y: auto;
+        }
+        .dev-section-body::-webkit-scrollbar { width: 4px; }
+        .dev-section-body::-webkit-scrollbar-track { background: transparent; }
+        .dev-section-body::-webkit-scrollbar-thumb { background: #374151; border-radius: 2px; }
+        .dev-section-body::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+        .dev-section-title {
+            font-size: 10px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 1px; color: #6b7280;
+            margin-bottom: 6px; border-bottom: 1px solid #1f2937; padding-bottom: 4px;
+            cursor: pointer; user-select: none;
+        }
+        .dev-section-title:hover { color: #9ca3af; }
+        .dev-chevron { font-size: 10px; display: inline-block; width: 10px; }
+        .dev-character-name {
+            font-size: 12px; font-weight: 600; color: #60a5fa;
+            margin-bottom: 2px; margin-top: 8px;
+        }
+        .dev-character-name.enemy { color: #f87171; }
+        .dev-deck-stats { color: #9ca3af; font-size: 10px; margin-bottom: 4px; }
+        .dev-card-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 1px 6px; border-radius: 3px; margin-bottom: 1px;
+        }
+        .dev-card-row:hover { background: #1f2937; }
+        .dev-card-name { color: #d1d5db; font-size: 11px; }
+        .dev-card-count { color: #6b7280; font-size: 10px; font-weight: 600; min-width: 16px; text-align: right; }
+        .dev-card-cost { color: #facc15; font-size: 10px; margin-left: 4px; }
+        .dev-rarity-common    { border-left: 2px solid #9ca3af; }
+        .dev-rarity-uncommon  { border-left: 2px solid #22c55e; }
+        .dev-rarity-rare      { border-left: 2px solid #3b82f6; }
+        .dev-rarity-epic      { border-left: 2px solid #a855f7; }
+        .dev-rarity-legendary { border-left: 2px solid #f59e0b; }
+        .dev-log-entry {
+            color: #9ca3af; font-size: 11px; padding: 1px 0;
+            border-bottom: 1px solid #1a1d24;
+        }
+
+        /* ── Balance Tweaks ── */
+        .dev-bal-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 2px 0; gap: 6px;
+        }
+        .dev-bal-label {
+            color: #9ca3af; font-size: 10px; flex: 1; white-space: nowrap; overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .dev-bal-input {
+            width: 60px; background: #1a1d24; border: 1px solid #2a2d35; border-radius: 3px;
+            color: #e5e7eb; font-size: 11px; padding: 2px 4px; text-align: right;
+            font-family: monospace;
+        }
+        .dev-bal-input:focus { border-color: #3b82f6; outline: none; }
+        .dev-bal-input::-webkit-inner-spin-button { opacity: 0.3; }
+        .dev-bal-btn {
+            background: #1f2937; border: 1px solid #374151; border-radius: 3px;
+            color: #9ca3af; font-size: 10px; padding: 2px 8px; cursor: pointer;
+        }
+        .dev-bal-btn:hover { background: #374151; color: #e5e7eb; }
+        .dev-bal-char-selector {
+            display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 6px;
+        }
+        .dev-bal-char-btn {
+            background: #1a2332; border: 1px solid #2563eb40; border-radius: 3px;
+            color: #60a5fa; font-size: 10px; padding: 2px 6px; cursor: pointer;
+        }
+        .dev-bal-char-btn.enemy {
+            background: #2a1a1a; border-color: #dc262640; color: #f87171;
+        }
+        .dev-bal-char-btn.active {
+            background: #1e3a5f; border-color: #3b82f6; color: #93c5fd;
+        }
+        .dev-bal-char-btn.active.enemy {
+            background: #3f1a1a; border-color: #ef4444; color: #fca5a5;
+        }
+        .dev-bal-char-btn:hover { opacity: 0.85; }
+        .dev-bal-mod-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 1px 4px; font-size: 10px;
+        }
+        .dev-bal-mod-row:hover { background: #1f2937; }
+        .dev-bal-mod-target { color: #d1d5db; }
+        .dev-bal-mod-detail { color: #6b7280; font-family: monospace; font-size: 10px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Slay AI — Pure PIXI Game</h1>
-        <p class="subtitle">Pure PIXI.js with no React - Click cards to select, click enemies to attack, use End Turn button.</p>
-        <div class="game-container">
-            <div id="gameCanvas"></div>
+    <div class="game-row">
+        <div id="gameCanvas"></div>
+        <div id="devPanel" class="expanded">
+            <button id="devPanelToggle">DEV</button>
+            <div id="devPanelContent"></div>
         </div>
     </div>
-
     <script type="module" src="/game.ts"></script>
 </body>
 </html>

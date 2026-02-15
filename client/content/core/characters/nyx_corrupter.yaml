@@ -9,14 +9,17 @@ isPlayer: true
 stats:
   hp: 100
   maxHp: 100
-  energy: 3
-  maxEnergy: 3
+  energy: 4
+  maxEnergy: 4
+  speed: 0
+  suppression: 1
+  suppressionResist: 0
 mechanics:
   - "Inflicts Radiation (ignores block, stacks)"
   - "Plus bleed/shock variants that respect block"
   - "Can spread contamination across enemy slots"
 tags: ["mutant", "radiation", "dot", "debuffer"]
 startingDeck:
-  - "strike_common"
-  - "defend_common"
-  - "blast_rare"
+  - "strike"
+  - "defend"
+  - "blast"

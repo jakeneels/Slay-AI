@@ -1,0 +1,33 @@
+schemaVersion: 1
+id: overclock
+name: "Overclock"
+type: skill
+rarity: mythic
+cost: 1
+copies: 1
+targeting: enemy
+maxRange: 8
+# optimalRange: 2
+exhaust: true
+expires_after_turns: 0
+description: "Mid-range tech burst — damage is minor but the self-buff is the real value."
+effects:
+  - kind: damage
+    amount: 2
+    effectTarget: target   # hits the clicked enemy
+  - kind: knockback
+    amount: 1 
+    effectTarget: target   # hits the clicked enemy
+  - kind: speed
+    amount: 2
+    effectTarget: self     # applies to caster
+  - kind: energy 
+    amount: 1
+    effectTarget: self     # refunded to caster
+animation:
+  damage:
+    projectileColor: 0x00ffff  # Cyan tech energy projectile
+    projectileSpeed: 1500      # Fast tech bolt
+    impactSize: 35            # Smaller, tech-focused impact
+# Mid-range tech burst - damage is minor but self-buff is the real value
+

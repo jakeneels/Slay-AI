@@ -7,6 +7,10 @@ export default defineConfig({
     open: '/game.html',
     hmr: {
       overlay: true
+    },
+    watch: {
+      // Ensure all source files are watched
+      usePolling: false
     }
   },
   test: {
