@@ -9,14 +9,42 @@ import { getGameState, setGameState } from './src/core/gameState.js';
 import { drawCards } from './src/core/deck.js';
 import { shuffleArray } from './src/utils/shuffle.js';
 import { loadContent } from './src/data/contentLoader.js';
-import { render, setApp } from './src/rendering/renderer.js';
+import { render, setApp, getApp } from './src/rendering/renderer.js';
 import { setApp as setCombatApp } from './src/core/combat.js';
 import { WIDTH, HEIGHT } from './src/core/constants.js';
+
+let currentApp: Application | null = null;
+
+/**
+ * Clean up existing PIXI app
+ */
+function cleanup(): void {
+  if (currentApp) {
+    // Destroy the PIXI app
+    currentApp.destroy(true, { children: true, texture: true, baseTexture: true });
+    currentApp = null;
+  }
+  
+  // Remove any existing canvas from container
+  const container = document.getElementById('gameCanvas');
+  if (container) {
+    while (container.firstChild) {
+      container.removeChild(container.firstChild);
+    }
+  }
+  
+  // Clear app references
+  setApp(null);
+  setCombatApp(null);
+}
 
 /**
  * Initialize and start the game
  */
 async function initGame(): Promise<void> {
+  // Clean up existing app if it exists (for hot reload)
+  cleanup();
+  
   const container = document.getElementById('gameCanvas');
   if (!container) {
     console.error('Game canvas container not found');
@@ -34,8 +62,12 @@ async function initGame(): Promise<void> {
     autoDensity: true,
   });
   
-  container.appendChild(app.canvas);
-  app.stage.eventMode = 'static';
+  currentApp = app;
+  const canvas = app.canvas as HTMLCanvasElement;
+  canvas.style.pointerEvents = 'auto';
+  container.appendChild(canvas);
+  // Use 'passive' so the stage passes events to children instead of capturing them
+  app.stage.eventMode = 'passive';
   
   // Set app in modules that need it
   setApp(app);
@@ -57,12 +89,15 @@ async function initGame(): Promise<void> {
   
   gameState.characters = [];
   
-  // Get all card IDs for testing - give each character one of each card
-  const allCardIds = Object.keys(gameState.cardLibrary);
-  console.log('All available cards:', allCardIds);
+  // Get AOE card IDs - only include AOE cards for testing
+  const aoeCardIds = ['shockwave_common', 'fireball_uncommon', 'chain_lightning_rare'].filter(id => 
+    gameState.cardLibrary[id]
+  );
   
-  // Build a deck with exactly one copy of each card (ignore copies field)
-  const testDeck = [...allCardIds]; // One of each card
+  console.log('AOE cards for testing:', aoeCardIds);
+
+  // Build a deck with exactly one copy of each AOE card
+  const testDeck = [...aoeCardIds]; // One of each AOE card
   
   // Add player characters
   playerCharacters.forEach(charDef => {
@@ -128,5 +163,41 @@ async function initGame(): Promise<void> {
   render();
 }
 
-// Start the game when page loads
-window.addEventListener('load', initGame);
+// Start the game
+if (document.readyState === 'loading') {
+  window.addEventListener('load', initGame);
+} else {
+  // DOM already loaded, run immediately
+  initGame();
+}
+
+// Handle HMR updates
+if (import.meta.hot) {
+  import.meta.hot.dispose((data) => {
+    cleanup();
+  });
+  
+  // Accept self (game.ts changes) - full reinit
+  import.meta.hot.accept(() => {
+    console.log('[HMR] game.ts updated, re-initializing...');
+    initGame();
+  });
+  
+  // Accept updates from rendering modules - just re-render
+  import.meta.hot.accept(['./src/rendering/renderer.ts', './src/rendering/renderCharacters.ts', './src/rendering/renderHand.ts', './src/rendering/renderUI.ts', './src/rendering/renderBackground.ts'], (modules) => {
+    console.log('[HMR] Rendering module updated, re-rendering...');
+    if (currentApp) {
+      render();
+    }
+  });
+  
+  // Fallback: if any module updates and we have an app, try to re-render
+  import.meta.hot.on('vite:beforeUpdate', () => {
+    if (currentApp) {
+      // Small delay to ensure modules are updated
+      setTimeout(() => {
+        render();
+      }, 10);
+    }
+  });
+}

@@ -1,7 +1,7 @@
 // UI rendering (turn info, combat log, buttons)
 
 import type { Application } from 'pixi.js';
-import { Graphics, Text } from 'pixi.js';
+import { Graphics, Text, Rectangle } from 'pixi.js';
 import type { GameState } from '../core/types.js';
 import { WIDTH } from '../core/constants.js';
 import { getCard } from '../core/card.js';
@@ -28,7 +28,14 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
     const card = getCard(selectedCardId);
     if (card) {
       let instructionText = 'Click enemy to attack!';
-      if (card.targeting === 'ally' || card.targeting === 'allAllies') {
+      if (card.targeting === 'aoe') {
+        const aoeSlots = card.aoeSlots ?? 3;
+        if (aoeSlots === 4) {
+          instructionText = 'Click target - hits all enemies!';
+        } else {
+          instructionText = `Click target - hits ${aoeSlots} slots!`;
+        }
+      } else if (card.targeting === 'ally' || card.targeting === 'allAllies') {
         instructionText = 'Click ally to target!';
       } else if (card.targeting === 'self') {
         instructionText = 'Click card again to use!';
@@ -56,6 +63,7 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
   btn.y = 20;
   btn.eventMode = 'static';
   btn.cursor = 'pointer';
+  btn.hitArea = new Rectangle(0, 0, btnW, btnH);
   btn.on('pointerdown', () => {
     endTurn(renderCallback);
   });
