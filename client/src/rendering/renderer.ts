@@ -30,7 +30,6 @@ export function render(): void {
   if (!app) return;
   
   const gameState = getGameState();
-  
   app.stage.removeChildren();
   
   // Check if current player is dead and advance turn if needed

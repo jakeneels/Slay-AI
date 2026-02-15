@@ -14,6 +14,7 @@ import { setApp as setCombatApp } from './src/core/combat.js';
 import { WIDTH, HEIGHT } from './src/core/constants.js';
 
 let currentApp: Application | null = null;
+let initPromise: Promise<void> | null = null;
 
 /**
  * Clean up existing PIXI app
@@ -42,18 +43,31 @@ function cleanup(): void {
  * Initialize and start the game
  */
 async function initGame(): Promise<void> {
-  // Clean up existing app if it exists (for hot reload)
-  cleanup();
-  
-  const container = document.getElementById('gameCanvas');
-  if (!container) {
-    console.error('Game canvas container not found');
+  // Prevent concurrent init (e.g. from load + HMR racing)
+  if (initPromise) {
+    await initPromise;
     return;
   }
   
-  // Initialize PIXI application
-  const app = new Application();
-  await app.init({
+  initPromise = (async () => {
+    try {
+    // Clean up existing app if it exists (for hot reload)
+    cleanup();
+    
+    const container = document.getElementById('gameCanvas');
+    if (!container) {
+      console.error('Game canvas container not found');
+      return;
+    }
+    
+    // Ensure container is empty before we append (guard against races)
+    while (container.firstChild) {
+      container.removeChild(container.firstChild);
+    }
+    
+    // Initialize PIXI application
+    const app = new Application();
+    await app.init({
     width: WIDTH,
     height: HEIGHT,
     backgroundColor: 0x1a1a1a,
@@ -90,7 +104,7 @@ async function initGame(): Promise<void> {
   gameState.characters = [];
   
   // Get AOE card IDs - only include AOE cards for testing
-  const aoeCardIds = ['shockwave_common', 'fireball_uncommon', 'chain_lightning_rare'].filter(id => 
+  const aoeCardIds = ['shockwave', 'fireball', 'chain_lightning'].filter(id => 
     gameState.cardLibrary[id]
   );
   
@@ -161,6 +175,12 @@ async function initGame(): Promise<void> {
   
   // Initial render
   render();
+    } finally {
+      initPromise = null;
+    }
+  })();
+  
+  await initPromise;
 }
 
 // Start the game
