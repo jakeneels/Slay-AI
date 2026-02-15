@@ -11,6 +11,9 @@ stats:
   maxHp: 40
   energy: 3
   maxEnergy: 3
+  speed: 0
+  suppression: 0
+  suppressionResist: 1
 mechanics:
   - "Shield generation"
   - "Enemy buff abilities"

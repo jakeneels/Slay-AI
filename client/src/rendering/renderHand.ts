@@ -2,21 +2,24 @@
 
 import type { Application } from 'pixi.js';
 import { Graphics, Text, Rectangle } from 'pixi.js';
-import type { GameState, Character, Card, CardEffect, BaseCardEffect } from '../core/types.js';
+import type { GameState, Character, Card, CardEffect, BaseCardEffect, StatusEffect } from '../core/types.js';
 import { WIDTH, SLOTS_PER_SIDE } from '../core/constants.js';
 import { getCard } from '../core/card.js';
 import { getSelectedCardId, setSelectedCardId } from '../core/gameState.js';
 import { render as renderCallback } from './renderer.js';
-import { playCard } from '../core/combat.js';
+import { playCard, getSuppressionCostPenalty } from '../core/combat.js';
 import { createEnergyIcon } from './icons/energyIcon.js';
 import { createDamageIcon } from './icons/damageIcon.js';
 import { createSpeedIcon } from './icons/speedIcon.js';
+import { createKnockbackIcon } from './icons/knockbackIcon.js';
 import { createHealIcon } from './icons/healIcon.js';
 import { createRarityIcon } from './icons/rarityIcon.js';
 import { createExhaustIcon } from './icons/exhaustIcon.js';
 import { createShieldIcon } from './icons/shieldIcon.js';
 import { createRangeIcon } from './icons/rangeIcon.js';
 import { calculateRangeModifier } from '../core/constants.js';
+import { setHoveredCard } from './tooltipState.js';
+import { getStatusDisplay } from './statusConfig.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -137,53 +140,85 @@ function createEffectIcon(kind: string, size: number): Graphics | null {
     case 'speed': return createSpeedIcon(size);
     case 'energy': return createEnergyIcon(size);
     case 'grant_block_layer': return createShieldIcon(size);
+    case 'knockback': return createKnockbackIcon(size);
     default: return null;
   }
 }
 
-/** Render a single row of effect icons (shared between player/enemy). Returns x-advance. */
-function renderEffectRow(
+/** Map effect kind to a color matching its icon for color-coded numbers. */
+function effectColor(kind: string): number {
+  switch (kind) {
+    case 'damage': case 'aoe_damage': return 0xef4444;   // red
+    case 'heal':                      return 0x4ade80;   // green
+    case 'speed':                     return 0x2dd4bf;   // teal
+    case 'energy':                    return 0x38bdf8;   // blue
+    case 'grant_block_layer':         return 0x60a5fa;   // blue
+    case 'knockback':                 return 0xef4444;   // red-orange
+    default:                          return 0xd1d5db;   // gray fallback
+  }
+}
+
+/** Render a single effect: [icon]N with color-coded number. Returns x-advance. */
+function renderSingleEffect(
   app: Application,
-  effects: CardEffect[],
+  effect: CardEffect,
   startX: number,
   rowY: number,
   iconSize: number,
-  iconGap: number,
-  blockGap: number,
   fontSize: number,
 ): number {
-  let ex = startX;
-  for (const effect of effects) {
-    if (effect.kind === 'modifier' || effect.kind === 'deck_inject') continue;
-    const amt = (effect as BaseCardEffect).amount;
-    const icon = createEffectIcon(effect.kind, iconSize);
-    if (!icon) {
-      // Fallback: text-only for unsupported kinds
-      const style = { fill: 0x9ca3af, fontSize };
-      const t = new Text({ text: `${effect.kind}: ${amt}`, style });
-      t.x = ex; t.y = rowY; t.eventMode = 'none';
-      app.stage.addChild(t);
-      ex += t.width;
-    } else if (amt <= 5) {
-      for (let i = 0; i < amt; i++) {
-        const ic = i === 0 ? icon : createEffectIcon(effect.kind, iconSize)!;
-        ic.x = ex; ic.y = rowY;
-        app.stage.addChild(ic);
-        ex += iconSize + iconGap;
-      }
-    } else {
-      const numText = new Text({
-        text: `${amt} ×`,
-        style: { fill: 0xd1d5db, fontSize, fontWeight: 'bold' }
-      });
-      numText.x = ex; numText.y = rowY; numText.eventMode = 'none';
-      app.stage.addChild(numText);
-      ex += numText.width + 4;
-      icon.x = ex; icon.y = rowY;
-      app.stage.addChild(icon);
-      ex += iconSize;
+  if (effect.kind === 'modifier' || effect.kind === 'deck_inject') return startX;
+
+  // Status effects use their own icon + stacks display
+  if (effect.kind === 'status') {
+    const se = effect as StatusEffect;
+    const stacks = se.stacks ?? 1;
+    const statusDisplay = getStatusDisplay(se.status);
+    let ex = startX;
+
+    // Draw the status icon from statusConfig if available
+    if (statusDisplay && statusDisplay.drawIcons.length > 0) {
+      const iconG = new Graphics();
+      statusDisplay.drawIcons[0](iconG, iconSize);
+      iconG.x = ex; iconG.y = rowY;
+      iconG.eventMode = 'none';
+      app.stage.addChild(iconG);
+      ex += iconSize + 2;
     }
-    ex += blockGap;
+
+    // Stacks number in the status color
+    const color = statusDisplay?.iconColor ?? 0x9ca3af;
+    const stackText = new Text({
+      text: `${stacks}`,
+      style: { fill: color, fontSize, fontWeight: 'bold' }
+    });
+    stackText.x = ex; stackText.y = rowY; stackText.eventMode = 'none';
+    app.stage.addChild(stackText);
+    ex += stackText.width;
+
+    return ex;
+  }
+
+  const amt = (effect as BaseCardEffect).amount;
+  const icon = createEffectIcon(effect.kind, iconSize);
+  let ex = startX;
+  if (!icon) {
+    const style = { fill: 0x9ca3af, fontSize };
+    const t = new Text({ text: `${effect.kind}: ${amt}`, style });
+    t.x = ex; t.y = rowY; t.eventMode = 'none';
+    app.stage.addChild(t);
+    ex += t.width;
+  } else {
+    icon.x = ex; icon.y = rowY;
+    app.stage.addChild(icon);
+    ex += iconSize + 1;
+    const numText = new Text({
+      text: `${amt}`,
+      style: { fill: effectColor(effect.kind), fontSize, fontWeight: 'bold' }
+    });
+    numText.x = ex; numText.y = rowY; numText.eventMode = 'none';
+    app.stage.addChild(numText);
+    ex += numText.width;
   }
   return ex;
 }
@@ -212,12 +247,23 @@ export function renderHand(app: Application, gameState: GameState): void {
 
 function renderPlayerHand(app: Application, _gameState: GameState, currentPlayer: Character): void {
   const cards = currentPlayer.hand;
-  const cardW = 140;
-  const cardH = 100; // taller to fit grouped rows
-  const spacing = 10;
+  const cardW = 125;
+  const cardH = 155;
+  const spacing = 8;
   const totalW = cards.length * cardW + Math.max(0, cards.length - 1) * spacing;
   const startX = (WIDTH - totalW) / 2;
-  const y = 60;
+  const y = 10;
+
+  /** Draw a thin semi-transparent divider across the card. */
+  const drawDivider = (x: number, dy: number) => {
+    const line = new Graphics();
+    line.moveTo(0, 0).lineTo(cardW - 20, 0);
+    line.stroke({ width: 1, color: 0x374151 });
+    line.alpha = 0.5;
+    line.x = x + 10; line.y = dy;
+    line.eventMode = 'none';
+    app.stage.addChild(line);
+  };
 
   cards.forEach((cardId, i) => {
     const card = getCard(cardId);
@@ -226,7 +272,9 @@ function renderPlayerHand(app: Application, _gameState: GameState, currentPlayer
     const x = startX + i * (cardW + spacing);
     const selectedCardId = getSelectedCardId();
     const isSelected = selectedCardId === cardId;
-    const canAfford = currentPlayer.energy >= card.cost.energy;
+    const suppressionPenalty = getSuppressionCostPenalty(currentPlayer, card);
+    const totalCost = card.cost.energy + suppressionPenalty;
+    const canAfford = currentPlayer.energy >= totalCost;
 
     // Card background
     const bg = new Graphics();
@@ -251,94 +299,148 @@ function renderPlayerHand(app: Application, _gameState: GameState, currentPlayer
     });
     app.stage.addChild(bg);
 
-    // Card name
+    // ── Header zone (y+8) ──
     const name = new Text({
       text: card.name,
       style: { fill: 0xffffff, fontSize: 14, fontWeight: 'bold' }
     });
-    name.x = x + 10; name.y = y + 10; name.eventMode = 'none';
+    name.x = x + 10; name.y = y + 8; name.eventMode = 'none';
     app.stage.addChild(name);
 
-    // Cost row (energy icons)
-    const energyCost = card.cost.energy;
-    const energyIconSize = 14;
-    const energyIconGap = 3;
-    let costX = x + 10;
-    if (energyCost <= 5) {
-      for (let j = 0; j < energyCost; j++) {
-        const ei = createEnergyIcon(energyIconSize);
-        ei.x = costX; ei.y = y + 27;
-        app.stage.addChild(ei);
-        costX += energyIconSize + energyIconGap;
-      }
-    } else {
-      const ct = new Text({
-        text: `${energyCost} ×`,
-        style: { fill: 0x60a5fa, fontSize: 12, fontWeight: 'bold' }
+    // Rarity indicator (top-right) — interactive for tooltip
+    if (card.rarity) {
+      const ri = createRarityIcon(card.rarity, 8);
+      const riX = x + cardW - 15;
+      const riY = y + 8;
+      ri.x = riX; ri.y = riY;
+      ri.eventMode = 'static';
+      ri.cursor = 'help';
+      ri.hitArea = new Rectangle(-8, -8, 24, 24);
+      const templateId = card.id;
+      ri.on('pointerenter', () => {
+        if (setHoveredCard(templateId, riX, riY + 16)) renderCallback();
       });
-      ct.x = costX; ct.y = y + 28; ct.eventMode = 'none';
-      app.stage.addChild(ct);
-      costX += ct.width + 4;
-      const ei = createEnergyIcon(energyIconSize);
-      ei.x = costX; ei.y = y + 27;
-      app.stage.addChild(ei);
+      ri.on('pointerleave', () => {
+        if (setHoveredCard(null)) renderCallback();
+      });
+      app.stage.addChild(ri);
     }
 
-    // Grouped effect rows
+    // ── Divider (y+26) ──
+    drawDivider(x, y + 26);
+
+    // ── Cost zone (y+30): [energy icon] N ──
+    const energyCost = card.cost.energy;
+    const energyIconSize = 12;
+    let costX = x + 10;
+    {
+      const ei = createEnergyIcon(energyIconSize);
+      ei.x = costX; ei.y = y + 30;
+      app.stage.addChild(ei);
+      costX += energyIconSize + 2;
+
+      if (suppressionPenalty > 0) {
+        const ct = new Text({
+          text: `${totalCost}`,
+          style: { fill: 0xfb923c, fontSize: 12, fontWeight: 'bold' }
+        });
+        ct.x = costX; ct.y = y + 30; ct.eventMode = 'none';
+        app.stage.addChild(ct);
+        costX += ct.width + 3;
+        const origCt = new Text({
+          text: `(${energyCost})`,
+          style: { fill: 0x6b7280, fontSize: 9 }
+        });
+        origCt.x = costX; origCt.y = y + 32; origCt.eventMode = 'none';
+        app.stage.addChild(origCt);
+      } else {
+        const ct = new Text({
+          text: `${energyCost}`,
+          style: { fill: 0x38bdf8, fontSize: 12, fontWeight: 'bold' }
+        });
+        ct.x = costX; ct.y = y + 30; ct.eventMode = 'none';
+        app.stage.addChild(ct);
+      }
+    }
+
+    // ── Divider (y+46) ──
+    drawDivider(x, y + 46);
+
+    // ── Effects zone (y+50): one effect per line, grouped by target ──
     const groups = groupEffects(card);
     const effectIconSize = 12;
-    const effectIconGap = 2;
-    const effectBlockGap = 6;
-    const rowHeight = 14;
-    let rowIdx = 0;
+    const rowHeight = 17;
+    const groupGap = 6; // extra vertical space between target groups
+    let curY = y + 50;
+    let groupIdx = 0;
 
-    // Calculate reachable slots from card's maxRange (best-case from frontline)
     const reachableSlots = card.maxRange ? Math.min(card.maxRange, SLOTS_PER_SIDE) : undefined;
 
     for (const [key, effects] of groups) {
-      const rowY = y + 46 + rowIdx * rowHeight;
-      let ex = x + 10;
-
       const lbl = labelForKey(key);
-      if (lbl.usePositionIndicator) {
-        const aoeTargetSide = key.startsWith('aoe_') ? (card.targetSide === 'ally' ? 'ally' : 'enemy') : undefined;
-        const noEmptySlots = key === 'self' || key.startsWith('aoe_');
-        // Pass reachableSlots for enemy/ally targeting (not for self)
-        const rangeForIndicator = key !== 'self' ? reachableSlots : undefined;
-        ex += renderPositionIndicator(app, ex, rowY, lbl.filledCount, lbl.targetType, effectIconSize, aoeTargetSide, noEmptySlots, rangeForIndicator) + 4;
+      let indicatorWidth = 0;
+      const renderableEffects = effects.filter(e => e.kind !== 'modifier' && e.kind !== 'deck_inject');
+      if (renderableEffects.length === 0) continue;
+
+      // Divider between target groups (not before the first)
+      if (groupIdx > 0) {
+        const divG = new Graphics();
+        divG.moveTo(0, 0).lineTo(cardW - 20, 0);
+        divG.stroke({ width: 1, color: 0x4b5563 });
+        divG.alpha = 0.35;
+        divG.x = x + 10; divG.y = curY + 1;
+        divG.eventMode = 'none';
+        app.stage.addChild(divG);
+        curY += groupGap;
       }
 
-      renderEffectRow(app, effects, ex, rowY, effectIconSize, effectIconGap, effectBlockGap, effectIconSize);
-      rowIdx++;
+      for (let ei = 0; ei < renderableEffects.length; ei++) {
+        let ex = x + 10;
+
+        if (ei === 0 && lbl.usePositionIndicator) {
+          const aoeTargetSide = key.startsWith('aoe_') ? (card.targetSide === 'ally' ? 'ally' : 'enemy') : undefined;
+          const noEmptySlots = key === 'self' || key.startsWith('aoe_');
+          const rangeForIndicator = key !== 'self' ? reachableSlots : undefined;
+          indicatorWidth = renderPositionIndicator(app, ex, curY, lbl.filledCount, lbl.targetType, effectIconSize, aoeTargetSide, noEmptySlots, rangeForIndicator);
+          ex += indicatorWidth + 3;
+        } else if (lbl.usePositionIndicator) {
+          ex += indicatorWidth + 3;
+        }
+
+        renderSingleEffect(app, renderableEffects[ei], ex, curY, effectIconSize, 11);
+        curY += rowHeight;
+      }
+      groupIdx++;
     }
 
-    // Rarity indicator (top-right)
-    if (card.rarity) {
-      const ri = createRarityIcon(card.rarity, 8);
-      ri.x = x + cardW - 15; ri.y = y + 8;
-      app.stage.addChild(ri);
-    }
+    // ── Divider before footer (y+cardH-22) ──
+    drawDivider(x, y + cardH - 22);
+
+    // ── Footer zone (y+cardH-18) ──
 
     // Exhaust flame (bottom-left)
     if (card.exhaust) {
       const flame = createExhaustIcon(12);
-      flame.x = x + 6; flame.y = y + cardH - 16;
+      flame.x = x + 8; flame.y = y + cardH - 17;
       app.stage.addChild(flame);
     }
 
-    // Range indicator (bottom-right) - shows crosshair icon + range text
-    if (card.maxRange || card.optimalRange !== undefined) {
+    // Range indicator (bottom-right) - crosshair icon + range text
+    if (card.maxRange || card.minRange || card.optimalRange !== undefined) {
       const rangeIconSize = 11;
       const rIcon = createRangeIcon(rangeIconSize);
-      rIcon.x = x + cardW - 50; rIcon.y = y + cardH - 15;
+      rIcon.x = x + cardW - 50; rIcon.y = y + cardH - 17;
       app.stage.addChild(rIcon);
 
-      // Build range label: "opt / max" or just "max"
       let rangeLabel: string;
-      if (card.optimalRange !== undefined && card.maxRange) {
+      if (card.minRange && card.maxRange) {
+        rangeLabel = `${card.minRange}-${card.maxRange}`;
+      } else if (card.optimalRange !== undefined && card.maxRange) {
         rangeLabel = `${card.optimalRange}/${card.maxRange}`;
       } else if (card.maxRange) {
         rangeLabel = `≤${card.maxRange}`;
+      } else if (card.minRange) {
+        rangeLabel = `≥${card.minRange}`;
       } else {
         rangeLabel = `★${card.optimalRange}`;
       }
@@ -348,7 +450,7 @@ function renderPlayerHand(app: Application, _gameState: GameState, currentPlayer
         style: { fill: 0x06b6d4, fontSize: 10, fontWeight: 'bold' }
       });
       rangeTxt.x = x + cardW - 50 + rangeIconSize + 3;
-      rangeTxt.y = y + cardH - 14;
+      rangeTxt.y = y + cardH - 16;
       rangeTxt.eventMode = 'none';
       app.stage.addChild(rangeTxt);
     }
@@ -361,12 +463,12 @@ function renderPlayerHand(app: Application, _gameState: GameState, currentPlayer
 
 function renderEnemyHand(app: Application, _gameState: GameState, currentPlayer: Character): void {
   const cards = currentPlayer.hand;
-  const cardW = 120;
-  const cardH = 75; // taller to fit grouped rows
-  const spacing = 8;
+  const cardW = 105;
+  const cardH = 120;
+  const spacing = 6;
   const totalW = cards.length * cardW + Math.max(0, cards.length - 1) * spacing;
   const startX = (WIDTH - totalW) / 2;
-  const y = 60;
+  const y = 10;
 
   // Enemy hand label
   const label = new Text({
@@ -376,12 +478,25 @@ function renderEnemyHand(app: Application, _gameState: GameState, currentPlayer:
   label.x = startX; label.y = y - 20; label.eventMode = 'none';
   app.stage.addChild(label);
 
+  /** Draw a thin semi-transparent divider across the enemy card. */
+  const drawDivider = (x: number, dy: number) => {
+    const line = new Graphics();
+    line.moveTo(0, 0).lineTo(cardW - 16, 0);
+    line.stroke({ width: 1, color: 0x374151 });
+    line.alpha = 0.5;
+    line.x = x + 8; line.y = dy;
+    line.eventMode = 'none';
+    app.stage.addChild(line);
+  };
+
   cards.forEach((cardId, i) => {
     const card = getCard(cardId);
     if (!card) return;
 
     const x = startX + i * (cardW + spacing);
-    const canAfford = currentPlayer.energy >= card.cost.energy;
+    const enemySuppPenalty = getSuppressionCostPenalty(currentPlayer, card);
+    const enemyTotalCost = card.cost.energy + enemySuppPenalty;
+    const canAfford = currentPlayer.energy >= enemyTotalCost;
 
     // Card background
     const bg = new Graphics();
@@ -392,92 +507,141 @@ function renderEnemyHand(app: Application, _gameState: GameState, currentPlayer:
     bg.x = x; bg.y = y;
     app.stage.addChild(bg);
 
-    // Card name
+    // ── Header zone (y+6) ──
     const name = new Text({
       text: card.name,
       style: { fill: 0xffffff, fontSize: 11, fontWeight: 'bold' }
     });
-    name.x = x + 8; name.y = y + 8; name.eventMode = 'none';
+    name.x = x + 8; name.y = y + 6; name.eventMode = 'none';
     app.stage.addChild(name);
-
-    // Cost row (energy icons)
-    const energyCost = card.cost.energy;
-    const energyIconSize = 10;
-    const energyIconGap = 2;
-    let costX = x + 8;
-    if (energyCost <= 5) {
-      for (let j = 0; j < energyCost; j++) {
-        const ei = createEnergyIcon(energyIconSize);
-        ei.x = costX; ei.y = y + 22;
-        app.stage.addChild(ei);
-        costX += energyIconSize + energyIconGap;
-      }
-    } else {
-      const ct = new Text({
-        text: `${energyCost} ×`,
-        style: { fill: 0x60a5fa, fontSize: 10, fontWeight: 'bold' }
-      });
-      ct.x = costX; ct.y = y + 23; ct.eventMode = 'none';
-      app.stage.addChild(ct);
-      costX += ct.width + 3;
-      const ei = createEnergyIcon(energyIconSize);
-      ei.x = costX; ei.y = y + 22;
-      app.stage.addChild(ei);
-    }
-
-    // Grouped effect rows
-    const groups = groupEffects(card);
-    const effectIconSize = 9;
-    const effectIconGap = 1;
-    const effectBlockGap = 4;
-    const rowHeight = 12;
-    let rowIdx = 0;
-
-    // Calculate reachable slots from card's maxRange (best-case from frontline)
-    const reachableSlots = card.maxRange ? Math.min(card.maxRange, SLOTS_PER_SIDE) : undefined;
-
-    for (const [key, effects] of groups) {
-      const rowY = y + 36 + rowIdx * rowHeight;
-      let ex = x + 8;
-
-      const lbl = labelForKey(key);
-      if (lbl.usePositionIndicator) {
-        const aoeTargetSide = key.startsWith('aoe_') ? (card.targetSide === 'ally' ? 'ally' : 'enemy') : undefined;
-        const noEmptySlots = key === 'self' || key.startsWith('aoe_');
-        const rangeForIndicator = key !== 'self' ? reachableSlots : undefined;
-        ex += renderPositionIndicator(app, ex, rowY, lbl.filledCount, lbl.targetType, effectIconSize, aoeTargetSide, noEmptySlots, rangeForIndicator) + 3;
-      }
-
-      renderEffectRow(app, effects, ex, rowY, effectIconSize, effectIconGap, effectBlockGap, effectIconSize);
-      rowIdx++;
-    }
 
     // Rarity indicator (top-right)
     if (card.rarity) {
       const ri = createRarityIcon(card.rarity, 6);
-      ri.x = x + cardW - 12; ri.y = y + 6;
+      const riX = x + cardW - 12;
+      const riY = y + 6;
+      ri.x = riX; ri.y = riY;
+      ri.eventMode = 'static';
+      ri.cursor = 'help';
+      ri.hitArea = new Rectangle(-6, -6, 20, 20);
+      const templateId = card.id;
+      ri.on('pointerenter', () => {
+        if (setHoveredCard(templateId, riX, riY + 14)) renderCallback();
+      });
+      ri.on('pointerleave', () => {
+        if (setHoveredCard(null)) renderCallback();
+      });
       app.stage.addChild(ri);
     }
+
+    // ── Divider (y+20) ──
+    drawDivider(x, y + 20);
+
+    // ── Cost zone (y+24): [energy icon] N ──
+    const energyCost = card.cost.energy;
+    const energyIconSize = 9;
+    let costX = x + 8;
+    {
+      const ei = createEnergyIcon(energyIconSize);
+      ei.x = costX; ei.y = y + 24;
+      app.stage.addChild(ei);
+      costX += energyIconSize + 2;
+
+      if (enemySuppPenalty > 0) {
+        const ct = new Text({
+          text: `${enemyTotalCost}`,
+          style: { fill: 0xfb923c, fontSize: 10, fontWeight: 'bold' }
+        });
+        ct.x = costX; ct.y = y + 24; ct.eventMode = 'none';
+        app.stage.addChild(ct);
+      } else {
+        const ct = new Text({
+          text: `${energyCost}`,
+          style: { fill: 0x38bdf8, fontSize: 10, fontWeight: 'bold' }
+        });
+        ct.x = costX; ct.y = y + 24; ct.eventMode = 'none';
+        app.stage.addChild(ct);
+      }
+    }
+
+    // ── Divider (y+37) ──
+    drawDivider(x, y + 37);
+
+    // ── Effects zone (y+40): one effect per line, grouped by target ──
+    const groups = groupEffects(card);
+    const effectIconSize = 9;
+    const rowHeight = 14;
+    const groupGap = 5;
+    let curY = y + 40;
+    let groupIdx = 0;
+
+    const reachableSlots = card.maxRange ? Math.min(card.maxRange, SLOTS_PER_SIDE) : undefined;
+
+    for (const [key, effects] of groups) {
+      const lbl = labelForKey(key);
+      let indicatorWidth = 0;
+      const renderableEffects = effects.filter(e => e.kind !== 'modifier' && e.kind !== 'deck_inject');
+      if (renderableEffects.length === 0) continue;
+
+      // Divider between target groups (not before the first)
+      if (groupIdx > 0) {
+        const divG = new Graphics();
+        divG.moveTo(0, 0).lineTo(cardW - 16, 0);
+        divG.stroke({ width: 1, color: 0x4b5563 });
+        divG.alpha = 0.35;
+        divG.x = x + 8; divG.y = curY + 1;
+        divG.eventMode = 'none';
+        app.stage.addChild(divG);
+        curY += groupGap;
+      }
+
+      for (let ei = 0; ei < renderableEffects.length; ei++) {
+        let ex = x + 8;
+
+        if (ei === 0 && lbl.usePositionIndicator) {
+          const aoeTargetSide = key.startsWith('aoe_') ? (card.targetSide === 'ally' ? 'ally' : 'enemy') : undefined;
+          const noEmptySlots = key === 'self' || key.startsWith('aoe_');
+          const rangeForIndicator = key !== 'self' ? reachableSlots : undefined;
+          indicatorWidth = renderPositionIndicator(app, ex, curY, lbl.filledCount, lbl.targetType, effectIconSize, aoeTargetSide, noEmptySlots, rangeForIndicator);
+          ex += indicatorWidth + 2;
+        } else if (lbl.usePositionIndicator) {
+          ex += indicatorWidth + 2;
+        }
+
+        renderSingleEffect(app, renderableEffects[ei], ex, curY, effectIconSize, 9);
+        curY += rowHeight;
+      }
+      groupIdx++;
+    }
+
+    // ── Divider before footer (y+cardH-18) ──
+    drawDivider(x, y + cardH - 18);
+
+    // ── Footer zone ──
 
     // Exhaust flame (bottom-left)
     if (card.exhaust) {
       const flame = createExhaustIcon(9);
-      flame.x = x + 5; flame.y = y + cardH - 13;
+      flame.x = x + 6; flame.y = y + cardH - 14;
       app.stage.addChild(flame);
     }
 
     // Range indicator (bottom-right) - crosshair icon + range
-    if (card.maxRange || card.optimalRange !== undefined) {
+    if (card.maxRange || card.minRange || card.optimalRange !== undefined) {
       const rangeIconSize = 8;
       const rIcon = createRangeIcon(rangeIconSize);
-      rIcon.x = x + cardW - 40; rIcon.y = y + cardH - 12;
+      rIcon.x = x + cardW - 40; rIcon.y = y + cardH - 14;
       app.stage.addChild(rIcon);
 
       let rangeLabel: string;
-      if (card.optimalRange !== undefined && card.maxRange) {
+      if (card.minRange && card.maxRange) {
+        rangeLabel = `${card.minRange}-${card.maxRange}`;
+      } else if (card.optimalRange !== undefined && card.maxRange) {
         rangeLabel = `${card.optimalRange}/${card.maxRange}`;
       } else if (card.maxRange) {
         rangeLabel = `≤${card.maxRange}`;
+      } else if (card.minRange) {
+        rangeLabel = `≥${card.minRange}`;
       } else {
         rangeLabel = `★${card.optimalRange}`;
       }
@@ -487,7 +651,7 @@ function renderEnemyHand(app: Application, _gameState: GameState, currentPlayer:
         style: { fill: 0x06b6d4, fontSize: 8, fontWeight: 'bold' }
       });
       rangeTxt.x = x + cardW - 40 + rangeIconSize + 2;
-      rangeTxt.y = y + cardH - 11;
+      rangeTxt.y = y + cardH - 13;
       rangeTxt.eventMode = 'none';
       app.stage.addChild(rangeTxt);
     }

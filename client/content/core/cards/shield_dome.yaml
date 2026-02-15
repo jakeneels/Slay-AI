@@ -1,0 +1,19 @@
+schemaVersion: 1
+id: shield_dome
+name: "Shield Dome"
+type: skill
+rarity: epic     #common, rare, epic, legendary, mythic.
+cost: 3
+copies: 3
+targeting: aoe
+targetSide: ally
+aoeSlots: 3
+maxRange: 5
+exhaust: false
+expires_after_turns: 0
+description: "Grants a protective barrier to all allies in a 3-slot AOE."
+effects:
+  - kind: grant_block_layer
+    amount: 8
+    decay_percent: 100
+

@@ -10,10 +10,11 @@ sprite: "/assets/game/allies/jacob.png"
 stats:
   hp: 90
   maxHp: 120
-  energy: 5
-  maxEnergy: 6
-  speed: 5
-  moveEnergyCost: 1
+  energy: 6
+  maxEnergy: 7
+  speed: 1
+  suppression: 2
+  suppressionResist: 1
 mechanics:
   - "Generates block efficiently"
   - "Fortify scaling"
@@ -21,6 +22,7 @@ mechanics:
 tags: ["warrior", "tech", "vanguard", "tank"]
 startingDeck:
   - "defend"
-  - "defend"
   - "strike"
-  - "overclock"
+  - "shield_dome"
+  - "linebreaker"
+  - "energy_lasso"

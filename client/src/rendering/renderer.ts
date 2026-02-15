@@ -6,8 +6,11 @@ import { renderBackground } from './renderBackground.js';
 import { renderLanes } from './renderLanes.js';
 import { renderCharacters } from './renderCharacters.js';
 import { renderHand } from './renderHand.js';
-import { renderTurnInfo, renderCombatLog } from './renderUI.js';
+import { renderTurnInfo } from './renderUI.js';
 import { renderCardTooltip } from './renderCardTooltip.js';
+import { renderStatusTooltip } from './renderStatusTooltip.js';
+import { renderDevPanel } from './devPanel.js';
+import { renderVictoryModal } from './renderVictoryModal.js';
 
 let app: Application | null = null;
 
@@ -41,7 +44,6 @@ export function render(): void {
     const livingCharacters = gameState.characters.filter(c => c.hp > 0);
     if (livingCharacters.length > 0) {
       gameState.currentPlayerId = livingCharacters[0].id;
-      console.log(`Dead player detected, switching to: ${livingCharacters[0].name}`);
     }
   }
   
@@ -50,7 +52,15 @@ export function render(): void {
   renderCharacters(app, gameState);
   renderHand(app, gameState);
   renderTurnInfo(app, gameState);
-  renderCombatLog(app, gameState);
   renderCardTooltip(app);
+  renderStatusTooltip(app);
+
+  // Victory modal overlay (renders on top of everything)
+  if (gameState.combatResult === 'victory' && gameState.pendingReward) {
+    renderVictoryModal(app, gameState);
+  }
+
+  // Update HTML dev panel
+  renderDevPanel(gameState);
 }
 

@@ -11,6 +11,9 @@ stats:
   maxHp: 45
   energy: 4
   maxEnergy: 4
+  speed: 1
+  suppression: 1
+  suppressionResist: 2
 mechanics:
   - "Attacks drain player energy"
   - "Applies 'jammed' debuff (reduces accuracy)"

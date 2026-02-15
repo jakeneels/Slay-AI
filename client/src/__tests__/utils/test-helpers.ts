@@ -38,6 +38,11 @@ export function createMockCharacter(overrides?: Partial<Character>): Character {
     statuses: overrides?.statuses || [],
     isPlayer: overrides?.isPlayer ?? true,
     slotIndex: overrides?.slotIndex ?? 0,
+    speed: overrides?.speed ?? 0,
+    moveCharges: overrides?.moveCharges ?? 0,
+    suppression: overrides?.suppression ?? 0,
+    suppressionResist: overrides?.suppressionResist ?? 0,
+    gear: overrides?.gear ?? { weapon: null, armor: null, accessory: null },
     ...overrides
   };
 }
@@ -61,6 +66,11 @@ export function createMockCharacterDefinition(overrides?: Partial<CharacterDefin
     blockLayers: overrides?.blockLayers || [],
     statuses: overrides?.statuses || [],
     isPlayer: overrides?.isPlayer ?? true,
+    speed: overrides?.speed ?? 0,
+    moveCharges: overrides?.moveCharges ?? 0,
+    suppression: overrides?.suppression ?? 0,
+    suppressionResist: overrides?.suppressionResist ?? 0,
+    gear: overrides?.gear ?? { weapon: null, armor: null, accessory: null },
     stats: overrides?.stats || {
       hp: overrides?.hp ?? 100,
       maxHp: overrides?.maxHp ?? 100,
@@ -80,6 +90,7 @@ export function createMockGameState(overrides?: Partial<GameState>): GameState {
     characters: overrides?.characters || [],
     cardLibrary: overrides?.cardLibrary || {},
     characterLibrary: overrides?.characterLibrary || {},
+    gearLibrary: overrides?.gearLibrary || {},
     cardInstances: overrides?.cardInstances || {},
     selectedCardId: overrides?.selectedCardId ?? null,
     currentPlayerId: overrides?.currentPlayerId || '',
@@ -91,6 +102,8 @@ export function createMockGameState(overrides?: Partial<GameState>): GameState {
       cumulativeDamage: 0,
       maxDamage: 0
     },
+    combatResult: overrides?.combatResult ?? 'ongoing',
+    pendingReward: overrides?.pendingReward ?? null,
     ...overrides
   };
 }

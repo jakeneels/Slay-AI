@@ -10,9 +10,13 @@ maxRange: 8
 # optimalRange: 2
 exhaust: true
 expires_after_turns: 0
+description: "Mid-range tech burst — damage is minor but the self-buff is the real value."
 effects:
   - kind: damage
     amount: 2
+    effectTarget: target   # hits the clicked enemy
+  - kind: knockback
+    amount: 1 
     effectTarget: target   # hits the clicked enemy
   - kind: speed
     amount: 2

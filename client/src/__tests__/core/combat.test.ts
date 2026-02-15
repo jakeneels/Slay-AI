@@ -1696,25 +1696,29 @@ describe('combat', () => {
         id: 'player1',
         name: 'Player',
         energy: 5,
-        isPlayer: true
+        isPlayer: true,
+        slotIndex: 0
       });
       const enemy1 = createMockCharacter({
         id: 'enemy1',
         name: 'Enemy 1',
         hp: 100,
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 4
       });
       const enemy2 = createMockCharacter({
         id: 'enemy2',
         name: 'Enemy 2',
         hp: 100,
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 5
       });
       const enemy3 = createMockCharacter({
         id: 'enemy3',
         name: 'Enemy 3',
         hp: 100,
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 6
       });
 
       const aoeCard = createMockCard({
@@ -1751,13 +1755,15 @@ describe('combat', () => {
         id: 'player1',
         name: 'Player',
         energy: 5,
-        isPlayer: true
+        isPlayer: true,
+        slotIndex: 0
       });
       const enemy1 = createMockCharacter({
         id: 'enemy1',
         name: 'Enemy 1',
         hp: 100,
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 4
       });
 
       const aoeCard = createMockCard({
@@ -1792,25 +1798,29 @@ describe('combat', () => {
         id: 'player1',
         name: 'Player 1',
         hp: 100,
-        isPlayer: true
+        isPlayer: true,
+        slotIndex: 0
       });
       const player2 = createMockCharacter({
         id: 'player2',
         name: 'Player 2',
         hp: 100,
-        isPlayer: true
+        isPlayer: true,
+        slotIndex: 1
       });
       const player3 = createMockCharacter({
         id: 'player3',
         name: 'Player 3',
         hp: 100,
-        isPlayer: true
+        isPlayer: true,
+        slotIndex: 2
       });
       const enemy = createMockCharacter({
         id: 'enemy1',
         name: 'Enemy',
         energy: 5,
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 4
       });
 
       const aoeCard = createMockCard({
@@ -1847,13 +1857,15 @@ describe('combat', () => {
         id: 'player1',
         name: 'Player 1',
         hp: 100,
-        isPlayer: true
+        isPlayer: true,
+        slotIndex: 0
       });
       const enemy = createMockCharacter({
         id: 'enemy1',
         name: 'Enemy',
         energy: 5,
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 4
       });
 
       const aoeCard = createMockCard({
@@ -1888,19 +1900,22 @@ describe('combat', () => {
         id: 'player1',
         name: 'Player',
         energy: 5,
-        isPlayer: true
+        isPlayer: true,
+        slotIndex: 0
       });
       const enemy1 = createMockCharacter({
         id: 'enemy1',
         name: 'Enemy 1',
         hp: 100,
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 4
       });
       const enemy2 = createMockCharacter({
         id: 'enemy2',
         name: 'Enemy 2',
         hp: 100,
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 5
       });
 
       const aoeCard = createMockCard({
@@ -1936,13 +1951,15 @@ describe('combat', () => {
         id: 'player1',
         name: 'Player 1',
         energy: 5,
-        isPlayer: true
+        isPlayer: true,
+        slotIndex: 0
       });
       const player2 = createMockCharacter({
         id: 'player2',
         name: 'Player 2',
         hp: 100,
-        isPlayer: true
+        isPlayer: true,
+        slotIndex: 1
       });
 
       const aoeCard = createMockCard({
@@ -1978,19 +1995,22 @@ describe('combat', () => {
         id: 'player1',
         name: 'Player',
         energy: 5,
-        isPlayer: true
+        isPlayer: true,
+        slotIndex: 0
       });
       const enemy1 = createMockCharacter({
         id: 'enemy1',
         name: 'Enemy 1',
         hp: 100,
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 4
       });
       const enemy2 = createMockCharacter({
         id: 'enemy2',
         name: 'Enemy 2',
         hp: 100,
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 5
       });
 
       const aoeCard = createMockCard({
@@ -2032,28 +2052,32 @@ describe('combat', () => {
         id: 'player1',
         name: 'Player',
         energy: 5,
-        isPlayer: true
+        isPlayer: true,
+        slotIndex: 0
       });
 
       const enemy1 = createMockCharacter({
         id: 'enemy1',
         name: 'Enemy 1',
         hp: 100,
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 4
       });
 
       const enemy2 = createMockCharacter({
         id: 'enemy2',
         name: 'Enemy 2',
         hp: 100,
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 5
       });
 
       const enemy3 = createMockCharacter({
         id: 'enemy3',
         name: 'Enemy 3',
         hp: 100,
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 6
       });
 
       const aoeCard = createMockCard({
@@ -2090,21 +2114,24 @@ describe('combat', () => {
         id: 'player1',
         name: 'Player',
         energy: 5,
-        isPlayer: true
+        isPlayer: true,
+        slotIndex: 0
       });
 
       const enemy1 = createMockCharacter({
         id: 'enemy1',
         name: 'Enemy 1',
         hp: 100,
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 4
       });
 
       const enemy2 = createMockCharacter({
         id: 'enemy2',
         name: 'Enemy 2',
         hp: 100,
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 5
       });
 
       const aoeCard = createMockCard({
@@ -2128,11 +2155,12 @@ describe('combat', () => {
         player.hand.push(instanceId);
       }
 
-      // Target last enemy (enemy2) - should hit enemy2 and enemy1 (left, since no right)
+      // Target last enemy (enemy2 at slot 5) - 2-slot AOE [5,6] has enemy2; no one at 6
+      // rightHits used, only enemy2 hit (fallback requires empty center+right)
       await playCard(instanceId!, 'enemy2');
 
-      expect(enemy1.hp).toBe(90);  // Left neighbor
-      expect(enemy2.hp).toBe(90);  // Primary target
+      expect(enemy1.hp).toBe(100);  // Not hit
+      expect(enemy2.hp).toBe(90);   // Primary target
     });
 
     it('should handle AOE with 4 slots (hits all enemies)', async () => {
@@ -2140,35 +2168,40 @@ describe('combat', () => {
         id: 'player1',
         name: 'Player',
         energy: 5,
-        isPlayer: true
+        isPlayer: true,
+        slotIndex: 0
       });
 
       const enemy1 = createMockCharacter({
         id: 'enemy1',
         name: 'Enemy 1',
         hp: 100,
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 4
       });
 
       const enemy2 = createMockCharacter({
         id: 'enemy2',
         name: 'Enemy 2',
         hp: 100,
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 5
       });
 
       const enemy3 = createMockCharacter({
         id: 'enemy3',
         name: 'Enemy 3',
         hp: 100,
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 6
       });
 
       const enemy4 = createMockCharacter({
         id: 'enemy4',
         name: 'Enemy 4',
         hp: 100,
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 7
       });
 
       const aoeCard = createMockCard({
@@ -2206,28 +2239,32 @@ describe('combat', () => {
         id: 'player1',
         name: 'Player',
         energy: 5,
-        isPlayer: true
+        isPlayer: true,
+        slotIndex: 0
       });
 
       const enemy1 = createMockCharacter({
         id: 'enemy1',
         name: 'Enemy 1',
         hp: 100,
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 4
       });
 
       const enemy2 = createMockCharacter({
         id: 'enemy2',
         name: 'Enemy 2',
         hp: 100,
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 5
       });
 
       const enemy3 = createMockCharacter({
         id: 'enemy3',
         name: 'Enemy 3',
         hp: 100,
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 6
       });
 
       const aoeCard = createMockCard({
@@ -2363,32 +2400,32 @@ describe('combat', () => {
 
   describe('calculateAoeTargets', () => {
     it('should return all characters when aoeSlots is 4', () => {
-      const enemy1 = createMockCharacter({ id: 'enemy1', hp: 100, isPlayer: false });
-      const enemy2 = createMockCharacter({ id: 'enemy2', hp: 100, isPlayer: false });
-      const enemy3 = createMockCharacter({ id: 'enemy3', hp: 100, isPlayer: false });
+      const enemy1 = createMockCharacter({ id: 'enemy1', hp: 100, isPlayer: false, slotIndex: 4 });
+      const enemy2 = createMockCharacter({ id: 'enemy2', hp: 100, isPlayer: false, slotIndex: 5 });
+      const enemy3 = createMockCharacter({ id: 'enemy3', hp: 100, isPlayer: false, slotIndex: 6 });
 
       setupGameState({
         characters: [enemy1, enemy2, enemy3]
       });
 
-      const targets = calculateAoeTargets('enemy1', 'enemy', 4);
+      const targets = calculateAoeTargets(4, 'enemy', 4);
       
       expect(targets).toHaveLength(3);
       expect(targets.map(t => t.id)).toEqual(['enemy1', 'enemy2', 'enemy3']);
     });
 
-    it('should return all characters when primary target not found (edge case)', () => {
-      const enemy1 = createMockCharacter({ id: 'enemy1', hp: 100, isPlayer: false });
-      const enemy2 = createMockCharacter({ id: 'enemy2', hp: 100, isPlayer: false });
+    it('should return no characters when center slot is far from all characters', () => {
+      const enemy1 = createMockCharacter({ id: 'enemy1', hp: 100, isPlayer: false, slotIndex: 4 });
+      const enemy2 = createMockCharacter({ id: 'enemy2', hp: 100, isPlayer: false, slotIndex: 5 });
 
       setupGameState({
         characters: [enemy1, enemy2]
       });
 
-      const targets = calculateAoeTargets('nonexistent', 'enemy', 3);
+      // Center on slot 99, nobody within ±1
+      const targets = calculateAoeTargets(99, 'enemy', 3);
       
-      expect(targets).toHaveLength(2);
-      expect(targets.map(t => t.id)).toEqual(['enemy1', 'enemy2']);
+      expect(targets).toHaveLength(0);
     });
 
     it('should return empty array when no characters on target side', () => {
@@ -2396,159 +2433,183 @@ describe('combat', () => {
         characters: []
       });
 
-      const targets = calculateAoeTargets('any', 'enemy', 3);
+      const targets = calculateAoeTargets(4, 'enemy', 3);
       
       expect(targets).toHaveLength(0);
     });
 
-    it('should handle 2 slots targeting (primary + right)', () => {
-      const enemy1 = createMockCharacter({ id: 'enemy1', hp: 100, isPlayer: false });
-      const enemy2 = createMockCharacter({ id: 'enemy2', hp: 100, isPlayer: false });
-      const enemy3 = createMockCharacter({ id: 'enemy3', hp: 100, isPlayer: false });
+    it('should handle 2 slots targeting (center + right)', () => {
+      const enemy1 = createMockCharacter({ id: 'enemy1', hp: 100, isPlayer: false, slotIndex: 4 });
+      const enemy2 = createMockCharacter({ id: 'enemy2', hp: 100, isPlayer: false, slotIndex: 5 });
+      const enemy3 = createMockCharacter({ id: 'enemy3', hp: 100, isPlayer: false, slotIndex: 6 });
 
       setupGameState({
         characters: [enemy1, enemy2, enemy3]
       });
 
-      // Target middle - should get middle + right
-      const targets = calculateAoeTargets('enemy2', 'enemy', 2);
+      // Center on slot 5 - should get slot 5 + slot 6
+      const targets = calculateAoeTargets(5, 'enemy', 2);
       
       expect(targets).toHaveLength(2);
       expect(targets.map(t => t.id)).toEqual(['enemy2', 'enemy3']);
     });
 
-    it('should handle 2 slots targeting (primary + left when no right)', () => {
-      const enemy1 = createMockCharacter({ id: 'enemy1', hp: 100, isPlayer: false });
-      const enemy2 = createMockCharacter({ id: 'enemy2', hp: 100, isPlayer: false });
+    it('should handle 2 slots targeting (center + left when no right)', () => {
+      const enemy1 = createMockCharacter({ id: 'enemy1', hp: 100, isPlayer: false, slotIndex: 4 });
+      const enemy2 = createMockCharacter({ id: 'enemy2', hp: 100, isPlayer: false, slotIndex: 5 });
 
       setupGameState({
         characters: [enemy1, enemy2]
       });
 
-      // Target last - should get last + left
-      const targets = calculateAoeTargets('enemy2', 'enemy', 2);
+      // Center on slot 6 - rightHits [6,7] empty, leftHits [5,6] = [enemy2 at 5]
+      const targets = calculateAoeTargets(6, 'enemy', 2);
       
-      expect(targets).toHaveLength(2);
-      expect(targets.map(t => t.id)).toEqual(['enemy2', 'enemy1']);
+      expect(targets).toHaveLength(1);
+      expect(targets[0].id).toBe('enemy2');
     });
 
-    it('should handle 3 slots targeting (primary + left + right)', () => {
-      const enemy1 = createMockCharacter({ id: 'enemy1', hp: 100, isPlayer: false });
-      const enemy2 = createMockCharacter({ id: 'enemy2', hp: 100, isPlayer: false });
-      const enemy3 = createMockCharacter({ id: 'enemy3', hp: 100, isPlayer: false });
+    it('should handle 3 slots targeting (center + left + right)', () => {
+      const enemy1 = createMockCharacter({ id: 'enemy1', hp: 100, isPlayer: false, slotIndex: 4 });
+      const enemy2 = createMockCharacter({ id: 'enemy2', hp: 100, isPlayer: false, slotIndex: 5 });
+      const enemy3 = createMockCharacter({ id: 'enemy3', hp: 100, isPlayer: false, slotIndex: 6 });
 
       setupGameState({
         characters: [enemy1, enemy2, enemy3]
       });
 
-      const targets = calculateAoeTargets('enemy2', 'enemy', 3);
+      const targets = calculateAoeTargets(5, 'enemy', 3);
       
       expect(targets).toHaveLength(3);
-      expect(targets.map(t => t.id)).toEqual(['enemy2', 'enemy1', 'enemy3']);
+      expect(targets.map(t => t.id)).toContain('enemy1');
+      expect(targets.map(t => t.id)).toContain('enemy2');
+      expect(targets.map(t => t.id)).toContain('enemy3');
     });
 
     it('should default to 3 slots when aoeSlots not specified', () => {
-      const enemy1 = createMockCharacter({ id: 'enemy1', hp: 100, isPlayer: false });
-      const enemy2 = createMockCharacter({ id: 'enemy2', hp: 100, isPlayer: false });
-      const enemy3 = createMockCharacter({ id: 'enemy3', hp: 100, isPlayer: false });
+      const enemy1 = createMockCharacter({ id: 'enemy1', hp: 100, isPlayer: false, slotIndex: 4 });
+      const enemy2 = createMockCharacter({ id: 'enemy2', hp: 100, isPlayer: false, slotIndex: 5 });
+      const enemy3 = createMockCharacter({ id: 'enemy3', hp: 100, isPlayer: false, slotIndex: 6 });
 
       setupGameState({
         characters: [enemy1, enemy2, enemy3]
       });
 
-      const targets = calculateAoeTargets('enemy2', 'enemy'); // No aoeSlots parameter
+      const targets = calculateAoeTargets(5, 'enemy'); // No aoeSlots parameter
       
       expect(targets).toHaveLength(3);
     });
 
     it('should handle single character on target side', () => {
-      const enemy1 = createMockCharacter({ id: 'enemy1', hp: 100, isPlayer: false });
+      const enemy1 = createMockCharacter({ id: 'enemy1', hp: 100, isPlayer: false, slotIndex: 5 });
 
       setupGameState({
         characters: [enemy1]
       });
 
-      const targets = calculateAoeTargets('enemy1', 'enemy', 3);
+      const targets = calculateAoeTargets(5, 'enemy', 3);
       
       expect(targets).toHaveLength(1);
       expect(targets[0].id).toBe('enemy1');
     });
 
     it('should work with ally side targeting', () => {
-      const player1 = createMockCharacter({ id: 'player1', hp: 100, isPlayer: true });
-      const player2 = createMockCharacter({ id: 'player2', hp: 100, isPlayer: true });
-      const player3 = createMockCharacter({ id: 'player3', hp: 100, isPlayer: true });
+      const player1 = createMockCharacter({ id: 'player1', hp: 100, isPlayer: true, slotIndex: 0 });
+      const player2 = createMockCharacter({ id: 'player2', hp: 100, isPlayer: true, slotIndex: 1 });
+      const player3 = createMockCharacter({ id: 'player3', hp: 100, isPlayer: true, slotIndex: 2 });
 
       setupGameState({
         characters: [player1, player2, player3]
       });
 
-      const targets = calculateAoeTargets('player2', 'ally', 3);
+      const targets = calculateAoeTargets(1, 'ally', 3);
       
       expect(targets).toHaveLength(3);
-      expect(targets.map(t => t.id)).toEqual(['player2', 'player1', 'player3']);
+      expect(targets.map(t => t.id)).toContain('player1');
+      expect(targets.map(t => t.id)).toContain('player2');
+      expect(targets.map(t => t.id)).toContain('player3');
     });
 
     it('should exclude dead characters from AOE targeting', () => {
-      const enemy1 = createMockCharacter({ id: 'enemy1', hp: 100, isPlayer: false });
-      const enemy2 = createMockCharacter({ id: 'enemy2', hp: 0, isPlayer: false }); // Dead
-      const enemy3 = createMockCharacter({ id: 'enemy3', hp: 100, isPlayer: false });
+      const enemy1 = createMockCharacter({ id: 'enemy1', hp: 100, isPlayer: false, slotIndex: 4 });
+      const enemy2 = createMockCharacter({ id: 'enemy2', hp: 0, isPlayer: false, slotIndex: 5 }); // Dead
+      const enemy3 = createMockCharacter({ id: 'enemy3', hp: 100, isPlayer: false, slotIndex: 6 });
 
       setupGameState({
         characters: [enemy1, enemy2, enemy3]
       });
 
-      // Should only target living enemies
-      const targets = calculateAoeTargets('enemy1', 'enemy', 3);
+      // Center on slot 5 — enemy2 is dead, so only enemy1 (slot 4) and enemy3 (slot 6) are living and within ±1
+      const targets = calculateAoeTargets(5, 'enemy', 3);
       
-      expect(targets).toHaveLength(2); // Only enemy1 and enemy3 (enemy2 is dead)
-      expect(targets.map(t => t.id)).toEqual(['enemy1', 'enemy3']);
+      expect(targets).toHaveLength(2);
+      expect(targets.map(t => t.id)).toContain('enemy1');
+      expect(targets.map(t => t.id)).toContain('enemy3');
       expect(targets.every(t => t.hp > 0)).toBe(true);
     });
 
-    it('should handle AOE targeting first character in lineup (no left neighbor)', () => {
-      const enemy1 = createMockCharacter({ id: 'enemy1', hp: 100, isPlayer: false });
-      const enemy2 = createMockCharacter({ id: 'enemy2', hp: 100, isPlayer: false });
-      const enemy3 = createMockCharacter({ id: 'enemy3', hp: 100, isPlayer: false });
+    it('should handle AOE targeting first slot (no left neighbor)', () => {
+      const enemy1 = createMockCharacter({ id: 'enemy1', hp: 100, isPlayer: false, slotIndex: 4 });
+      const enemy2 = createMockCharacter({ id: 'enemy2', hp: 100, isPlayer: false, slotIndex: 5 });
+      const enemy3 = createMockCharacter({ id: 'enemy3', hp: 100, isPlayer: false, slotIndex: 6 });
 
       setupGameState({
         characters: [enemy1, enemy2, enemy3]
       });
 
-      // Target first - should get first + right (no left)
-      const targets = calculateAoeTargets('enemy1', 'enemy', 3);
+      // Center on slot 4 — only slots 3,4,5 in range; enemy1 (4) + enemy2 (5)
+      const targets = calculateAoeTargets(4, 'enemy', 3);
       
       expect(targets).toHaveLength(2);
-      expect(targets.map(t => t.id)).toEqual(['enemy1', 'enemy2']);
+      expect(targets.map(t => t.id)).toContain('enemy1');
+      expect(targets.map(t => t.id)).toContain('enemy2');
     });
 
-    it('should handle AOE targeting last character in lineup (no right neighbor)', () => {
-      const enemy1 = createMockCharacter({ id: 'enemy1', hp: 100, isPlayer: false });
-      const enemy2 = createMockCharacter({ id: 'enemy2', hp: 100, isPlayer: false });
-      const enemy3 = createMockCharacter({ id: 'enemy3', hp: 100, isPlayer: false });
+    it('should handle AOE targeting last slot (no right neighbor)', () => {
+      const enemy1 = createMockCharacter({ id: 'enemy1', hp: 100, isPlayer: false, slotIndex: 4 });
+      const enemy2 = createMockCharacter({ id: 'enemy2', hp: 100, isPlayer: false, slotIndex: 5 });
+      const enemy3 = createMockCharacter({ id: 'enemy3', hp: 100, isPlayer: false, slotIndex: 6 });
 
       setupGameState({
         characters: [enemy1, enemy2, enemy3]
       });
 
-      // Target last - should get last + left (no right)
-      const targets = calculateAoeTargets('enemy3', 'enemy', 3);
+      // Center on slot 6 — only slots 5,6,7 in range; enemy2 (5) + enemy3 (6)
+      const targets = calculateAoeTargets(6, 'enemy', 3);
       
       expect(targets).toHaveLength(2);
-      expect(targets.map(t => t.id)).toEqual(['enemy3', 'enemy2']);
+      expect(targets.map(t => t.id)).toContain('enemy2');
+      expect(targets.map(t => t.id)).toContain('enemy3');
     });
 
     it('should handle 2 slots with single character (only primary target)', () => {
-      const enemy1 = createMockCharacter({ id: 'enemy1', hp: 100, isPlayer: false });
+      const enemy1 = createMockCharacter({ id: 'enemy1', hp: 100, isPlayer: false, slotIndex: 5 });
 
       setupGameState({
         characters: [enemy1]
       });
 
-      const targets = calculateAoeTargets('enemy1', 'enemy', 2);
+      const targets = calculateAoeTargets(5, 'enemy', 2);
       
       expect(targets).toHaveLength(1);
       expect(targets[0].id).toBe('enemy1');
+    });
+
+    it('should hit characters on an empty center slot', () => {
+      // Allies at slots 0 and 2 with empty slot 1 between them
+      const player1 = createMockCharacter({ id: 'player1', hp: 100, isPlayer: true, slotIndex: 0 });
+      const player2 = createMockCharacter({ id: 'player2', hp: 100, isPlayer: true, slotIndex: 2 });
+
+      setupGameState({
+        characters: [player1, player2]
+      });
+
+      // Center on empty slot 1 — both allies at slots 0 and 2 are within ±1
+      const targets = calculateAoeTargets(1, 'ally', 3);
+      
+      expect(targets).toHaveLength(2);
+      expect(targets.map(t => t.id)).toContain('player1');
+      expect(targets.map(t => t.id)).toContain('player2');
     });
 
     it('should handle AOE card that defeats target (hp <= 0 check)', async () => {
@@ -2556,21 +2617,24 @@ describe('combat', () => {
         id: 'player1',
         name: 'Player',
         energy: 5,
-        isPlayer: true
+        isPlayer: true,
+        slotIndex: 0
       });
 
       const enemy1 = createMockCharacter({
         id: 'enemy1',
         name: 'Enemy 1',
         hp: 5, // Low HP - will be defeated
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 4
       });
 
       const enemy2 = createMockCharacter({
         id: 'enemy2',
         name: 'Enemy 2',
         hp: 100,
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 5
       });
 
       const aoeCard = createMockCard({
@@ -2607,14 +2671,16 @@ describe('combat', () => {
         id: 'player1',
         name: 'Player',
         energy: 5,
-        isPlayer: true
+        isPlayer: true,
+        slotIndex: 0
       });
 
       const enemy1 = createMockCharacter({
         id: 'enemy1',
         name: 'Enemy 1',
         hp: 100,
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 4
       });
 
       const aoeCard = createMockCard({
@@ -2653,14 +2719,16 @@ describe('combat', () => {
         id: 'player1',
         name: 'Player',
         energy: 5,
-        isPlayer: true
+        isPlayer: true,
+        slotIndex: 0
       });
 
       const enemy1 = createMockCharacter({
         id: 'enemy1',
         name: 'Enemy 1',
         hp: 100,
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 4
       });
 
       const enemy2 = createMockCharacter({
@@ -2668,7 +2736,8 @@ describe('combat', () => {
         name: 'Enemy 2',
         hp: 100,
         blockLayers: [{ amount: 100, baseAmount: 100, decay_percent: 50 }], // Enough block to absorb all damage
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 5
       });
 
       const aoeCard = createMockCard({
@@ -2706,37 +2775,41 @@ describe('combat', () => {
         id: 'enemy1',
         name: 'Enemy',
         energy: 5,
-        isPlayer: false
+        isPlayer: false,
+        slotIndex: 4
       });
 
       const player1 = createMockCharacter({
         id: 'player1',
         name: 'Player 1',
         hp: 100,
-        isPlayer: true
+        isPlayer: true,
+        slotIndex: 0
       });
 
       const player2 = createMockCharacter({
         id: 'player2',
         name: 'Player 2',
         hp: 100,
-        isPlayer: true
+        isPlayer: true,
+        slotIndex: 1
       });
 
       const player3 = createMockCharacter({
         id: 'player3',
         name: 'Player 3',
         hp: 100,
-        isPlayer: true
+        isPlayer: true,
+        slotIndex: 2
       });
 
-      // Enemy AOE card that targets allies (from enemy's perspective, allies = players)
+      // Enemy AOE card that targets enemies (from enemy's perspective, enemies = players)
       const enemyAoeCard = createMockCard({
         id: 'enemy_aoe_ally',
         name: 'Enemy AOE Ally',
         cost: { energy: 3 },
         targeting: 'aoe',
-        targetSide: 'ally', // Targets allies (players from enemy's perspective)
+        targetSide: 'enemy', // Targets opposing side (players)
         aoeSlots: 3,
         effects: [{ kind: 'damage', amount: 10 }]
       });
@@ -3311,7 +3384,7 @@ describe('combat', () => {
       const enemy = createMockCharacter({ id: 'enemy1', isPlayer: false, slotIndex: 2 });
       setupGameState({
         characters: [player, enemy],
-        characterLibrary: { player1: createMockCharacterDefinition({ id: 'player1', stats: { moveEnergyCost: 1 } }) },
+        characterLibrary: { player1: createMockCharacterDefinition({ id: 'player1' }) },
         currentPlayerId: 'player1'
       });
 
@@ -3327,7 +3400,7 @@ describe('combat', () => {
       const enemy = createMockCharacter({ id: 'enemy1', isPlayer: false, slotIndex: 3 });
       setupGameState({
         characters: [player1, player2, enemy],
-        characterLibrary: { player1: createMockCharacterDefinition({ id: 'player1', stats: { moveEnergyCost: 1 } }) },
+        characterLibrary: { player1: createMockCharacterDefinition({ id: 'player1' }) },
         currentPlayerId: 'player1'
       });
 
@@ -3344,7 +3417,7 @@ describe('combat', () => {
       const enemy2 = createMockCharacter({ id: 'enemy2', isPlayer: false, slotIndex: 3 });
       setupGameState({
         characters: [player, enemy1, enemy2],
-        characterLibrary: { player1: createMockCharacterDefinition({ id: 'player1', stats: { moveEnergyCost: 1 } }) },
+        characterLibrary: { player1: createMockCharacterDefinition({ id: 'player1' }) },
         currentPlayerId: 'player1'
       });
 
@@ -3360,7 +3433,7 @@ describe('combat', () => {
       const enemy = createMockCharacter({ id: 'enemy1', isPlayer: false, slotIndex: 2 });
       setupGameState({
         characters: [player, enemy],
-        characterLibrary: { player1: createMockCharacterDefinition({ id: 'player1', stats: { moveEnergyCost: 1 } }) },
+        characterLibrary: { player1: createMockCharacterDefinition({ id: 'player1' }) },
         currentPlayerId: 'player1'
       });
 
@@ -3380,18 +3453,18 @@ describe('combat', () => {
       expect(player.slotIndex).toBe(0);
     });
 
-    it('should use moveEnergyCost from character definition', () => {
-      const player = createMockCharacter({ id: 'player1', energy: 3, isPlayer: true, slotIndex: 0 });
+    it('should use speed to determine move cost (speed -1 = 2 energy per slot)', () => {
+      const player = createMockCharacter({ id: 'player1', energy: 3, isPlayer: true, slotIndex: 0, speed: -1 });
       const enemy = createMockCharacter({ id: 'enemy1', isPlayer: false, slotIndex: 2 });
       setupGameState({
         characters: [player, enemy],
-        characterLibrary: { player1: createMockCharacterDefinition({ id: 'player1', stats: { moveEnergyCost: 2 } }) },
+        characterLibrary: { player1: createMockCharacterDefinition({ id: 'player1' }) },
         currentPlayerId: 'player1'
       });
 
       const result = moveCharacterForward('player1');
       expect(result).toBe(true);
-      expect(player.energy).toBe(1);
+      expect(player.energy).toBe(1); // 3 - 2 = 1
     });
 
     it('should move enemy forward (slotIndex - 1) toward allies', () => {
@@ -3399,7 +3472,7 @@ describe('combat', () => {
       const enemy = createMockCharacter({ id: 'enemy1', energy: 3, isPlayer: false, slotIndex: 2 });
       setupGameState({
         characters: [player, enemy],
-        characterLibrary: { enemy1: createMockCharacterDefinition({ id: 'enemy1', stats: { moveEnergyCost: 1 } }) },
+        characterLibrary: { enemy1: createMockCharacterDefinition({ id: 'enemy1' }) },
         currentPlayerId: 'enemy1'
       });
 
@@ -3414,7 +3487,7 @@ describe('combat', () => {
       const enemy = createMockCharacter({ id: 'enemy1', energy: 3, isPlayer: false, slotIndex: 2 });
       setupGameState({
         characters: [player1, player2, enemy],
-        characterLibrary: { enemy1: createMockCharacterDefinition({ id: 'enemy1', stats: { moveEnergyCost: 1 } }) },
+        characterLibrary: { enemy1: createMockCharacterDefinition({ id: 'enemy1' }) },
         currentPlayerId: 'enemy1'
       });
 
@@ -3443,7 +3516,7 @@ describe('combat', () => {
       const enemy4 = createMockCharacter({ id: 'enemy4', isPlayer: false, slotIndex: 7 });
       setupGameState({
         characters: [player, enemy1, enemy2, enemy3, enemy4],
-        characterLibrary: { player1: createMockCharacterDefinition({ id: 'player1', stats: { moveEnergyCost: 1 } }) },
+        characterLibrary: { player1: createMockCharacterDefinition({ id: 'player1' }) },
         currentPlayerId: 'player1'
       });
 
@@ -3461,7 +3534,7 @@ describe('combat', () => {
       const enemy = createMockCharacter({ id: 'enemy1', isPlayer: false, slotIndex: 2 });
       setupGameState({
         characters: [player, enemy],
-        characterLibrary: { player1: createMockCharacterDefinition({ id: 'player1', stats: { moveEnergyCost: 1 } }) },
+        characterLibrary: { player1: createMockCharacterDefinition({ id: 'player1' }) },
         currentPlayerId: 'player1'
       });
 
@@ -3477,7 +3550,7 @@ describe('combat', () => {
       const enemy = createMockCharacter({ id: 'enemy1', isPlayer: false, slotIndex: 3 });
       setupGameState({
         characters: [player1, player2, enemy],
-        characterLibrary: { player1: createMockCharacterDefinition({ id: 'player1', stats: { moveEnergyCost: 1 } }) },
+        characterLibrary: { player1: createMockCharacterDefinition({ id: 'player1' }) },
         currentPlayerId: 'player1'
       });
 
@@ -3492,7 +3565,7 @@ describe('combat', () => {
       const enemy = createMockCharacter({ id: 'enemy1', isPlayer: false, slotIndex: 2 });
       setupGameState({
         characters: [player, enemy],
-        characterLibrary: { player1: createMockCharacterDefinition({ id: 'player1', stats: { moveEnergyCost: 1 } }) },
+        characterLibrary: { player1: createMockCharacterDefinition({ id: 'player1' }) },
         currentPlayerId: 'player1'
       });
 
@@ -3507,7 +3580,7 @@ describe('combat', () => {
       const enemy = createMockCharacter({ id: 'enemy1', energy: 3, isPlayer: false, slotIndex: 7 });
       setupGameState({
         characters: [player, enemy],
-        characterLibrary: { enemy1: createMockCharacterDefinition({ id: 'enemy1', stats: { moveEnergyCost: 1 } }) },
+        characterLibrary: { enemy1: createMockCharacterDefinition({ id: 'enemy1' }) },
         currentPlayerId: 'enemy1'
       });
 
@@ -3522,7 +3595,7 @@ describe('combat', () => {
       const enemy = createMockCharacter({ id: 'enemy1', isPlayer: false, slotIndex: 2 });
       setupGameState({
         characters: [player, enemy],
-        characterLibrary: { player1: createMockCharacterDefinition({ id: 'player1', stats: { moveEnergyCost: 1 } }) },
+        characterLibrary: { player1: createMockCharacterDefinition({ id: 'player1' }) },
         currentPlayerId: 'player1'
       });
 
@@ -3536,7 +3609,7 @@ describe('combat', () => {
       const enemy = createMockCharacter({ id: 'enemy1', energy: 3, isPlayer: false, slotIndex: 1 });
       setupGameState({
         characters: [player, enemy],
-        characterLibrary: { enemy1: createMockCharacterDefinition({ id: 'enemy1', stats: { moveEnergyCost: 1 } }) },
+        characterLibrary: { enemy1: createMockCharacterDefinition({ id: 'enemy1' }) },
         currentPlayerId: 'enemy1'
       });
 
@@ -3870,6 +3943,191 @@ describe('combat', () => {
       // Distance 5 > maxRange 3 → card should not play, no damage
       expect(target.hp).toBe(100);
       // Energy should not be consumed
+      const p = state.characters.find(c => c.id === 'player1')!;
+      expect(p.energy).toBe(5);
+    });
+
+    it('should block cards when target is closer than minRange', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        energy: 5,
+        hp: 100,
+        isPlayer: true,
+        slotIndex: 0
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        hp: 100,
+        isPlayer: false,
+        slotIndex: 1  // distance = 1
+      });
+
+      const longRangeCard = createMockCard({
+        id: 'long_range',
+        name: 'Long Range Blast',
+        cost: { energy: 1 },
+        targeting: 'enemy',
+        minRange: 3,
+        maxRange: 7,
+        effects: [{ kind: 'damage', amount: 10 }]
+      });
+
+      setupGameState({
+        characters: [player, enemy],
+        cardLibrary: { long_range: longRangeCard },
+        currentPlayerId: 'player1'
+      });
+
+      const instanceId = createCardInstance('long_range');
+      if (instanceId) player.hand.push(instanceId);
+
+      await playCard(instanceId!, 'enemy1');
+
+      const state = getGameState();
+      const target = state.characters.find(c => c.id === 'enemy1')!;
+      // Distance 1 < minRange 3 → card should not play, no damage
+      expect(target.hp).toBe(100);
+      // Energy should not be consumed
+      const p = state.characters.find(c => c.id === 'player1')!;
+      expect(p.energy).toBe(5);
+    });
+
+    it('should allow cards when target is exactly at minRange', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        energy: 5,
+        hp: 100,
+        isPlayer: true,
+        slotIndex: 0
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        hp: 100,
+        isPlayer: false,
+        slotIndex: 3  // distance = 3
+      });
+
+      const longRangeCard = createMockCard({
+        id: 'long_range',
+        name: 'Long Range Blast',
+        cost: { energy: 1 },
+        targeting: 'enemy',
+        minRange: 3,
+        maxRange: 7,
+        effects: [{ kind: 'damage', amount: 10 }]
+      });
+
+      setupGameState({
+        characters: [player, enemy],
+        cardLibrary: { long_range: longRangeCard },
+        currentPlayerId: 'player1'
+      });
+
+      const instanceId = createCardInstance('long_range');
+      if (instanceId) player.hand.push(instanceId);
+
+      await playCard(instanceId!, 'enemy1');
+
+      const state = getGameState();
+      const target = state.characters.find(c => c.id === 'enemy1')!;
+      // Distance 3 == minRange 3 → card should play, damage dealt
+      expect(target.hp).toBeLessThan(100);
+      // Energy should be consumed
+      const p = state.characters.find(c => c.id === 'player1')!;
+      expect(p.energy).toBe(4);
+    });
+
+    it('should allow cards when target is between minRange and maxRange', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        energy: 5,
+        hp: 100,
+        isPlayer: true,
+        slotIndex: 0
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        hp: 100,
+        isPlayer: false,
+        slotIndex: 5  // distance = 5
+      });
+
+      const longRangeCard = createMockCard({
+        id: 'long_range',
+        name: 'Long Range Blast',
+        cost: { energy: 1 },
+        targeting: 'enemy',
+        minRange: 3,
+        maxRange: 7,
+        effects: [{ kind: 'damage', amount: 10 }]
+      });
+
+      setupGameState({
+        characters: [player, enemy],
+        cardLibrary: { long_range: longRangeCard },
+        currentPlayerId: 'player1'
+      });
+
+      const instanceId = createCardInstance('long_range');
+      if (instanceId) player.hand.push(instanceId);
+
+      await playCard(instanceId!, 'enemy1');
+
+      const state = getGameState();
+      const target = state.characters.find(c => c.id === 'enemy1')!;
+      // Distance 5, within minRange 3 – maxRange 7 → card should play
+      expect(target.hp).toBeLessThan(100);
+      const p = state.characters.find(c => c.id === 'player1')!;
+      expect(p.energy).toBe(4);
+    });
+
+    it('should enforce minRange without maxRange', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        energy: 5,
+        hp: 100,
+        isPlayer: true,
+        slotIndex: 0
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        hp: 100,
+        isPlayer: false,
+        slotIndex: 1  // distance = 1
+      });
+
+      const minOnlyCard = createMockCard({
+        id: 'min_only',
+        name: 'Artillery',
+        cost: { energy: 1 },
+        targeting: 'enemy',
+        minRange: 2,
+        effects: [{ kind: 'damage', amount: 10 }]
+      });
+
+      setupGameState({
+        characters: [player, enemy],
+        cardLibrary: { min_only: minOnlyCard },
+        currentPlayerId: 'player1'
+      });
+
+      const instanceId = createCardInstance('min_only');
+      if (instanceId) player.hand.push(instanceId);
+
+      await playCard(instanceId!, 'enemy1');
+
+      const state = getGameState();
+      const target = state.characters.find(c => c.id === 'enemy1')!;
+      // Distance 1 < minRange 2 → card should not play
+      expect(target.hp).toBe(100);
       const p = state.characters.find(c => c.id === 'player1')!;
       expect(p.energy).toBe(5);
     });

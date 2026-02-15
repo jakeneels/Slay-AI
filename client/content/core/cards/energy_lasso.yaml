@@ -1,0 +1,28 @@
+schemaVersion: 1
+id: energy_lasso
+name: "Energy Lasso"
+type: skill
+rarity: legendary    #common, rare, epic, legendary, mythic.
+cost: 3
+copies: 2
+targeting: enemy
+maxRange: 6
+# optimalRange: 3
+exhaust: false
+expires_after_turns: 0
+description: "Your shield energy will pull the enemy towards you."
+effects:
+  - kind: damage
+    amount: 8
+  - kind: knockback
+    amount: -1
+    effectTarget: target
+  - kind: speed
+    amount: -1
+    effectTarget: target
+animation:
+  damage:
+    projectileColor: 0x00ffff  # blue lightning color
+    projectileSpeed: 1500      # Fast lightning
+    impactSize: 100          # Medium-large explosive impact
+

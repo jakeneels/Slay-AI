@@ -80,6 +80,5 @@ export function createRarityIcon(rarity: string, size: number = 8): Graphics {
       break;
   }
 
-  g.eventMode = 'none';
   return g;
 }

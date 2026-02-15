@@ -1,0 +1,22 @@
+schemaVersion: 1
+id: shrapnel_grenade
+name: "Shrapnel Grenade"
+type: attack
+rarity: rare   # common, rare, epic, legendary, mythic.
+cost: 3
+copies: 2
+tags: [basic]
+targeting: aoe
+targetSide: enemy
+aoeSlots: 3
+maxRange: 7
+# optimalRange: 1
+exhaust: true
+expires_after_turns: 0
+description: ""
+effects:
+  - kind: damage
+    amount: 10
+  - kind: speed
+    amount: -1
+    effectTarget: target

@@ -7,6 +7,7 @@ let gameState: GameState = {
   characters: [],
   cardLibrary: {},
   characterLibrary: {},
+  gearLibrary: {},
   cardInstances: {}, // Store unique card instances
   selectedCardId: null,
   currentPlayerId: '',
@@ -17,7 +18,9 @@ let gameState: GameState = {
   stats: {
     cumulativeDamage: 0,
     maxDamage: 0,
-  }
+  },
+  combatResult: 'ongoing',
+  pendingReward: null,
 };
 
 /**
@@ -39,7 +42,6 @@ export function setGameState(state: GameState): void {
  */
 export function addToCombatLog(message: string): void {
   gameState.combatLog.push(message);
-  console.log('Combat Log:', message);
 }
 
 /**

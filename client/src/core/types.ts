@@ -112,6 +112,7 @@ export interface Card {
   expires_after_turns?: number;
   description?: string;
   maxRange?: number;
+  minRange?: number;
   optimalRange?: number;
   animationConfig?: {
     damage?: {
@@ -137,7 +138,9 @@ export interface CharacterStats {
   maxHp: number;
   energy: number;
   maxEnergy: number;
-  moveEnergyCost?: number; // Energy cost to move forward or back one slot
+  speed?: number;              // Speed stat: determines slots per energy spent on movement (default 0 = 1:1 baseline)
+  suppression?: number;        // How much ranged-attack penalty this character projects to nearby enemies (default 0)
+  suppressionResist?: number;  // How much suppression penalty this character can ignore (default 0)
 }
 
 // Block layer - each block source has its own decay rate
@@ -172,6 +175,11 @@ export interface Character {
   statuses: Status[]; // Active status effects
   isPlayer: boolean;
   slotIndex: number; // Position on battlefield (0 = leftmost ally / rightmost enemy)
+  speed: number;              // Speed stat: determines slots per energy spent on movement (0 = baseline 1:1)
+  moveCharges: number;        // Remaining free move charges this turn (resets to 0 each turn)
+  suppression: number;        // How much ranged-attack penalty this character projects to nearby enemies
+  suppressionResist: number;  // How much suppression penalty this character can ignore
+  gear: Record<GearSlot, GearDefinition | null>; // Equipped gear per slot
 }
 
 export interface CharacterDefinition extends Character {
@@ -186,10 +194,68 @@ export interface GameStats {
   cumulativeHeal?: number;
 }
 
+// ── Modifier Pipeline types ─────────────────────────────────────────
+
+/** What value a modifier targets (extensible string key). */
+export type ModifierTarget = string;
+
+/** Who a modifier applies to. */
+export type ModifierScope =
+  | { kind: 'global' }
+  | { kind: 'character'; characterId: string }
+  | { kind: 'team'; team: 'player' | 'enemy' }
+  | { kind: 'tag'; tag: string };
+
+/** Optional condition for when a modifier applies. */
+export interface ModifierCondition {
+  cardType?: 'attack' | 'skill' | 'power' | 'summon';
+  cardTag?: string;
+  [key: string]: any;
+}
+
+/** A single modifier that adjusts a game value. */
+export interface GameModifier {
+  id: string;
+  target: ModifierTarget;
+  op: 'add' | 'multiply' | 'set' | 'min' | 'max';
+  value: number;
+  source: string;               // e.g. 'balance', 'passive:jacob', 'gear:power_cell', 'devpanel'
+  scope: ModifierScope;
+  condition?: ModifierCondition;
+  priority?: number;            // evaluation order within same op (lower = earlier, default 0)
+}
+
+/** Context passed to the modifier resolver to check scope/conditions. */
+export interface ModifierContext {
+  character?: Character;
+  card?: Card;
+  team?: 'player' | 'enemy';
+}
+
+// ── Gear types ───────────────────────────────────────────────────────
+
+export type GearSlot = 'weapon' | 'armor' | 'accessory';
+
+export interface GearDefinition {
+  id: string;
+  name: string;
+  description: string;
+  slot: GearSlot;
+  rarity: 'common' | 'uncommon' | 'rare';
+  modifiers: Array<{
+    target: string;    // e.g. 'maxHp', 'damage_dealt', 'maxEnergy'
+    op: 'add' | 'multiply';
+    value: number;
+  }>;
+}
+
+// ── Game state ───────────────────────────────────────────────────────
+
 export interface GameState {
   characters: Character[];
   cardLibrary: Record<string, Card>;
   characterLibrary: Record<string, CharacterDefinition>;
+  gearLibrary: Record<string, GearDefinition>;
   cardInstances: Record<string, CardInstance>;
   selectedCardId: string | null;
   currentPlayerId: string;
@@ -198,10 +264,13 @@ export interface GameState {
   isProcessingTurn: boolean;
   nextCardInstanceId: number;
   stats: GameStats;
+  combatResult: 'ongoing' | 'victory' | 'defeat';
+  pendingReward: GearDefinition | null;
 }
 
 export interface LoadedContent {
   cards: Record<string, Card>;
   characters: Record<string, CharacterDefinition>;
+  gear: Record<string, GearDefinition>;
 }
 

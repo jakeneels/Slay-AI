@@ -12,6 +12,9 @@ stats:
   maxHp: 30
   energy: 3
   maxEnergy: 3
+  speed: 0
+  suppression: 2
+  suppressionResist: 0
 mechanics:
   - "Gains attack buffs when injured"
   - "Can 'advance' slots aggressively"
@@ -19,5 +22,5 @@ mechanics:
 tags: ["human", "fanatic", "normal", "enemy", "aggressive"]
 startingDeck:
   - "blast"
-  - "strike"
+  - "shrapnel_grenade"
   - "strike"

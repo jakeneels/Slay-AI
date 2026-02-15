@@ -4,21 +4,26 @@ name: "Didi"
 title: "Rustborn Sharpshooter"
 description: "Scavenger sniper with jury-rigged optics and weapon mods scavenged from AI ruins."
 role: dps
-theme: "Ranged DPS – excels at precision and slot manipulation."
+theme: "Ranged DPS – excels at ranged damage and containment."
 sprite: "/assets/game/allies/sniper.png"
 isPlayer: true
 stats:
   hp: 60
   maxHp: 80
-  energy: 4
-  maxEnergy: 4
+  energy: 5
+  maxEnergy: 5
+  speed: 1
+  suppression: 0
+  suppressionResist: 1
 mechanics:
-  - "Accuracy bonuses in slots 1–2"
-  - "Reduced accuracy long-range"
+
+  - "High impact at range"
   - "Critical shots against exposed enemies"
-tags: ["sniper", "scavenger", "ranged", "dps"]
+tags: ["sniper", "scavenger", "ranged", "dps", "containment"]
 startingDeck:
-  - "blast"
+  - "hipshot"
+  - "shrapnel_grenade"
   - "blast"
   - "strike"
-  - "defend"
+  - "rad_round"
+

@@ -2,6 +2,7 @@
 
 import type { Character, Status } from './types.js';
 import { addToCombatLog } from './gameState.js';
+import { getTotalBlock } from './block.js';
 
 /**
  * Apply a status to a character
@@ -13,6 +14,15 @@ export function applyStatus(
   duration?: number,
   metadata?: Record<string, any>
 ): void {
+  // Radiation can only be applied to characters with 0 block (armor)
+  if (statusId === 'radiation') {
+    const totalBlock = getTotalBlock(character);
+    if (totalBlock > 0) {
+      addToCombatLog(`${character.name} resists radiation (${totalBlock} block remaining)`);
+      return;
+    }
+  }
+
   const existingStatus = character.statuses.find(s => s.id === statusId);
   
   if (existingStatus) {
@@ -122,11 +132,20 @@ export function processDoTs(character: Character): void {
     }
   }
   
-  // Radiation - bypasses block
+  // Radiation - bypasses block, half-life decay
   const radiationStacks = getStatusStacks(character, 'radiation');
   if (radiationStacks > 0) {
     character.hp = Math.max(0, character.hp - radiationStacks);
     addToCombatLog(`${character.name} takes ${radiationStacks} radiation damage (ignores block)`);
+    // Half-life decay: halve stacks each turn (round up), remove at 1
+    const newStacks = radiationStacks <= 1 ? 0 : Math.ceil(radiationStacks / 2);
+    if (newStacks <= 0) {
+      character.statuses = character.statuses.filter(s => s.id !== 'radiation');
+      addToCombatLog(`${character.name}'s radiation has decayed`);
+    } else {
+      const status = character.statuses.find(s => s.id === 'radiation');
+      if (status) status.stacks = newStacks;
+    }
   }
 }
 

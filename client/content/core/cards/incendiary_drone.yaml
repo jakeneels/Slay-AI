@@ -1,6 +1,6 @@
 schemaVersion: 1
-id: fireball
-name: "Fireball"
+id: incendiary_drone
+name: "Incendiary Drone"
 type: skill
 rarity: legendary    #common, rare, epic, legendary, mythic.
 cost: 3
@@ -11,6 +11,7 @@ maxRange: 6
 # optimalRange: 3
 exhaust: false
 expires_after_turns: 0
+description: "Lob a rigged drone for explosive fire area damage."
 effects:
   - kind: damage
     amount: 8
@@ -18,6 +19,6 @@ animation:
   damage:
     projectileColor: 0xff4400  # Bright fire orange-red
     projectileSpeed: 1200      # Fast fireball
-    impactSize: 50             # Medium-large explosive impact
+    impactSize: 200          # Medium-large explosive impact
 # Ranged AOE - lob a fireball at medium range for best effect
 

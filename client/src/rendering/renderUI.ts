@@ -6,7 +6,7 @@ import type { GameState } from '../core/types.js';
 import { WIDTH } from '../core/constants.js';
 import { getCard } from '../core/card.js';
 import { getSelectedCardId } from '../core/gameState.js';
-import { endTurn, moveCharacterForward, moveCharacterBack } from '../core/combat.js';
+import { endTurn, moveCharacterForward, moveCharacterBack, getMoveCost } from '../core/combat.js';
 import { render as renderCallback } from './renderer.js';
 import type { Card, Character } from '../core/types.js';
 import { createEnergyIcon } from './icons/energyIcon.js';
@@ -33,10 +33,11 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
       let instructionText = 'Click enemy to attack!';
       if (card.targeting === 'aoe') {
         const aoeSlots = card.aoeSlots ?? 3;
+        const sideLabel = card.targetSide === 'ally' ? 'allies' : 'enemies';
         if (aoeSlots === 4) {
-          instructionText = 'Click target - hits all enemies!';
+          instructionText = `Click target - hits all ${sideLabel}!`;
         } else {
-          instructionText = `Click target - hits ${aoeSlots} slots!`;
+          instructionText = `Click target - hits ${aoeSlots} ${sideLabel} slots!`;
         }
       } else if (card.targeting === 'ally' || card.targeting === 'allAllies') {
         instructionText = 'Click ally to target!';
@@ -96,8 +97,10 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
   const moveBtnY = 166; // just below the player cards (y=60 + cardH=100 + 6px gap)
   const isAllyTurn = currentPlayer?.isPlayer === true;
   const isCurrentPlayerAlive = currentPlayer && currentPlayer.hp > 0;
-  const moveCost = currentPlayer ? (gameState.characterLibrary[currentPlayer.id]?.stats?.moveEnergyCost ?? 1) : 1;
-  const canMove = isAllyTurn && isCurrentPlayerAlive && currentPlayer && currentPlayer.energy >= moveCost;
+  const moveInfo = currentPlayer ? getMoveCost(currentPlayer) : { energyCost: 1, usesCharge: false };
+  const moveCost = moveInfo.energyCost;
+  const isFreeMove = moveInfo.usesCharge;
+  const canMove = isAllyTurn && isCurrentPlayerAlive && currentPlayer && (isFreeMove || currentPlayer.energy >= moveCost);
 
   if (isAllyTurn && currentPlayer) {
     // Centre the pair of buttons horizontally
@@ -125,20 +128,33 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
     });
     const backIconSize = 11;
     const backIconGap = 2;
-    const backTotalCostW = moveCost * backIconSize + Math.max(0, moveCost - 1) * backIconGap;
-    const backContentW = moveBackText.width + 4 + backTotalCostW;
-    const backContentX = moveBackBtn.x + (moveBtnW - backContentW) / 2;
-    moveBackText.x = backContentX;
-    moveBackText.y = moveBtnY + (moveBtnH - moveBackText.height) / 2;
-    moveBackText.eventMode = 'none';
-    moveBackText.zIndex = 1501;
-    app.stage.addChild(moveBackText);
-    for (let ei = 0; ei < moveCost; ei++) {
-      const icon = createEnergyIcon(backIconSize);
-      icon.x = backContentX + moveBackText.width + 4 + ei * (backIconSize + backIconGap);
-      icon.y = moveBtnY + (moveBtnH - backIconSize) / 2;
-      icon.zIndex = 1501;
-      app.stage.addChild(icon);
+    if (isFreeMove) {
+      // Show "◀ Back FREE" with charges count
+      const backFreeLabel = new Text({
+        text: `◀ Back FREE (${currentPlayer!.moveCharges})`,
+        style: { fill: 0x22c55e, fontSize: 11, fontWeight: 'bold' }
+      });
+      backFreeLabel.x = moveBackBtn.x + (moveBtnW - backFreeLabel.width) / 2;
+      backFreeLabel.y = moveBtnY + (moveBtnH - backFreeLabel.height) / 2;
+      backFreeLabel.eventMode = 'none';
+      backFreeLabel.zIndex = 1501;
+      app.stage.addChild(backFreeLabel);
+    } else {
+      const backTotalCostW = moveCost * backIconSize + Math.max(0, moveCost - 1) * backIconGap;
+      const backContentW = moveBackText.width + 4 + backTotalCostW;
+      const backContentX = moveBackBtn.x + (moveBtnW - backContentW) / 2;
+      moveBackText.x = backContentX;
+      moveBackText.y = moveBtnY + (moveBtnH - moveBackText.height) / 2;
+      moveBackText.eventMode = 'none';
+      moveBackText.zIndex = 1501;
+      app.stage.addChild(moveBackText);
+      for (let ei = 0; ei < moveCost; ei++) {
+        const icon = createEnergyIcon(backIconSize);
+        icon.x = backContentX + moveBackText.width + 4 + ei * (backIconSize + backIconGap);
+        icon.y = moveBtnY + (moveBtnH - backIconSize) / 2;
+        icon.zIndex = 1501;
+        app.stage.addChild(icon);
+      }
     }
 
     // ▶ Fwd (right button – moves toward enemies)
@@ -156,26 +172,39 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
       }
     });
     app.stage.addChild(moveFwdBtn);
-    const moveFwdText = new Text({
-      text: 'Fwd ▶',
-      style: { fill: 0xffffff, fontSize: 11, fontWeight: 'bold' }
-    });
     const fwdIconSize = 11;
     const fwdIconGap = 2;
-    const fwdTotalCostW = moveCost * fwdIconSize + Math.max(0, moveCost - 1) * fwdIconGap;
-    const fwdContentW = moveFwdText.width + 4 + fwdTotalCostW;
-    const fwdContentX = moveFwdBtn.x + (moveBtnW - fwdContentW) / 2;
-    moveFwdText.x = fwdContentX;
-    moveFwdText.y = moveBtnY + (moveBtnH - moveFwdText.height) / 2;
-    moveFwdText.eventMode = 'none';
-    moveFwdText.zIndex = 1501;
-    app.stage.addChild(moveFwdText);
-    for (let ei = 0; ei < moveCost; ei++) {
-      const icon = createEnergyIcon(fwdIconSize);
-      icon.x = fwdContentX + moveFwdText.width + 4 + ei * (fwdIconSize + fwdIconGap);
-      icon.y = moveBtnY + (moveBtnH - fwdIconSize) / 2;
-      icon.zIndex = 1501;
-      app.stage.addChild(icon);
+    if (isFreeMove) {
+      // Show "Fwd ▶ FREE" with charges count
+      const fwdFreeLabel = new Text({
+        text: `FREE (${currentPlayer!.moveCharges}) Fwd ▶`,
+        style: { fill: 0x22c55e, fontSize: 11, fontWeight: 'bold' }
+      });
+      fwdFreeLabel.x = moveFwdBtn.x + (moveBtnW - fwdFreeLabel.width) / 2;
+      fwdFreeLabel.y = moveBtnY + (moveBtnH - fwdFreeLabel.height) / 2;
+      fwdFreeLabel.eventMode = 'none';
+      fwdFreeLabel.zIndex = 1501;
+      app.stage.addChild(fwdFreeLabel);
+    } else {
+      const moveFwdText = new Text({
+        text: 'Fwd ▶',
+        style: { fill: 0xffffff, fontSize: 11, fontWeight: 'bold' }
+      });
+      const fwdTotalCostW = moveCost * fwdIconSize + Math.max(0, moveCost - 1) * fwdIconGap;
+      const fwdContentW = moveFwdText.width + 4 + fwdTotalCostW;
+      const fwdContentX = moveFwdBtn.x + (moveBtnW - fwdContentW) / 2;
+      moveFwdText.x = fwdContentX;
+      moveFwdText.y = moveBtnY + (moveBtnH - moveFwdText.height) / 2;
+      moveFwdText.eventMode = 'none';
+      moveFwdText.zIndex = 1501;
+      app.stage.addChild(moveFwdText);
+      for (let ei = 0; ei < moveCost; ei++) {
+        const icon = createEnergyIcon(fwdIconSize);
+        icon.x = fwdContentX + moveFwdText.width + 4 + ei * (fwdIconSize + fwdIconGap);
+        icon.y = moveBtnY + (moveBtnH - fwdIconSize) / 2;
+        icon.zIndex = 1501;
+        app.stage.addChild(icon);
+      }
     }
   }
 
@@ -239,18 +268,31 @@ function getTargetingWarning(card: Card, caster: Character, gameState: GameState
     return `Not enough energy! (need ${card.cost.energy}, have ${caster.energy})`;
   }
 
-  // Range check – only matters if the card has a maxRange
+  // Range check – only matters if the card has a maxRange or minRange
   // (self-targeting already returned null above, so no overlap issue)
-  if (card.maxRange) {
-    const inRange = candidates.filter(c =>
-      Math.abs(caster.slotIndex - c.slotIndex) <= card.maxRange!
-    );
+  if (card.maxRange || card.minRange) {
+    const inRange = candidates.filter(c => {
+      const dist = Math.abs(caster.slotIndex - c.slotIndex);
+      if (card.maxRange && dist > card.maxRange) return false;
+      if (card.minRange && dist < card.minRange) return false;
+      return true;
+    });
 
     if (inRange.length === 0) {
       // Find the closest candidate to give a helpful distance hint
       const distances = candidates.map(c => Math.abs(caster.slotIndex - c.slotIndex));
       const closest = Math.min(...distances);
-      return `Out of range! Closest ${sideLabel === 'enemies' ? 'enemy' : 'ally'}: ${closest} slots (max range: ${card.maxRange}) — move closer`;
+      const farthest = Math.max(...distances);
+      const targetLabel = sideLabel === 'enemies' ? 'enemy' : 'ally';
+
+      // Determine if targets are too far, too close, or both
+      if (card.minRange && farthest < card.minRange) {
+        return `Too close! Farthest ${targetLabel}: ${farthest} slot${farthest !== 1 ? 's' : ''} (min range: ${card.minRange}) — move away`;
+      } else if (card.maxRange && closest > card.maxRange) {
+        return `Out of range! Closest ${targetLabel}: ${closest} slots (max range: ${card.maxRange}) — move closer`;
+      } else {
+        return `No valid targets in range ${card.minRange ?? 0}–${card.maxRange ?? '∞'}`;
+      }
     }
   }
 

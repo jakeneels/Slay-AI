@@ -10,14 +10,17 @@ isPlayer: false
 stats:
   hp: 35
   maxHp: 35
-  energy: 3
-  maxEnergy: 3
+  energy: 5
+  maxEnergy: 5
+  speed: 2
+  suppression: 2
+  suppressionResist: 0
 mechanics:
-  - "Dual-wield rapid strikes"
+  - "Heavy damage pick"
   - "Hurls telekinetic debris at range before charging"
   - "Low defense, high aggression"
 tags: ["human", "fanatic", "normal", "enemy", "aggressive", "melee"]
 startingDeck:
   - "strike"
-  - "strike"
   - "shockwave"
+  - "shrapnel_grenade"

@@ -9,9 +9,11 @@ import { getGameState, setGameState } from './src/core/gameState.js';
 import { drawCards } from './src/core/deck.js';
 import { shuffleArray } from './src/utils/shuffle.js';
 import { loadContent } from './src/data/contentLoader.js';
-import { render, setApp, getApp } from './src/rendering/renderer.js';
+import { render, setApp } from './src/rendering/renderer.js';
 import { setApp as setCombatApp } from './src/core/combat.js';
 import { WIDTH, HEIGHT } from './src/core/constants.js';
+import { initDevPanel } from './src/rendering/devPanel.js';
+import { getModifierRegistry } from './src/core/modifiers.js';
 
 let currentApp: Application | null = null;
 let initPromise: Promise<void> | null = null;
@@ -87,54 +89,56 @@ async function initGame(): Promise<void> {
   setApp(app);
   setCombatApp(app);
   
-  // Load content from YAML
-  const { cards, characters } = await loadContent();
+  // Clear modifier registry on re-init (HMR safety)
+  getModifierRegistry().clearAll();
+
+  // Load content from YAML (also loads balance.yaml modifiers)
+  const { cards, characters, gear } = await loadContent();
   const gameState = getGameState();
   gameState.cardLibrary = cards;
   gameState.characterLibrary = characters;
+  gameState.gearLibrary = gear;
+  gameState.combatResult = 'ongoing';
+  gameState.pendingReward = null;
   setGameState(gameState);
-  
+
   // Initialize characters from YAML
   const playerCharacters = Object.values(characters).filter(c => c.isPlayer).slice(0, 2);
   const enemyCharacters = Object.values(characters).filter(c => !c.isPlayer).slice(0, 2);
-  
-  // Add extra fanatic zealot + fanatic sprinter as last enemy
-  const zealotDef = characters['fanatic_zealot'];
-  const sprinterDef = characters['fanatic_sprinter'];
-  if (zealotDef) {
-    enemyCharacters.push(zealotDef);
+
+  // Add scrapling swarm as a third enemy if available
+  const scraplingDef = characters['scrapling_swarm'];
+  if (scraplingDef && !enemyCharacters.includes(scraplingDef)) {
+    enemyCharacters.push(scraplingDef);
   }
-  if (sprinterDef) {
-    enemyCharacters.push(sprinterDef);
-  }
-  
-  console.log('Player characters found:', playerCharacters.map(c => c.name));
-  console.log('Enemy characters found:', enemyCharacters.map(c => c.name));
-  
+
   gameState.characters = [];
 
-  // Build deck from full card pool - variety of AOE, single-target, defense, and support
-  const poolCardIds = [
-    'strike', 'defend',           // basics
-    'blast',                      // single-target damage
-    'shockwave', 'fireball', 'chain_lightning',  // AOE
-    'heal', 'overclock',          // support
-  ];
-  const testDeck: string[] = [];
-  for (const id of poolCardIds) {
-    const card = gameState.cardLibrary[id];
-    if (!card) continue;
-    const copies = card.copies ?? 1;
-    for (let i = 0; i < copies; i++) {
-      testDeck.push(id);
+  /**
+   * Build a deck from a character's startingDeck YAML definition.
+   * Each card ID is expanded by its `copies` count from the card library.
+   * Falls back to a basic ["strike", "defend"] deck if startingDeck is missing.
+   */
+  function buildDeckFromDefinition(charDef: any): string[] {
+    const startingDeck: string[] = charDef.startingDeck ?? ['strike', 'defend'];
+    const deck: string[] = [];
+    for (const id of startingDeck) {
+      const card = gameState.cardLibrary[id];
+      if (!card) {
+        console.warn(`Card "${id}" in startingDeck for ${charDef.name} not found in library, skipping`);
+        continue;
+      }
+      const copies = card.copies ?? 1;
+      for (let c = 0; c < copies; c++) {
+        deck.push(id);
+      }
     }
+    return deck;
   }
-  console.log('Deck pool:', poolCardIds.filter(id => gameState.cardLibrary[id]), '->', testDeck.length, 'cards');
-  
+
   // Add player characters - slots 0-3 (ally side)
   playerCharacters.forEach((charDef, i) => {
-    const deck = shuffleArray([...testDeck]);
-    deck.push('overclock'); // Insert after randomizer for testing
+    const deck = shuffleArray(buildDeckFromDefinition(charDef));
     const character: Character = {
       id: charDef.id,
       name: charDef.name,
@@ -142,7 +146,7 @@ async function initGame(): Promise<void> {
       maxHp: charDef.stats.maxHp,
       energy: charDef.stats.energy,
       maxEnergy: charDef.stats.maxEnergy,
-      deck: deck,
+      deck,
       discardPile: [],
       hand: [],
       drawCount: 5,
@@ -151,25 +155,38 @@ async function initGame(): Promise<void> {
       statuses: [],
       isPlayer: charDef.isPlayer,
       slotIndex: i,
+      speed: charDef.stats.speed ?? 0,
+      moveCharges: 0,
+      suppression: charDef.stats.suppression ?? 0,
+      suppressionResist: charDef.stats.suppressionResist ?? 0,
+      gear: { weapon: null, armor: null, accessory: null },
     };
-    
+
     // Draw initial hand
     drawCards(character, character.drawCount);
-    
+
     gameState.characters.push(character);
   });
-  
+
   // Add enemy characters - slots 4-7 (enemy side)
+  const usedEnemyIds = new Set<string>();
   enemyCharacters.forEach((charDef, i) => {
-    const deck = shuffleArray([...testDeck]);
+    const deck = shuffleArray(buildDeckFromDefinition(charDef));
+    // Ensure unique IDs when the same enemy type appears more than once
+    let id = charDef.id;
+    if (usedEnemyIds.has(id)) {
+      id = `${charDef.id}_${i}`;
+    }
+    usedEnemyIds.add(id);
+
     const character: Character = {
-      id: i >= 2 && charDef.id === 'fanatic_zealot' ? `fanatic_zealot_${i}` : charDef.id,
+      id,
       name: charDef.name,
       hp: charDef.stats.hp,
       maxHp: charDef.stats.maxHp,
       energy: charDef.stats.energy,
       maxEnergy: charDef.stats.maxEnergy,
-      deck: deck,
+      deck,
       discardPile: [],
       hand: [],
       drawCount: 5,
@@ -178,16 +195,21 @@ async function initGame(): Promise<void> {
       statuses: [],
       isPlayer: charDef.isPlayer,
       slotIndex: 4 + i,
+      speed: charDef.stats.speed ?? 0,
+      moveCharges: 0,
+      suppression: charDef.stats.suppression ?? 0,
+      suppressionResist: charDef.stats.suppressionResist ?? 0,
+      gear: { weapon: null, armor: null, accessory: null },
     };
-    
+
     // Register cloned enemies in library so sprite lookup works
     if (character.id !== charDef.id) {
       gameState.characterLibrary[character.id] = charDef;
     }
-    
+
     // Draw initial hand
     drawCards(character, character.drawCount);
-    
+
     gameState.characters.push(character);
   });
   
@@ -197,6 +219,9 @@ async function initGame(): Promise<void> {
   
   setGameState(gameState);
   
+  // Initialize dev panel toggle
+  initDevPanel();
+
   // Initial render
   render();
     } finally {
@@ -215,33 +240,8 @@ if (document.readyState === 'loading') {
   initGame();
 }
 
-// Handle HMR updates
+// Force full page reload on any change — cleaner than partial HMR for game state
 if (import.meta.hot) {
-  import.meta.hot.dispose((data) => {
-    cleanup();
-  });
-  
-  // Accept self (game.ts changes) - full reinit
-  import.meta.hot.accept(() => {
-    console.log('[HMR] game.ts updated, re-initializing...');
-    initGame();
-  });
-  
-  // Accept updates from rendering modules - just re-render
-  import.meta.hot.accept(['./src/rendering/renderer.ts', './src/rendering/renderCharacters.ts', './src/rendering/renderHand.ts', './src/rendering/renderUI.ts', './src/rendering/renderBackground.ts'], (modules) => {
-    console.log('[HMR] Rendering module updated, re-rendering...');
-    if (currentApp) {
-      render();
-    }
-  });
-  
-  // Fallback: if any module updates and we have an app, try to re-render
-  import.meta.hot.on('vite:beforeUpdate', () => {
-    if (currentApp) {
-      // Small delay to ensure modules are updated
-      setTimeout(() => {
-        render();
-      }, 10);
-    }
-  });
+  import.meta.hot.dispose(() => cleanup());
+  import.meta.hot.invalidate();
 }
