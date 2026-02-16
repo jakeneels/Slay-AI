@@ -6,7 +6,13 @@ description: "A nimble scavenger armed with makeshift weapons and crude armor."
 role: dps
 theme: "Fast, low-HP enemy that excels at ranged damage and containment."
 sprite: "/assets/game/enemies/fanatic-scout.png"
-spriteScale: 0.45
+visual:
+  preset: small
+  scale: 0.45
+  anchorX: 0.5
+  anchorY: 1
+  offsetX: 0
+  offsetY: 0
 isPlayer: false
 stats:
   hp: 25
@@ -22,4 +28,4 @@ mechanics:
 tags: ["goblin", "scout", "raider", "enemy"]
 startingDeck:
   - "strike"
-  - "strike"
+  - "strike" 

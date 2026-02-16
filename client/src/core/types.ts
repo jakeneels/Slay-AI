@@ -206,11 +206,27 @@ export interface Character {
   gear: Record<GearSlot, GearDefinition | null>; // Equipped gear per slot
 }
 
+export type CharacterVisualPreset = 'humanoid' | 'small' | 'large' | 'beast';
+
+export interface CharacterVisualProfile {
+  preset?: CharacterVisualPreset;
+  scale?: number;
+  anchorX?: number; // 0-1, where 0.5 keeps sprite centered on slot
+  anchorY?: number; // 0-1, where 1 aligns sprite feet to ground line
+  offsetX?: number; // Pixel nudge from slot center
+  offsetY?: number; // Pixel nudge from ground line
+}
+
 export interface CharacterDefinition extends Character {
   sprite?: string;
+  visual?: CharacterVisualProfile;
+  // Legacy visual fields. Kept for backward compatibility with older YAML.
   spriteScale?: number;
   spriteAnchorX?: number; // 0–1 horizontal anchor override (default 0.5 = center)
   spriteAnchorY?: number; // 0–1 vertical anchor override (default 0.5 = center)
+  spriteOffsetX?: number;
+  spriteOffsetY?: number;
+  spriteVisualPreset?: CharacterVisualPreset;
   spriteSheet?: string; // Optional sprite sheet for attack/hit animation (e.g. 2x2 grid)
   spriteSheetLayout?: [number, number]; // [cols, rows] for frame extraction
   startingDeck?: string[];

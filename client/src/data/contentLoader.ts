@@ -3,7 +3,21 @@
 // Just drop a .yaml file into the appropriate folder and it gets loaded automatically.
 
 import jsyaml from 'js-yaml';
-import type { Card, CardEffect, CharacterDefinition, GearDefinition, StatusDefinition, StatusCadence, DecayMode, LoadedContent, EffectTarget, AoePattern, GameModifier, ModifierScope } from '../core/types.js';
+import type {
+  Card,
+  CardEffect,
+  CharacterDefinition,
+  CharacterVisualPreset,
+  GearDefinition,
+  StatusDefinition,
+  StatusCadence,
+  DecayMode,
+  LoadedContent,
+  EffectTarget,
+  AoePattern,
+  GameModifier,
+  ModifierScope,
+} from '../core/types.js';
 import { getModifierRegistry } from '../core/modifiers.js';
 
 // Auto-discover all YAML files via Vite glob imports (eager, raw strings)
@@ -13,6 +27,61 @@ const enemyYamlModules = import.meta.glob('/content/core/enemies/*.yaml', { quer
 const gearYamlModules = import.meta.glob('/content/core/gear/*.yaml', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
 const statusYamlModules = import.meta.glob('/content/core/statuses/*.yaml', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
 const balanceYamlModules = import.meta.glob('/content/core/balance.yaml', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
+
+const VISUAL_PRESET_DEFAULTS: Record<CharacterVisualPreset, Required<NonNullable<CharacterDefinition['visual']>>> = {
+  humanoid: { preset: 'humanoid', scale: 1, anchorX: 0.5, anchorY: 1, offsetX: 0, offsetY: 0 },
+  small: { preset: 'small', scale: 0.8, anchorX: 0.5, anchorY: 1, offsetX: 0, offsetY: 0 },
+  large: { preset: 'large', scale: 1.35, anchorX: 0.5, anchorY: 1, offsetX: 0, offsetY: 0 },
+  beast: { preset: 'beast', scale: 1.1, anchorX: 0.5, anchorY: 0.9, offsetX: 0, offsetY: 0 },
+};
+
+function clamp01(value: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(0, Math.min(1, value));
+}
+
+function toFiniteNumber(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function inferPreset(charData: any): CharacterVisualPreset {
+  const explicit = charData.visual?.preset ?? charData.spriteVisualPreset;
+  if (explicit && VISUAL_PRESET_DEFAULTS[explicit as CharacterVisualPreset]) {
+    return explicit as CharacterVisualPreset;
+  }
+
+  const scaleHint = toFiniteNumber(charData.visual?.scale ?? charData.spriteScale, 1);
+  if (scaleHint >= 1.45) return 'large';
+  if (scaleHint <= 0.65) return 'small';
+  return 'humanoid';
+}
+
+export function normalizeCharacterVisualConfig(charData: any): CharacterDefinition {
+  const preset = inferPreset(charData);
+  const presetDefaults = VISUAL_PRESET_DEFAULTS[preset];
+  const visualInput = charData.visual ?? {};
+
+  const visual = {
+    preset,
+    scale: toFiniteNumber(visualInput.scale ?? charData.spriteScale, presetDefaults.scale),
+    anchorX: clamp01(toFiniteNumber(visualInput.anchorX ?? charData.spriteAnchorX, presetDefaults.anchorX), presetDefaults.anchorX),
+    anchorY: clamp01(toFiniteNumber(visualInput.anchorY ?? charData.spriteAnchorY, presetDefaults.anchorY), presetDefaults.anchorY),
+    offsetX: toFiniteNumber(visualInput.offsetX ?? charData.spriteOffsetX, presetDefaults.offsetX),
+    offsetY: toFiniteNumber(visualInput.offsetY ?? charData.spriteOffsetY, presetDefaults.offsetY),
+  };
+
+  return {
+    ...charData,
+    visual,
+    // Keep legacy fields in sync so older renderer/tests stay stable.
+    spriteScale: visual.scale,
+    spriteAnchorX: visual.anchorX,
+    spriteAnchorY: visual.anchorY,
+    spriteOffsetX: visual.offsetX,
+    spriteOffsetY: visual.offsetY,
+    spriteVisualPreset: visual.preset,
+  } as CharacterDefinition;
+}
 
 /**
  * Load YAML content (cards, characters, enemies)
@@ -134,7 +203,7 @@ export async function loadContent(): Promise<LoadedContent> {
         if (charData.stats && charData.stats.speed === undefined) {
           charData.stats.speed = 0;
         }
-        characters[charData.id] = charData;
+        characters[charData.id] = normalizeCharacterVisualConfig(charData);
       } catch (e) {
         console.warn(`Failed to load character ${filePath}:`, e);
       }
@@ -149,7 +218,7 @@ export async function loadContent(): Promise<LoadedContent> {
           charData.stats.speed = 0;
         }
         console.log(`Loaded enemy: ${charData.name} (${charData.id})`);
-        characters[charData.id] = charData;
+        characters[charData.id] = normalizeCharacterVisualConfig(charData);
       } catch (e) {
         console.warn(`Failed to load enemy ${filePath}:`, e);
       }

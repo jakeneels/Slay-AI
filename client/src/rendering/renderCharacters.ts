@@ -2,14 +2,14 @@
 
 import type { Application, Texture, Sprite } from 'pixi.js';
 import { Assets, Text, Graphics, Sprite as SpriteImpl } from 'pixi.js';
-import type { GameState, Character } from '../core/types.js';
+import type { GameState, Character, CharacterDefinition } from '../core/types.js';
 import { getSelectedCardId, getGameState } from '../core/gameState.js';
 import { playCard, calculateAoeTargets, getCharactersByPosition, resolveTargetSlot, isCharacterSuppressed, getNetSuppressionPenalty } from '../core/combat.js';
 import { getSuppressionStackCost } from '../core/constants.js';
 import { render as renderCallback } from './renderer.js';
 import { registerCharacterSprite } from '../../animations.js';
 import { getTotalBlock } from '../core/block.js';
-import { MAX_SLOTS, SPRITE_CENTER, calculateRangeModifier } from '../core/constants.js';
+import { MAX_SLOTS, WIDTH, calculateRangeModifier } from '../core/constants.js';
 import { createEnergyIcon } from './icons/energyIcon.js';
 import { createHealIcon } from './icons/healIcon.js';
 import { getStatusDisplay } from './statusConfig.js';
@@ -17,11 +17,17 @@ import { setHoveredStatus } from './tooltipState.js';
 import { getModifierRegistry } from '../core/modifiers.js';
 
 const BATTLE_Y_OFFSET = 265;
-const SPACING = 140;
 
 /** Typical character sprite size (max width or height). */
 const CHAR_SPRITE_SIZE = 250;
 const CHAR_CENTER = CHAR_SPRITE_SIZE / 2;
+const BATTLE_GROUND_OFFSET = 180;
+const BATTLE_LEFT_BASE = 20;
+const BATTLE_RIGHT_BASE = WIDTH - CHAR_SPRITE_SIZE;
+const LANE_SELECTOR_WIDTH = 80;
+const LANE_SELECTOR_HEIGHT = 200;
+const LANE_SELECTOR_RADIUS = 8;
+const DEBUG_POSITION_STORAGE_KEY = 'slayai:debug:char-position';
 
 export const ENERGY_ICON_SIZE = 14;
 
@@ -31,18 +37,141 @@ const BAR_ICON_GAP = 3;
 const BAR_WIDTH = 80;
 const BAR_HEIGHT = 14;
 const BAR_RADIUS = 5;
+const BAR_GAP = 4;
+
+// HUD placement above characters
+const HUD_TOP_OFFSET = 86;
+const HUD_SECTION_GAP = 6;
+const STATUS_MAX_ROW_WIDTH = 130;
+
+// Layering buckets
+const Z_SPRITE = 100;
+const Z_NAME = 180;
+const Z_BARS = 220;
+const Z_BLOCK = 230;
+const Z_STATUS = 260;
+const Z_ARROW = 280;
 
 // Map to store character sprites for AOE highlighting
 const characterSpriteMap = new Map<string, SpriteImpl>();
+
+export type ResolvedVisualProfile = {
+  scale: number;
+  anchorX: number;
+  anchorY: number;
+  offsetX: number;
+  offsetY: number;
+};
+
+function clamp01(value: number, fallback: number): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(0, Math.min(1, value));
+}
+
+function parseBoolFlag(value: string | null): boolean {
+  return value === '1' || value === 'true' || value === 'on';
+}
+
+function shouldShowPositionDebugOverlay(): boolean {
+  try {
+    const fromQuery = new URLSearchParams(window.location.search).get('debugCharPos');
+    if (fromQuery !== null) {
+      return parseBoolFlag(fromQuery.toLowerCase());
+    }
+    return parseBoolFlag(window.localStorage.getItem(DEBUG_POSITION_STORAGE_KEY));
+  } catch {
+    return false;
+  }
+}
+
+export function resolveVisualProfile(charDef?: CharacterDefinition): ResolvedVisualProfile {
+  const visual = charDef?.visual;
+  const scale = visual?.scale ?? charDef?.spriteScale ?? 1;
+  const anchorX = visual?.anchorX ?? charDef?.spriteAnchorX ?? 0.5;
+  const anchorY = visual?.anchorY ?? charDef?.spriteAnchorY ?? 1;
+  const offsetX = visual?.offsetX ?? charDef?.spriteOffsetX ?? 0;
+  const offsetY = visual?.offsetY ?? charDef?.spriteOffsetY ?? 0;
+
+  return {
+    scale: Number.isFinite(scale) ? scale : 1,
+    anchorX: clamp01(anchorX, 0.5),
+    anchorY: clamp01(anchorY, 1),
+    offsetX: Number.isFinite(offsetX) ? offsetX : 0,
+    offsetY: Number.isFinite(offsetY) ? offsetY : 0,
+  };
+}
+
+export function computeSpritePlacement(
+  slotCenterX: number,
+  groundY: number,
+  spriteWidth: number,
+  spriteHeight: number,
+  profile: ResolvedVisualProfile
+): { x: number; y: number } {
+  return {
+    x: slotCenterX + profile.offsetX + (profile.anchorX - 0.5) * spriteWidth,
+    y: groundY + profile.offsetY - (1 - profile.anchorY) * spriteHeight,
+  };
+}
+
+function drawPositionDebugOverlay(
+  app: Application,
+  slotCenterX: number,
+  groundY: number,
+  profile: ResolvedVisualProfile
+): void {
+  const overlay = new Graphics();
+  overlay.moveTo(slotCenterX - 26, groundY).lineTo(slotCenterX + 26, groundY)
+    .stroke({ width: 2, color: 0x00e5ff, alpha: 0.7 });
+  overlay.moveTo(slotCenterX, groundY - 24).lineTo(slotCenterX, groundY + 24)
+    .stroke({ width: 2, color: 0x00e5ff, alpha: 0.45 });
+  overlay.circle(slotCenterX + profile.offsetX, groundY + profile.offsetY, 3)
+    .fill({ color: 0xfff59d, alpha: 0.95 });
+  overlay.eventMode = 'none';
+  overlay.zIndex = Z_SPRITE - 1;
+  app.stage.addChild(overlay);
+}
+
+function getSlotSpacing(): number {
+  const availableWidth = BATTLE_RIGHT_BASE - BATTLE_LEFT_BASE;
+  return MAX_SLOTS > 1 ? availableWidth / (MAX_SLOTS - 1) : 0;
+}
+
+function getSlotCenterX(slotIndex: number): number {
+  return BATTLE_LEFT_BASE + slotIndex * getSlotSpacing() + CHAR_CENTER;
+}
+
+function createLaneSelectorHighlight(
+  slotCenterX: number,
+  groundY: number,
+  color: number,
+  strokeAlpha = 0.9,
+  fillAlpha = 0.12
+): Graphics {
+  const selector = new Graphics();
+  selector.roundRect(
+    slotCenterX - LANE_SELECTOR_WIDTH / 2,
+    groundY - LANE_SELECTOR_HEIGHT,
+    LANE_SELECTOR_WIDTH,
+    LANE_SELECTOR_HEIGHT,
+    LANE_SELECTOR_RADIUS
+  )
+    .fill({ color, alpha: fillAlpha })
+    .stroke({ width: 3, color, alpha: strokeAlpha });
+  selector.eventMode = 'none';
+  selector.zIndex = Z_SPRITE - 1;
+  return selector;
+}
 
 /**
  * Render all characters on the battlefield
  */
 export function renderCharacters(app: Application, gameState: GameState): void {
   const battleY = 800 - BATTLE_Y_OFFSET; // Move characters down towards bottom
-  const width = 1200;
-  const leftBase = 20;
-  const rightBase = width - CHAR_SPRITE_SIZE;
+  const battleGroundY = battleY + BATTLE_GROUND_OFFSET;
+  const showPositionDebug = shouldShowPositionDebugOverlay();
+  const leftBase = BATTLE_LEFT_BASE;
+  const rightBase = BATTLE_RIGHT_BASE;
   
   // Clear sprite map for this render cycle
   characterSpriteMap.clear();
@@ -55,14 +184,12 @@ export function renderCharacters(app: Application, gameState: GameState): void {
   
   allies.forEach((char) => {
     const x = leftBase + char.slotIndex * slotSpacing;
-    const y = battleY;
-    renderCharacter(app, gameState, char, x, y);
+    renderCharacter(app, gameState, char, x, battleY, battleGroundY, showPositionDebug);
   });
   
   enemies.forEach((char) => {
     const x = leftBase + char.slotIndex * slotSpacing;
-    const y = battleY;
-    renderCharacter(app, gameState, char, x, y);
+    renderCharacter(app, gameState, char, x, battleY, battleGroundY, showPositionDebug);
   });
 
   // --- Render clickable empty-slot hit areas for AOE cards ---
@@ -104,10 +231,10 @@ export function renderCharacters(app: Application, gameState: GameState): void {
           if (potentialTargets.length === 0) continue;
 
           const slotX = leftBase + slot * slotSpacing;
-          const hitW = 80;
-          const hitH = 200;
-          const hitX = slotX + SPRITE_CENTER - hitW / 2;
-          const hitY = battleY - 20;
+          const hitW = LANE_SELECTOR_WIDTH;
+          const hitH = LANE_SELECTOR_HEIGHT;
+          const hitX = slotX + CHAR_CENTER - hitW / 2;
+          const hitY = battleGroundY - hitH;
 
           // Semi-transparent hit area so player can see it's clickable
           const hitArea = new Graphics();
@@ -185,18 +312,30 @@ export function renderCharacters(app: Application, gameState: GameState): void {
 /**
  * Render a single character
  */
-function renderCharacter(app: Application, gameState: GameState, char: Character, x: number, y: number): void {
+function renderCharacter(
+  app: Application,
+  gameState: GameState,
+  char: Character,
+  slotX: number,
+  hudY: number,
+  groundY: number,
+  showPositionDebug: boolean
+): void {
   const charDef = gameState.characterLibrary[char.id];
+  const slotCenterX = slotX + CHAR_CENTER;
+  const visual = resolveVisualProfile(charDef);
   
   // Character sprite as main entity
   if (charDef && charDef.sprite) {
-      Assets.load(charDef.sprite).then((texture: Texture) => {
+      const base = import.meta.env.BASE_URL ?? '/';
+      const spritePath = charDef.sprite.startsWith('/') ? `${base}${charDef.sprite.slice(1)}` : charDef.sprite;
+      Assets.load(spritePath).then((texture: Texture) => {
       const sprite = new SpriteImpl(texture);
       sprite.roundPixels = false;
 
       // Maintain aspect ratio and make larger for better quality
       const baseSize = 200;
-      const scale = charDef.spriteScale ?? 1;
+      const scale = visual.scale;
       const targetSize = baseSize * scale;
       const aspectRatio = texture.width / texture.height;
       if (aspectRatio > 1) {
@@ -208,11 +347,18 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
       }
 
       // Center anchor (with optional per-character override) so sprite stays centered when scaling
-      const anchorX = charDef.spriteAnchorX ?? 0.5;
-      const anchorY = charDef.spriteAnchorY ?? 0.5;
+      const anchorX = visual.anchorX;
+      const anchorY = visual.anchorY;
       sprite.anchor.set(anchorX, anchorY);
-      sprite.x = x + SPRITE_CENTER;
-      sprite.y = y - 20 + sprite.height * anchorY;
+      // Keep visual center and foot contact stable, regardless of anchor changes.
+      const placement = computeSpritePlacement(slotCenterX, groundY, sprite.width, sprite.height, visual);
+      sprite.x = placement.x;
+      sprite.y = placement.y;
+      sprite.zIndex = Z_SPRITE;
+
+      if (showPositionDebug) {
+        drawPositionDebugOverlay(app, slotCenterX, groundY, visual);
+      }
       
       // Make targetable based on card's targeting type
       const selectedCardId = getSelectedCardId();
@@ -315,21 +461,8 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
                 }
               }
               
-              // Add primary target highlight (based on original size, positioned at center)
-              const padding = 8;
-              primaryHighlight = new Graphics();
-              primaryHighlight.roundRect(
-                -padding, 
-                -padding, 
-                originalSpriteWidth + padding * 2, 
-                originalSpriteHeight + padding * 2, 
-                8
-              )
-                .stroke({ width: 4, color: highlightColor, alpha: 0.9 });
-              // Rect drawn at (-padding,-padding); position so rect wraps sprite with padding
-              primaryHighlight.x = centerX - originalSpriteWidth / 2;
-              primaryHighlight.y = centerY - originalSpriteHeight / 2;
-              primaryHighlight.zIndex = -1;
+              // Draw selector anchored to lane, independent of sprite visual offsets/scales.
+              primaryHighlight = createLaneSelectorHighlight(slotCenterX, groundY, highlightColor);
               app.stage.addChild(primaryHighlight);
               highlightGraphics.push(primaryHighlight);
               
@@ -349,14 +482,8 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
                   if (targetChar.id !== char.id) {
                     const targetSprite = characterSpriteMap.get(targetChar.id);
                     if (targetSprite) {
-                      const highlight = new Graphics();
-                      const hw = targetSprite.width + padding * 2;
-                      const hh = targetSprite.height + padding * 2;
-                      highlight.roundRect(-padding, -padding, hw, hh, 8)
-                        .stroke({ width: 4, color: highlightColor, alpha: 0.9 });
-                      highlight.x = targetSprite.x - targetSprite.width / 2;
-                      highlight.y = targetSprite.y - targetSprite.height / 2;
-                      highlight.zIndex = -1;
+                      const targetSlotCenterX = getSlotCenterX(targetChar.slotIndex);
+                      const highlight = createLaneSelectorHighlight(targetSlotCenterX, groundY, highlightColor);
                       app.stage.addChild(highlight);
                       highlightGraphics.push(highlight);
                     }
@@ -374,15 +501,8 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
                   if (targetChar.id !== char.id) {
                     const targetSprite = characterSpriteMap.get(targetChar.id);
                     if (targetSprite) {
-                      const highlight = new Graphics();
-                      const pad = 8;
-                      const hw = targetSprite.width + pad * 2;
-                      const hh = targetSprite.height + pad * 2;
-                      highlight.roundRect(-pad, -pad, hw, hh, 8)
-                        .stroke({ width: 4, color: highlightColor, alpha: 0.9 });
-                      highlight.x = targetSprite.x - targetSprite.width / 2;
-                      highlight.y = targetSprite.y - targetSprite.height / 2;
-                      highlight.zIndex = -1;
+                      const targetSlotCenterX = getSlotCenterX(targetChar.slotIndex);
+                      const highlight = createLaneSelectorHighlight(targetSlotCenterX, groundY, highlightColor);
                       app.stage.addChild(highlight);
                       highlightGraphics.push(highlight);
                     }
@@ -425,24 +545,18 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
     });
   }
   
-  // Character name below sprite
-  const name = new Text({
-    text: char.name,
-    style: { fill: 0xffffff, fontSize: 14, fontWeight: 'bold' }
-  });
-  name.x = x + SPRITE_CENTER - name.width/2;
-  name.y = y + 180; // Move down for larger sprites
-  name.eventMode = 'none';
-  app.stage.addChild(name);
-  
-  // --- Stat bars below name ---
-  // Layout: [icon] [===bar===]  aligned vertically, HP bar on top, energy bar below
-  const totalBarRowW = BAR_ICON_SIZE + BAR_ICON_GAP + BAR_WIDTH;
-  const barStartX = x + SPRITE_CENTER - totalBarRowW / 2;
-  const barX = barStartX + BAR_ICON_SIZE + BAR_ICON_GAP;
-  const hpBarY = y + 200;
-  const barGap = 4; // vertical gap between bars
+  // --- Above-sprite HUD stack ---
+  // Bars are fixed at the same Y for all characters.
+  // Status rows anchor to the bars and cascade upward.
+  const hpBarY = hudY - HUD_TOP_OFFSET;
+  const statusBottomY = hpBarY - HUD_SECTION_GAP;
+  const statusLayout = renderStatusBadges(app, char, slotCenterX, statusBottomY, STATUS_MAX_ROW_WIDTH);
 
+  // --- Stat bars ---
+  // Layout: [icon] [===bar===] aligned vertically, HP bar on top, energy bar below
+  const totalBarRowW = BAR_ICON_SIZE + BAR_ICON_GAP + BAR_WIDTH;
+  const barStartX = slotCenterX - totalBarRowW / 2;
+  const barX = barStartX + BAR_ICON_SIZE + BAR_ICON_GAP;
   // --- HP bar ---
   {
     // Heal icon to the left of bar
@@ -450,6 +564,7 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
     hpIcon.x = barStartX;
     hpIcon.y = hpBarY + (BAR_HEIGHT - BAR_ICON_SIZE) / 2;
     hpIcon.eventMode = 'none';
+    hpIcon.zIndex = Z_BARS;
     app.stage.addChild(hpIcon);
 
     // Outer shadow
@@ -457,6 +572,7 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
     shadow.roundRect(-1, -1, BAR_WIDTH + 2, BAR_HEIGHT + 2, BAR_RADIUS + 1)
       .fill({ color: 0x000000, alpha: 0.3 });
     shadow.x = barX; shadow.y = hpBarY;
+    shadow.zIndex = Z_BARS;
     app.stage.addChild(shadow);
 
     // Background
@@ -465,6 +581,7 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
       .fill(0x1a1a1a)
       .stroke({ width: 1.5, color: 0x000000 });
     bg.x = barX; bg.y = hpBarY;
+    bg.zIndex = Z_BARS;
     app.stage.addChild(bg);
 
     // Inner bg
@@ -472,6 +589,7 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
     inner.roundRect(1, 1, BAR_WIDTH - 2, BAR_HEIGHT - 2, BAR_RADIUS - 1)
       .fill(0x2a2a2a);
     inner.x = barX; inner.y = hpBarY;
+    inner.zIndex = Z_BARS;
     app.stage.addChild(inner);
 
     // HP fill
@@ -483,12 +601,14 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
       const fill = new Graphics();
       fill.roundRect(2, 2, fillW, BAR_HEIGHT - 4, BAR_RADIUS - 1.5).fill(fillColor);
       fill.x = barX; fill.y = hpBarY;
+      fill.zIndex = Z_BARS;
       app.stage.addChild(fill);
       if (fillW > 2) {
         const highlight = new Graphics();
         highlight.roundRect(2, 2, fillW, (BAR_HEIGHT - 4) * 0.4, BAR_RADIUS - 1.5)
           .fill({ color: lighterColor, alpha: 0.6 });
         highlight.x = barX; highlight.y = hpBarY;
+        highlight.zIndex = Z_BARS + 1;
         app.stage.addChild(highlight);
       }
     }
@@ -501,17 +621,19 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
     hpText.x = barX + BAR_WIDTH / 2 - hpText.width / 2;
     hpText.y = hpBarY + BAR_HEIGHT / 2 - hpText.height / 2;
     hpText.eventMode = 'none';
+    hpText.zIndex = Z_BARS + 2;
     app.stage.addChild(hpText);
   }
 
   // --- Energy bar ---
-  const energyBarY = hpBarY + BAR_HEIGHT + barGap;
+  const energyBarY = hpBarY + BAR_HEIGHT + BAR_GAP;
   {
     // Energy icon to the left of bar
     const enIcon = createEnergyIcon(BAR_ICON_SIZE);
     enIcon.x = barStartX;
     enIcon.y = energyBarY + (BAR_HEIGHT - BAR_ICON_SIZE) / 2;
     enIcon.eventMode = 'none';
+    enIcon.zIndex = Z_BARS;
     app.stage.addChild(enIcon);
 
     // Outer shadow
@@ -519,6 +641,7 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
     shadow.roundRect(-1, -1, BAR_WIDTH + 2, BAR_HEIGHT + 2, BAR_RADIUS + 1)
       .fill({ color: 0x000000, alpha: 0.3 });
     shadow.x = barX; shadow.y = energyBarY;
+    shadow.zIndex = Z_BARS;
     app.stage.addChild(shadow);
 
     // Background
@@ -527,6 +650,7 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
       .fill(0x1a1a1a)
       .stroke({ width: 1.5, color: 0x000000 });
     bg.x = barX; bg.y = energyBarY;
+    bg.zIndex = Z_BARS;
     app.stage.addChild(bg);
 
     // Inner bg
@@ -534,6 +658,7 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
     inner.roundRect(1, 1, BAR_WIDTH - 2, BAR_HEIGHT - 2, BAR_RADIUS - 1)
       .fill(0x2a2a2a);
     inner.x = barX; inner.y = energyBarY;
+    inner.zIndex = Z_BARS;
     app.stage.addChild(inner);
 
     // Energy fill
@@ -543,12 +668,14 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
       const fill = new Graphics();
       fill.roundRect(2, 2, fillW, BAR_HEIGHT - 4, BAR_RADIUS - 1.5).fill(0x38bdf8);
       fill.x = barX; fill.y = energyBarY;
+      fill.zIndex = Z_BARS;
       app.stage.addChild(fill);
       if (fillW > 2) {
         const highlight = new Graphics();
         highlight.roundRect(2, 2, fillW, (BAR_HEIGHT - 4) * 0.4, BAR_RADIUS - 1.5)
           .fill({ color: 0x7dd3fc, alpha: 0.6 });
         highlight.x = barX; highlight.y = energyBarY;
+        highlight.zIndex = Z_BARS + 1;
         app.stage.addChild(highlight);
       }
     }
@@ -561,14 +688,26 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
     enText.x = barX + BAR_WIDTH / 2 - enText.width / 2;
     enText.y = energyBarY + BAR_HEIGHT / 2 - enText.height / 2;
     enText.eventMode = 'none';
+    enText.zIndex = Z_BARS + 2;
     app.stage.addChild(enText);
   }
+
+  // Character name under the energy bar (smaller, secondary text)
+  const name = new Text({
+    text: char.name,
+    style: { fill: 0xd1d5db, fontSize: 11, fontWeight: '600' }
+  });
+  name.x = slotCenterX - name.width / 2;
+  name.y = energyBarY + BAR_HEIGHT + 2;
+  name.eventMode = 'none';
+  name.zIndex = Z_NAME;
+  app.stage.addChild(name);
 
   // Block display - shield icon with number (like STS), positioned to the right of bars
   const totalBlock = getTotalBlock(char);
 
   if (totalBlock > 0) {
-    const shieldX = x + SPRITE_CENTER + totalBarRowW / 2 + 14;
+    const shieldX = slotCenterX + totalBarRowW / 2 + 14;
     const shieldY = hpBarY + BAR_HEIGHT / 2;
     const shieldWidth = 32;
     const shieldHeight = 38;
@@ -590,6 +729,7 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
     shield.stroke({ width: 2.5, color: 0x1e40af });
     shield.x = shieldX; shield.y = shieldY;
     shield.eventMode = 'none';
+    shield.zIndex = Z_BLOCK;
     app.stage.addChild(shield);
 
     const blockText = new Text({
@@ -599,14 +739,11 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
     blockText.x = shieldX - blockText.width / 2;
     blockText.y = shieldY - blockText.height / 2 + 2;
     blockText.eventMode = 'none';
+    blockText.zIndex = Z_BLOCK + 1;
     app.stage.addChild(blockText);
   }
-  
-  // --- Status effect badges above sprite ---
-  const statusBadgeY = y - 45;
-  renderStatusBadges(app, char, x, statusBadgeY);
 
-  // Add turn indicator arrow if this is the current player (above badges)
+  // Add turn indicator arrow above status rows
   if (char.id === gameState.currentPlayerId) {
     const arrow = new Graphics();
     arrow.moveTo(0, 0)
@@ -618,8 +755,9 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
          .lineTo(10, -15)
          .closePath()
          .fill(0xffeb3b); // Bright yellow arrow
-    arrow.x = x + 60;
-    arrow.y = statusBadgeY - 10;
+    arrow.x = slotCenterX;
+    arrow.y = statusLayout.topY - 8;
+    arrow.zIndex = Z_ARROW;
     app.stage.addChild(arrow);
   }
 }
@@ -651,9 +789,10 @@ function calcBadgeWidth(iconCount: number, hasLabel: boolean): number {
 function renderStatusBadges(
   app: Application,
   char: Character,
-  charX: number,
-  rowY: number,
-): void {
+  charCenterX: number,
+  rowBottomY: number,
+  maxRowWidth: number,
+): { topY: number; bottomY: number; rows: number } {
   const statuses = char.statuses ?? [];
 
   // Filter to statuses that have a display config
@@ -717,7 +856,9 @@ function renderStatusBadges(
     }
   }
 
-  if (visible.length === 0) return;
+  if (visible.length === 0) {
+    return { topY: rowBottomY, bottomY: rowBottomY, rows: 0 };
+  }
 
   // Pre-calculate badge widths and labels
   const badgeData = visible.map(({ status, config }) => {
@@ -738,71 +879,101 @@ function renderStatusBadges(
     return { status, config, labelText, badgeW };
   });
 
-  // Center the badge row above the character
-  const totalWidth = badgeData.reduce((sum, b) => sum + b.badgeW, 0) + Math.max(0, badgeData.length - 1) * BADGE_GAP;
-  const charCenterX = charX + SPRITE_CENTER;
-  let badgeX = charCenterX - totalWidth / 2;
-
-  for (const { status, config, labelText, badgeW } of badgeData) {
-    // Badge background pill (interactive for tooltip)
-    const bg = new Graphics();
-    bg.roundRect(0, 0, badgeW, BADGE_H, BADGE_RADIUS)
-      .fill({ color: config.bgColor, alpha: 0.9 })
-      .stroke({ width: 1.2, color: config.borderColor, alpha: 0.85 });
-    bg.x = badgeX;
-    bg.y = rowY;
-    bg.eventMode = 'static';
-    bg.cursor = 'help';
-
-    // Hover: show tooltip
-    const tooltipX = badgeX + badgeW / 2;
-    const tooltipY = rowY;
-    const statusId = status.id;
-    const stacks = status.stacks;
-    bg.on('pointerenter', () => {
-      if (setHoveredStatus(statusId, stacks, tooltipX, tooltipY)) {
-        renderCallback();
-      }
-    });
-    bg.on('pointerleave', () => {
-      if (setHoveredStatus(null, 0)) {
-        renderCallback();
-      }
-    });
-
-    app.stage.addChild(bg);
-
-    // Draw icons (supports multiple per badge)
-    let iconX = badgeX + BADGE_PAD_X;
-    const iconY = rowY + (BADGE_H - BADGE_ICON_SIZE) / 2;
-    for (const drawFn of config.drawIcons) {
-      const icon = new Graphics();
-      drawFn(icon, BADGE_ICON_SIZE);
-      icon.x = iconX;
-      icon.y = iconY;
-      icon.eventMode = 'none';
-      app.stage.addChild(icon);
-      iconX += BADGE_ICON_SIZE + BADGE_ICON_GAP;
+  const rows: typeof badgeData[] = [];
+  let currentRow: typeof badgeData = [];
+  let currentRowWidth = 0;
+  for (const badge of badgeData) {
+    const nextBadgeW = badge.badgeW + (currentRow.length > 0 ? BADGE_GAP : 0);
+    if (currentRow.length > 0 && currentRowWidth + nextBadgeW > maxRowWidth) {
+      rows.push(currentRow);
+      currentRow = [badge];
+      currentRowWidth = badge.badgeW;
+    } else {
+      currentRow.push(badge);
+      currentRowWidth += nextBadgeW;
     }
+  }
+  if (currentRow.length > 0) {
+    rows.push(currentRow);
+  }
 
-    // Stack / value text
-    if (labelText) {
-      const stackText = new Text({
-        text: labelText,
-        style: {
-          fill: config.iconColor,
-          fontSize: 9,
-          fontWeight: 'bold',
-          stroke: { color: 0x000000, width: 2 },
-        },
+  rows.forEach((row, rowIndex) => {
+    const totalWidth = row.reduce((sum, b) => sum + b.badgeW, 0) + Math.max(0, row.length - 1) * BADGE_GAP;
+    let badgeX = charCenterX - totalWidth / 2;
+    const rowTopY = rowBottomY - BADGE_H - rowIndex * (BADGE_H + BADGE_GAP);
+
+    for (const { status, config, labelText, badgeW } of row) {
+      // Badge background pill (interactive for tooltip)
+      const bg = new Graphics();
+      bg.roundRect(0, 0, badgeW, BADGE_H, BADGE_RADIUS)
+        .fill({ color: config.bgColor, alpha: 0.9 })
+        .stroke({ width: 1.2, color: config.borderColor, alpha: 0.85 });
+      bg.x = badgeX;
+      bg.y = rowTopY;
+      bg.eventMode = 'static';
+      bg.cursor = 'help';
+      bg.zIndex = Z_STATUS;
+
+      // Hover: show tooltip
+      const tooltipX = badgeX + badgeW / 2;
+      const tooltipY = rowTopY;
+      const statusId = status.id;
+      const stacks = status.stacks;
+      bg.on('pointerenter', () => {
+        if (setHoveredStatus(statusId, stacks, tooltipX, tooltipY)) {
+          renderCallback();
+        }
       });
-      stackText.x = iconX + 1;
-      stackText.y = rowY + BADGE_H / 2 - stackText.height / 2;
-      stackText.eventMode = 'none';
-      app.stage.addChild(stackText);
-    }
+      bg.on('pointerleave', () => {
+        if (setHoveredStatus(null, 0)) {
+          renderCallback();
+        }
+      });
 
-    badgeX += badgeW + BADGE_GAP;
+      app.stage.addChild(bg);
+
+      // Draw icons (supports multiple per badge)
+      let iconX = badgeX + BADGE_PAD_X;
+      const iconY = rowTopY + (BADGE_H - BADGE_ICON_SIZE) / 2;
+      for (const drawFn of config.drawIcons) {
+        const icon = new Graphics();
+        drawFn(icon, BADGE_ICON_SIZE);
+        icon.x = iconX;
+        icon.y = iconY;
+        icon.eventMode = 'none';
+        icon.zIndex = Z_STATUS + 1;
+        app.stage.addChild(icon);
+        iconX += BADGE_ICON_SIZE + BADGE_ICON_GAP;
+      }
+
+      // Stack / value text
+      if (labelText) {
+        const stackText = new Text({
+          text: labelText,
+          style: {
+            fill: config.iconColor,
+            fontSize: 9,
+            fontWeight: 'bold',
+            stroke: { color: 0x000000, width: 2 },
+          },
+        });
+        stackText.x = iconX + 1;
+        stackText.y = rowTopY + BADGE_H / 2 - stackText.height / 2;
+        stackText.eventMode = 'none';
+        stackText.zIndex = Z_STATUS + 1;
+        app.stage.addChild(stackText);
+      }
+
+      badgeX += badgeW + BADGE_GAP;
+    }
+  });
+
+  const rowsCount = rows.length;
+  const topY = rowBottomY - rowsCount * BADGE_H - Math.max(0, rowsCount - 1) * BADGE_GAP;
+  return {
+    topY,
+    bottomY: rowBottomY,
+    rows: rowsCount,
   }
 }
 

@@ -1,7 +1,13 @@
 schemaVersion: 1
 id: jacob_techblade
 name: "Jacob"
-spriteScale: 1.3
+visual:
+  preset: humanoid
+  scale: 1.22
+  anchorX: 1
+  anchorY: 1
+  offsetX: 0
+  offsetY: 60
 title: "Techblade Vanguard"
 description: "Futuristic warrior wielding EMP sword + energy shield, clad in light energy armor."
 role: tank
@@ -24,6 +30,7 @@ tags: ["warrior", "tech", "vanguard", "tank"]
 startingDeck:
   - "defend"
   - "strike"
+  - "cleave"
   - "shield_dome"
   - "linebreaker"
   - "energy_lasso"

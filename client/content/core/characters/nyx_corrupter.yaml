@@ -2,7 +2,13 @@ schemaVersion: 1
 id: nyx_corrupter
 name: "Nyx"
 sprite: "/assets/game/allies/nyx.png"
-spriteScale: 1.2
+visual:
+  preset: humanoid
+  scale: 1.2
+  anchorX: 0.5
+  anchorY: 1
+  offsetX: 0
+  offsetY: -7
 spriteSheet: "/assets/game/allies/nyx_radiated.png"
 spriteSheetLayout: [2, 2]
 title: "Radborn Corrupter"
@@ -26,4 +32,4 @@ tags: ["mutant", "radiation", "dot", "debuffer"]
 startingDeck:
   - "strike"
   - "defend"
-  - ""
+  - "heal"

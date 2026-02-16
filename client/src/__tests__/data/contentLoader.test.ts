@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { loadContent } from '../../data/contentLoader.js';
+import { loadContent, normalizeCharacterVisualConfig } from '../../data/contentLoader.js';
 import jsyaml from 'js-yaml';
 
 // Mock fetch
@@ -558,6 +558,33 @@ describe('contentLoader', () => {
     // On complete failure, should return empty objects (cards and characters arrays are empty)
     expect(Object.keys(result.cards)).toHaveLength(0);
     expect(Object.keys(result.characters)).toHaveLength(0);
+  });
+
+  it('should normalize visual profile from legacy sprite fields', () => {
+    const normalized = normalizeCharacterVisualConfig({
+      id: 'legacy_char',
+      spriteScale: 1.25,
+      spriteAnchorX: 0.3,
+      spriteAnchorY: 0.8,
+      spriteOffsetX: 12,
+      spriteOffsetY: -6,
+    });
+
+    expect(normalized.visual?.scale).toBe(1.25);
+    expect(normalized.visual?.anchorX).toBe(0.3);
+    expect(normalized.visual?.anchorY).toBe(0.8);
+    expect(normalized.visual?.offsetX).toBe(12);
+    expect(normalized.visual?.offsetY).toBe(-6);
+  });
+
+  it('should infer small preset when scale is tiny', () => {
+    const normalized = normalizeCharacterVisualConfig({
+      id: 'tiny_enemy',
+      spriteScale: 0.5,
+    });
+
+    expect(normalized.visual?.preset).toBe('small');
+    expect(normalized.visual?.anchorY).toBe(1);
   });
 });
 

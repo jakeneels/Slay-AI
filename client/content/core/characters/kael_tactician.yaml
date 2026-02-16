@@ -1,6 +1,14 @@
 schemaVersion: 1
 id: kael_tactician
 name: "Kael"
+sprite: "/assets/game/allies/kael.png"
+visual:
+  preset: humanoid
+  scale: .7
+  anchorX: 0.5
+  anchorY: 1
+  offsetX: 0
+  offsetY: 0
 title: "Wasteland Tactician"
 description: "Human rebel leader with hacked drones and improvised explosives."
 role: support

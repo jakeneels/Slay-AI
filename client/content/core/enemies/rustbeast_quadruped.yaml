@@ -6,7 +6,13 @@ description: "Scrap-mutant machine-beast, glowing green targeting core."
 role: tank
 theme: "Bruiser / Pressure – advances relentlessly."
 sprite: "/assets/game/enemies/rustbeast-quadruped.png"
-spriteScale: 0.9
+visual:
+  preset: beast
+  scale: 0.9
+  anchorX: 0.5
+  anchorY: 0.9
+  offsetX: 0
+  offsetY: 0
 isPlayer: false
 stats:
   hp: 65

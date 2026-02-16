@@ -6,16 +6,22 @@ description: "A malfunctioning security drone with glitching weaponry and expose
 role: support
 theme: "Tech enemy that buffs other enemies and has defensive capabilities."
 sprite: "/assets/game/enemies/rogue-ai-drone.png"
-spriteScale: 0.7
+visual:
+  preset: small
+  scale: 0.7
+  anchorX: 0.5
+  anchorY: 0.8
+  offsetX: 0
+  offsetY: -100
 isPlayer: false
 stats:
-  hp: 40
-  maxHp: 40
+  hp: 25
+  maxHp: 25
   energy: 3
   maxEnergy: 3
-  speed: 0
+  speed: 3
   suppression: 0
-  suppressionResist: 1
+  suppressionResist: 2
 mechanics:
   - "Shield generation"
   - "Enemy buff abilities"

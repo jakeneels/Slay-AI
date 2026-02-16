@@ -6,9 +6,13 @@ description: "Scavenger sniper with jury-rigged optics and weapon mods scavenged
 role: dps
 theme: "Ranged DPS – excels at ranged damage and containment."
 sprite: "/assets/game/allies/didi.png"
-spriteScale: 0.70
-spriteAnchorY: 0.5
-spriteAnchorX: 0.5
+visual:
+  preset: humanoid
+  scale: 0.70
+  anchorX: 0.5
+  anchorY: 0.5
+  offsetX: 0
+  offsetY: 0
 isPlayer: true
 stats:
   hp: 60

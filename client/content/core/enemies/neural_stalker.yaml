@@ -6,9 +6,13 @@ description: "Nimble AI assassin, skeletal frame with hacking tendrils."
 role: utility
 theme: "Debuffer / Harasser – punishes energy usage."
 sprite: "/assets/game/enemies/neural-stalker.png"
-spriteScale: 1.3
-spriteAnchorY: 0.7
-spriteAnchorX: 0.5
+visual:
+  preset: humanoid
+  scale: 1.1
+  anchorX: 0.5
+  anchorY: 0.7
+  offsetX: 0
+  offsetY: 11
 isPlayer: false
 stats:
   hp: 45
