@@ -54,6 +54,7 @@
             flex-shrink: 0;
             height: auto;
             align-self: stretch;
+            position: relative;
         }
         #devPanel.collapsed {
             width: 32px;
@@ -98,6 +99,22 @@
         #devPanelInner {
             position: relative;
             height: 100%;
+        }
+        #devPanelResizeHandle {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 8px;
+            height: 100%;
+            cursor: ew-resize;
+            z-index: 5;
+            background: transparent;
+        }
+        #devPanelResizeHandle:hover {
+            background: rgba(148, 163, 184, 0.12);
+        }
+        #devPanel.collapsed #devPanelResizeHandle {
+            display: none;
         }
         #devPanelContent {
             padding: 12px;
@@ -178,7 +195,7 @@
             margin-bottom: 2px;
         }
     </style>
-  <script type="module" crossorigin src="/Slay-AI/assets/index-DEMS99FA.js"></script>
+  <script type="module" crossorigin src="/Slay-AI/assets/index-D8ov-7jo.js"></script>
 </head>
 <body>
     <div class="container">
@@ -190,6 +207,7 @@
             </div>
             <div id="devPanel" class="expanded">
                 <div id="devPanelInner">
+                    <div id="devPanelResizeHandle" aria-hidden="true"></div>
                     <div id="devPanelContent"></div>
                     <button id="devPanelToggle">DEV</button>
                 </div>
