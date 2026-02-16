@@ -3,7 +3,7 @@
  */
 
 import type { Application, Sprite, Container } from 'pixi.js';
-import { Graphics, Text } from 'pixi.js';
+import { Graphics, Text, Assets, Texture, Rectangle, Sprite as SpriteImpl } from 'pixi.js';
 
 // Store character sprites for animation access
 const characterSprites = new Map<string, Sprite>();
@@ -476,6 +476,87 @@ export function animateScreenShake(app: Application, intensity: number = 5, dura
   });
 }
 
+/** Sprite sheet config for character-specific animations */
+export interface SpriteSheetConfig {
+  path: string;
+  layout: [number, number]; // [cols, rows]
+}
+
+/** Frame cache per sprite sheet path to avoid reloading */
+const spriteSheetFrameCache = new Map<string, Texture[]>();
+
+/**
+ * Play sprite sheet animation on a character (e.g. radiated armor transformation).
+ * Uses an overlay sprite on top of the character so we don't fight PixiJS texture-swap quirks.
+ * Cycles through frames in row-major order (left-to-right, top-to-bottom).
+ */
+export async function animateSpriteSheetFrames(
+  characterId: string,
+  spriteSheetPath: string,
+  layout: [number, number],
+  app: Application,
+  durationPerFrame: number = 150
+): Promise<void> {
+  const charSprite = characterSprites.get(characterId);
+  if (!charSprite) return;
+
+  const base = (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) ?? '/';
+  const path = spriteSheetPath.startsWith('/') ? `${base}${spriteSheetPath.slice(1)}` : spriteSheetPath;
+
+  let frames = spriteSheetFrameCache.get(path);
+  if (!frames) {
+    let texture;
+    try {
+      texture = await Assets.load(path);
+    } catch (err) {
+      console.warn('Failed to load sprite sheet:', path, err);
+      return;
+    }
+    const [cols, rows] = layout;
+    const frameW = texture.width / cols;
+    const frameH = texture.height / rows;
+    frames = [];
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const frame = new Rectangle(col * frameW, row * frameH, frameW, frameH);
+        frames.push(new Texture({ source: texture.source, frame }));
+      }
+    }
+    spriteSheetFrameCache.set(path, frames);
+  }
+
+  const bounds = charSprite.getBounds();
+  const overlay = new SpriteImpl(frames[0]);
+  overlay.anchor.set(0.5, 0.5);
+  overlay.x = bounds.x + bounds.width / 2;
+  overlay.y = bounds.y + bounds.height / 2;
+  overlay.width = charSprite.width;
+  overlay.height = charSprite.height;
+  overlay.zIndex = 500; // Above characters (Z_SPRITE = 100)
+  app.stage.addChild(overlay);
+
+  const totalDuration = frames.length * durationPerFrame;
+  const frameTextures = frames;
+
+  return new Promise((resolve) => {
+    const startTime = performance.now();
+
+    function tick() {
+      const elapsed = performance.now() - startTime;
+      if (elapsed >= totalDuration) {
+        app.stage.removeChild(overlay);
+        overlay.destroy();
+        resolve();
+        return;
+      }
+      const frameIndex = Math.min(Math.floor(elapsed / durationPerFrame), frameTextures.length - 1);
+      overlay.texture = frameTextures[frameIndex];
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  });
+}
+
 /**
  * Animate character flash (brief red flash for damage)
  */
@@ -751,6 +832,11 @@ export function animateMeleeSlash(
   });
 }
 
+export interface PlayDamageAnimationOptions {
+  attackerSpriteSheet?: SpriteSheetConfig;
+  targetSpriteSheet?: SpriteSheetConfig;
+}
+
 /**
  * Play complete damage animation sequence
  */
@@ -761,11 +847,20 @@ export async function playDamageAnimation(
   app: Application,
   targeting: 'single' | 'aoe' | 'self' | 'ally' | 'enemy' | 'allEnemies' | 'allAllies',
   config?: AnimationConfig,
-  cardType?: 'attack' | 'skill' | 'power' | 'summon'
+  cardType?: 'attack' | 'skill' | 'power' | 'summon',
+  spriteSheets?: PlayDamageAnimationOptions
 ): Promise<void> {
+  const attackerSheet = spriteSheets?.attackerSpriteSheet;
+  const targetSheet = spriteSheets?.targetSpriteSheet;
+
   // For self-targeting, animate at the character itself
   if (targeting === 'self') {
-    await animateAttackerShake(attackerId);
+    const selfAnims: Promise<void>[] = [animateAttackerShake(attackerId)];
+    if (attackerSheet || targetSheet) {
+      const sheet = attackerSheet ?? targetSheet!;
+      selfAnims.push(animateSpriteSheetFrames(attackerId, sheet.path, sheet.layout, app));
+    }
+    await Promise.all(selfAnims);
     await new Promise(resolve => setTimeout(resolve, 100));
     await Promise.all([
       animateImpactBurst(targetId, app, config?.damage),
@@ -777,34 +872,30 @@ export async function playDamageAnimation(
   
   // For enemy/ally targeting, choose animation based on card type and config
   if (targeting === 'enemy' || targeting === 'ally') {
-    // If projectileColor is set in config, it's a ranged attack (even for attack type cards)
-    // Otherwise, attack type cards use melee slash, skill/power use projectile
+    // Attacker: shake + sprite sheet (if any) + projectile/slash
+    const attackerAnims: Promise<void>[] = [
+      animateAttackerShake(attackerId),
+      ...(attackerSheet ? [animateSpriteSheetFrames(attackerId, attackerSheet.path, attackerSheet.layout, app)] : [])
+    ];
     if (config?.damage?.projectileColor !== undefined) {
-      // Ranged attack - shake and projectile fire together
-      await Promise.all([
-        animateAttackerShake(attackerId),
-        animateProjectileTrail(attackerId, targetId, app, config?.damage)
-      ]);
+      attackerAnims.push(animateProjectileTrail(attackerId, targetId, app, config?.damage));
     } else if (cardType === 'attack') {
-      // Melee attack - shake and slash together
-      await Promise.all([
-        animateAttackerShake(attackerId),
-        animateMeleeSlash(attackerId, targetId, app, config?.damage)
-      ]);
+      attackerAnims.push(animateMeleeSlash(attackerId, targetId, app, config?.damage));
     } else {
-      // Ranged/skill attack - shake and projectile fire together
-      await Promise.all([
-        animateAttackerShake(attackerId),
-        animateProjectileTrail(attackerId, targetId, app, config?.damage)
-      ]);
+      attackerAnims.push(animateProjectileTrail(attackerId, targetId, app, config?.damage));
     }
+    await Promise.all(attackerAnims);
     
-    // Impact effects
-    await Promise.all([
+    // Target: impact + sprite sheet (if any) + flash + number
+    const targetAnims: Promise<void>[] = [
       animateImpactBurst(targetId, app, config?.damage),
       animateCharacterFlash(targetId, 0xff0000),
       animateFloatingNumber(targetId, damageAmount, 0xff4444, app)
-    ]);
+    ];
+    if (targetSheet) {
+      targetAnims.push(animateSpriteSheetFrames(targetId, targetSheet.path, targetSheet.layout, app));
+    }
+    await Promise.all(targetAnims);
     
     // Screen shake for significant damage
     if (damageAmount >= 10) {
@@ -815,13 +906,20 @@ export async function playDamageAnimation(
   }
   
   // For AOE, just show impact on target (projectile animation skipped for simplicity)
-  await animateAttackerShake(attackerId);
-  await new Promise(resolve => setTimeout(resolve, 100));
   await Promise.all([
+    animateAttackerShake(attackerId),
+    ...(attackerSheet ? [animateSpriteSheetFrames(attackerId, attackerSheet.path, attackerSheet.layout, app)] : [])
+  ]);
+  await new Promise(resolve => setTimeout(resolve, 100));
+  const targetAnims: Promise<void>[] = [
     animateImpactBurst(targetId, app, config?.damage),
     animateCharacterFlash(targetId, 0xff0000),
     animateFloatingNumber(targetId, damageAmount, 0xff4444, app)
-  ]);
+  ];
+  if (targetSheet) {
+    targetAnims.push(animateSpriteSheetFrames(targetId, targetSheet.path, targetSheet.layout, app));
+  }
+  await Promise.all(targetAnims);
 }
 
 /**

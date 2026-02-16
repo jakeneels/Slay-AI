@@ -1,7 +1,7 @@
 // Combat logic - card playing, turn management, enemy AI
 
 import type { Application } from 'pixi.js';
-import type { Character, CardEffect, Card, BaseCardEffect, SpeedEffect } from './types.js';
+import type { Character, CardEffect, Card, BaseCardEffect, SpeedEffect, StatusSpreadEffect } from './types.js';
 import { getGameState } from './gameState.js';
 import { getCard } from './card.js';
 import { drawCards } from './deck.js';
@@ -20,7 +20,8 @@ import {
   animateDamageFlash,
   animateEnhancedScreenShake,
   animateParticles,
-  type AnimationConfig 
+  type AnimationConfig,
+  type PlayDamageAnimationOptions 
 } from '../../animations.js';
 import { applyDamageWithBlock, grantBlockLayer, decayBlockLayers } from './block.js';
 import { applyStatus, modifyStatusStacks, processStatusEffects, decayStatusDurations, getStatusStacks } from './status.js';
@@ -649,8 +650,17 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
     : '';
   addToCombatLog(`${currentPlayer.name} plays ${card.name}${exhaustText}${rangeText}`);
   
-  // Render immediately after state changes to show updated energy/card state
-  if (renderCallback) {
+  // Render immediately after state changes to show updated energy/card state.
+  // Skip if card has damage effects and attacker/target has sprite sheet animation - that render
+  // would clear the stage and remove sprites we're about to animate (see damage case below).
+  const hasDamageEffect = card.effects.some((e: CardEffect) => e.kind === 'damage' || e.kind === 'aoe_damage');
+  const attackerDefPre = gameState.characterLibrary[currentPlayer.id];
+  const targetDefPre = targets[0] ? gameState.characterLibrary[targets[0].id] : null;
+  const hasSpriteSheetAnim = hasDamageEffect && (
+    (attackerDefPre?.spriteSheet && attackerDefPre?.spriteSheetLayout) ||
+    (targetDefPre?.spriteSheet && targetDefPre?.spriteSheetLayout)
+  );
+  if (renderCallback && !hasSpriteSheetAnim) {
     renderCallback();
   }
   
@@ -739,6 +749,22 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
             if (renderCallback && !isAoeStyle) {
               renderCallback();
             }
+            const gameStateForAnim = getGameState();
+            const attackerDef = gameStateForAnim.characterLibrary[currentPlayer.id];
+            const targetDef = gameStateForAnim.characterLibrary[target.id];
+            const spriteSheets: PlayDamageAnimationOptions = {};
+            if (attackerDef?.spriteSheet && attackerDef?.spriteSheetLayout) {
+              spriteSheets.attackerSpriteSheet = { path: attackerDef.spriteSheet, layout: attackerDef.spriteSheetLayout };
+            }
+            if (targetDef?.spriteSheet && targetDef?.spriteSheetLayout) {
+              spriteSheets.targetSpriteSheet = { path: targetDef.spriteSheet, layout: targetDef.spriteSheetLayout };
+            }
+            const hasSpriteSheetAnim = Object.keys(spriteSheets).length > 0;
+            // Defer render when playing sprite sheet animation (same as AOE) - render clears the stage
+            // and would remove the sprites we're animating before they're visible
+            if (renderCallback && !isAoeStyle && !hasSpriteSheetAnim) {
+              renderCallback();
+            }
             animationPromise = Promise.all([
               playDamageAnimation(
                 currentPlayer.id,
@@ -747,11 +773,15 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
                 app,
                 card.targeting,
                 card.animationConfig as AnimationConfig | undefined,
-                card.type
+                card.type,
+                Object.keys(spriteSheets).length > 0 ? spriteSheets : undefined
               ),
               animateDamageFlash(app, actualDamage),
               animateEnhancedScreenShake(app, actualDamage)
-            ]).then(() => undefined);
+            ]).then(() => {
+              if (renderCallback && hasSpriteSheetAnim) renderCallback();
+              return undefined;
+            });
           }
           if (target.hp <= 0) {
             logCharacterDefeated(target.name, target.id, target.isPlayer);
@@ -775,6 +805,20 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
             if (renderCallback && !isAoeStyle) {
               renderCallback();
             }
+            const gameStateForAoeAnim = getGameState();
+            const attackerDefAoe = gameStateForAoeAnim.characterLibrary[currentPlayer.id];
+            const targetDefAoe = gameStateForAoeAnim.characterLibrary[target.id];
+            const spriteSheetsAoe: PlayDamageAnimationOptions = {};
+            if (attackerDefAoe?.spriteSheet && attackerDefAoe?.spriteSheetLayout) {
+              spriteSheetsAoe.attackerSpriteSheet = { path: attackerDefAoe.spriteSheet, layout: attackerDefAoe.spriteSheetLayout };
+            }
+            if (targetDefAoe?.spriteSheet && targetDefAoe?.spriteSheetLayout) {
+              spriteSheetsAoe.targetSpriteSheet = { path: targetDefAoe.spriteSheet, layout: targetDefAoe.spriteSheetLayout };
+            }
+            const hasSpriteSheetAnimAoe = Object.keys(spriteSheetsAoe).length > 0;
+            if (renderCallback && !isAoeStyle && !hasSpriteSheetAnimAoe) {
+              renderCallback();
+            }
             animationPromise = Promise.all([
               playDamageAnimation(
                 currentPlayer.id,
@@ -783,10 +827,14 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
                 app,
                 'aoe',
                 card.animationConfig as AnimationConfig | undefined,
-                card.type
+                card.type,
+                Object.keys(spriteSheetsAoe).length > 0 ? spriteSheetsAoe : undefined
               ),
               animateParticles(target.id, 'fire', 20, app) // AOE uses fire particles
-            ]).then(() => undefined);
+            ]).then(() => {
+              if (renderCallback && hasSpriteSheetAnimAoe) renderCallback();
+              return undefined;
+            });
           }
           if (target.hp <= 0) {
             logCharacterDefeated(target.name, target.id, target.isPlayer);
@@ -919,19 +967,26 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
           break;
 
         case 'status_spread': {
-          const spreadStatusId = effect.status;
+          const spreadEffect = effect as StatusSpreadEffect;
+          const spreadStatusId = spreadEffect.status;
           const sourceStacks = getStatusStacks(target, spreadStatusId);
           if (sourceStacks > 0) {
-            const fraction = effect.fraction ?? 0.5;
-            const roundFn = effect.round === 'ceil' ? Math.ceil : Math.floor;
+            const fraction = spreadEffect.fraction ?? 0.5;
+            const roundFn = spreadEffect.round === 'ceil' ? Math.ceil : Math.floor;
             const spreadStacks = roundFn(sourceStacks * fraction);
             if (spreadStacks > 0) {
-              // Find adjacent enemies (within 1 slot of primary target, same side, excluding the target itself)
+              const spreadRange = Math.max(0, Math.floor(spreadEffect.spreadRange ?? 1));
+              const spreadSide = spreadEffect.spreadSide ?? 'same';
+              // Find targets within spreadRange slots of primary target based on side mode.
               const adjacentTargets = getGameState().characters.filter(c =>
                 c.hp > 0 &&
                 c.id !== target.id &&
-                c.isPlayer === target.isPlayer &&
-                Math.abs(c.slotIndex - target.slotIndex) <= 1
+                Math.abs(c.slotIndex - target.slotIndex) <= spreadRange &&
+                (
+                  spreadSide === 'both'
+                  || (spreadSide === 'same' && c.isPlayer === target.isPlayer)
+                  || (spreadSide === 'opposing' && c.isPlayer !== target.isPlayer)
+                )
               );
               for (const adj of adjacentTargets) {
                 applyStatus(adj, spreadStatusId, spreadStacks);

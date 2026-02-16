@@ -62,6 +62,28 @@ export interface StatusEffect extends BaseCardEffect {
   stacks?: number; // Number of stacks (default 1)
 }
 
+export type StatusModifyOp = 'set' | 'add' | 'multiply';
+
+export interface StatusModifyEffect extends BaseCardEffect {
+  kind: 'status_modify';
+  status: string;
+  op: StatusModifyOp;
+  amount: number;
+}
+
+export type StatusSpreadSide = 'same' | 'opposing' | 'both';
+
+export interface StatusSpreadEffect extends BaseCardEffect {
+  kind: 'status_spread';
+  status: string;
+  fraction: number;
+  round?: 'floor' | 'ceil';
+  // Slot distance from source target to include for spread (default 1).
+  spreadRange?: number;
+  // Which side(s) to spread to relative to the source target (default 'same').
+  spreadSide?: StatusSpreadSide;
+}
+
 export interface ModifierEffect {
   kind: 'modifier';
   when?: {
@@ -92,6 +114,8 @@ export type CardEffect =
   | AoeDamageEffect 
   | BlockEffect 
   | StatusEffect 
+  | StatusModifyEffect
+  | StatusSpreadEffect
   | KnockbackEffect
   | ModifierEffect 
   | DeckInjectEffect;
@@ -187,6 +211,8 @@ export interface CharacterDefinition extends Character {
   spriteScale?: number;
   spriteAnchorX?: number; // 0–1 horizontal anchor override (default 0.5 = center)
   spriteAnchorY?: number; // 0–1 vertical anchor override (default 0.5 = center)
+  spriteSheet?: string; // Optional sprite sheet for attack/hit animation (e.g. 2x2 grid)
+  spriteSheetLayout?: [number, number]; // [cols, rows] for frame extraction
   startingDeck?: string[];
   stats: CharacterStats;
 }
