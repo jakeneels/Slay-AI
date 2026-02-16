@@ -14,6 +14,7 @@ import { createEnergyIcon } from './icons/energyIcon.js';
 import { createHealIcon } from './icons/healIcon.js';
 import { getStatusDisplay } from './statusConfig.js';
 import { setHoveredStatus } from './tooltipState.js';
+import { getModifierRegistry } from '../core/modifiers.js';
 
 const BATTLE_Y_OFFSET = 265;
 const SPACING = 140;
@@ -689,6 +690,33 @@ function renderStatusBadges(
     }
   }
 
+  // Inject virtual gear modifier badges (block_up, damage_up) from the modifier registry.
+  {
+    const registry = getModifierRegistry();
+    const gearBadges: Array<{ id: string; target: string }> = [
+      { id: 'block_up', target: 'block_amount' },
+      { id: 'damage_up', target: 'damage_dealt' },
+    ];
+    for (const { id, target } of gearBadges) {
+      const mods = registry.getByTarget(target)
+        .filter(m => m.source.startsWith('gear:') && m.scope.kind === 'character' && m.scope.characterId === char.id);
+      if (mods.length > 0) {
+        const cfg = getStatusDisplay(id);
+        if (cfg) {
+          let totalPct = 0;
+          for (const m of mods) {
+            if (m.op === 'multiply') totalPct += Math.round((m.value - 1) * 100);
+            else if (m.op === 'add') totalPct += m.value;
+          }
+          visible.push({
+            status: { id, stacks: totalPct },
+            config: cfg,
+          });
+        }
+      }
+    }
+  }
+
   if (visible.length === 0) return;
 
   // Pre-calculate badge widths and labels
@@ -700,6 +728,8 @@ function renderStatusBadges(
       labelText = `+${status.stacks}`;
     } else if (status.id === 'speed_down') {
       labelText = `-${status.stacks}`;
+    } else if (status.id === 'block_up' || status.id === 'damage_up') {
+      labelText = `+${status.stacks}%`;
     } else if (status.stacks > 1) {
       labelText = `${status.stacks}`;
     }

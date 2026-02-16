@@ -1,10 +1,12 @@
 schemaVersion: 1
-id: goblin_scout
-name: "Goblin Scout"
-title: "Wasteland Raider"
+id: fanatic_scout
+name: "Fanatic Scout"
+title: "Fanatic Scout"
 description: "A nimble scavenger armed with makeshift weapons and crude armor."
 role: dps
-theme: "Fast, low-HP enemy that swarms with numbers."
+theme: "Fast, low-HP enemy that excels at ranged damage and containment."
+sprite: "/assets/game/enemies/fanatic-scout.png"
+spriteScale: 0.45
 isPlayer: false
 stats:
   hp: 25

@@ -167,6 +167,10 @@ export function renderStatusTooltip(app: Application): void {
     let stackLabel: string;
     if (statusId === 'suppressed') {
       stackLabel = `Energy penalty: +${stacks}`;
+    } else if (statusId === 'block_up') {
+      stackLabel = `Block bonus: +${stacks}%`;
+    } else if (statusId === 'damage_up') {
+      stackLabel = `Damage bonus: +${stacks}%`;
     } else {
       stackLabel = `Stacks: ${stacks}`;
     }

@@ -181,6 +181,53 @@ function drawSpeedDownIcon(g: Graphics, size: number): void {
     .stroke({ width: 0.8, color: 0xdc2626, alignment: 1 });
 }
 
+/** Damage Up — crosshair / reticle with up arrow (gear: +damage dealt) */
+function drawDamageUpIcon(g: Graphics, size: number): void {
+  const s = size / 14;
+  const cx = 7 * s;
+  const cy = 7 * s;
+  const r = 5 * s;
+  // Outer circle
+  g.circle(cx, cy, r)
+    .stroke({ width: 1.2 * s, color: 0xf87171 });
+  // Crosshair lines
+  g.moveTo(cx, cy - r + 1.5 * s).lineTo(cx, cy - 1.5 * s)
+    .stroke({ width: 1 * s, color: 0xf87171 });
+  g.moveTo(cx, cy + 1.5 * s).lineTo(cx, cy + r - 1.5 * s)
+    .stroke({ width: 1 * s, color: 0xf87171 });
+  g.moveTo(cx - r + 1.5 * s, cy).lineTo(cx - 1.5 * s, cy)
+    .stroke({ width: 1 * s, color: 0xf87171 });
+  g.moveTo(cx + 1.5 * s, cy).lineTo(cx + r - 1.5 * s, cy)
+    .stroke({ width: 1 * s, color: 0xf87171 });
+  // Center dot
+  g.circle(cx, cy, 1.2 * s).fill(0xfca5a5);
+}
+
+/** Block Up — shield with upward arrow (gear: +block amount) */
+function drawBlockUpIcon(g: Graphics, size: number): void {
+  const s = size / 14;
+  // Shield outline
+  g.moveTo(7 * s, 1.5 * s)
+    .lineTo(12 * s, 3.5 * s)
+    .lineTo(11 * s, 9 * s)
+    .lineTo(7 * s, 12.5 * s)
+    .lineTo(3 * s, 9 * s)
+    .lineTo(2 * s, 3.5 * s)
+    .closePath()
+    .fill(0x38bdf8)
+    .stroke({ width: 1, color: 0x0ea5e9, alignment: 1 });
+  // Up arrow inside shield
+  g.moveTo(7 * s, 4.5 * s)
+    .lineTo(7 * s, 10 * s)
+    .stroke({ width: 1.5 * s, color: 0xffffff });
+  g.moveTo(7 * s, 4.5 * s)
+    .lineTo(5 * s, 6.5 * s)
+    .stroke({ width: 1.2 * s, color: 0xffffff });
+  g.moveTo(7 * s, 4.5 * s)
+    .lineTo(9 * s, 6.5 * s)
+    .stroke({ width: 1.2 * s, color: 0xffffff });
+}
+
 /** Speed up — right-pointing arrow (teal, matches existing speed icon) */
 function drawSpeedUpIcon(g: Graphics, size: number): void {
   const s = size / 14;
@@ -262,6 +309,22 @@ export const STATUS_DISPLAY: Record<string, StatusDisplayConfig> = {
     borderColor: 0xdc2626,
     drawIcons: [drawSpeedDownIcon],
   },
+  block_up: {
+    label: 'Block Up',
+    description: 'Gear bonus: block gained is increased.',
+    iconColor: 0x38bdf8,
+    bgColor: 0x0c2d44,
+    borderColor: 0x0e4f6e,
+    drawIcons: [drawBlockUpIcon],
+  },
+  damage_up: {
+    label: 'Damage Up',
+    description: 'Gear bonus: damage dealt is increased.',
+    iconColor: 0xf87171,
+    bgColor: 0x3b1111,
+    borderColor: 0x7f1d1d,
+    drawIcons: [drawDamageUpIcon],
+  },
 };
 
 // ── Icon draw function registry (keyed by icon name from YAML) ───────
@@ -275,6 +338,8 @@ const ICON_DRAW_REGISTRY: Record<string, IconDrawFn[]> = {
   suppressed: [drawSuppressedIcon, drawEnergySmallIcon],
   speed_up: [drawSpeedUpIcon],
   speed_down: [drawSpeedDownIcon],
+  block_up: [drawBlockUpIcon],
+  damage_up: [drawDamageUpIcon],
 };
 
 /**

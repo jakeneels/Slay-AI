@@ -7,6 +7,8 @@ role: dps
 theme: "Ranged DPS – excels at ranged damage and containment."
 sprite: "/assets/game/allies/didi.png"
 spriteScale: 0.70
+spriteAnchorY: 0.5
+spriteAnchorX: 0.5
 isPlayer: true
 stats:
   hp: 60
