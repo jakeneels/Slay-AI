@@ -1,11 +1,21 @@
-// Status effect management
+// Status effect management — data-driven via StatusDefinition from YAML
 
-import type { Character, Status } from './types.js';
-import { addToCombatLog } from './gameState.js';
+import type { Character, Status, StatusCadence, StatusDefinition } from './types.js';
+import { addToCombatLog, getGameState } from './gameState.js';
 import { getTotalBlock } from './block.js';
 
+// ── Helpers ──────────────────────────────────────────────────────────
+
+/** Look up a StatusDefinition from the game state's statusLibrary. */
+function getStatusDef(statusId: string): StatusDefinition | undefined {
+  return getGameState().statusLibrary[statusId];
+}
+
+// ── Application ──────────────────────────────────────────────────────
+
 /**
- * Apply a status to a character
+ * Apply a status to a character.
+ * Checks data-driven application conditions (e.g. requires_zero_block).
  */
 export function applyStatus(
   character: Character,
@@ -14,11 +24,12 @@ export function applyStatus(
   duration?: number,
   metadata?: Record<string, any>
 ): void {
-  // Radiation can only be applied to characters with 0 block (armor)
-  if (statusId === 'radiation') {
+  // Check data-driven application conditions
+  const def = getStatusDef(statusId);
+  if (def?.apply?.requires_zero_block) {
     const totalBlock = getTotalBlock(character);
     if (totalBlock > 0) {
-      addToCombatLog(`${character.name} resists radiation (${totalBlock} block remaining)`);
+      addToCombatLog(`${character.name} resists ${def.name} (${totalBlock} block remaining)`);
       return;
     }
   }
@@ -48,6 +59,8 @@ export function applyStatus(
   }
 }
 
+// ── Stack manipulation ───────────────────────────────────────────────
+
 /**
  * Remove status stacks (or remove status if stacks reach 0)
  */
@@ -61,6 +74,48 @@ export function removeStatusStacks(character: Character, statusId: string, stack
     character.statuses = character.statuses.filter(s => s.id !== statusId);
     addToCombatLog(`${character.name} loses ${statusId}`);
   }
+}
+
+/**
+ * Modify existing status stacks with an operation (multiply, add, set).
+ * Does nothing if the character doesn't have the status.
+ * Returns the new stack count (0 if status was removed or didn't exist).
+ */
+export function modifyStatusStacks(
+  character: Character,
+  statusId: string,
+  op: 'multiply' | 'add' | 'set',
+  value: number
+): number {
+  const status = character.statuses.find(s => s.id === statusId);
+  if (!status) return 0;
+
+  const oldStacks = status.stacks;
+  let newStacks: number;
+
+  switch (op) {
+    case 'multiply':
+      newStacks = Math.floor(status.stacks * value);
+      break;
+    case 'add':
+      newStacks = status.stacks + value;
+      break;
+    case 'set':
+      newStacks = value;
+      break;
+  }
+
+  if (newStacks <= 0) {
+    character.statuses = character.statuses.filter(s => s.id !== statusId);
+    addToCombatLog(`${character.name} loses ${statusId}`);
+    return 0;
+  }
+
+  status.stacks = newStacks;
+  const def = getStatusDef(statusId);
+  const label = def?.name ?? statusId;
+  addToCombatLog(`${character.name}'s ${label}: ${oldStacks} → ${newStacks} stacks`);
+  return newStacks;
 }
 
 /**
@@ -78,76 +133,127 @@ export function getStatusStacks(character: Character, statusId: string): number 
   return status ? status.stacks : 0;
 }
 
+// ── DoT / Decay engine (data-driven) ────────────────────────────────
+
 /**
- * Process DoT effects at end of turn
+ * Apply DoT damage for a single status based on its definition.
+ * Returns the actual HP damage dealt (after block interaction).
  */
-export function processDoTs(character: Character): void {
+function applyDot(character: Character, statusId: string, stacks: number, def: StatusDefinition): number {
+  if (!def.dot) return 0;
+
+  const totalDamage = stacks * def.dot.damage_per_stack;
+  if (totalDamage <= 0) return 0;
+
+  if (def.dot.ignores_block) {
+    // Bypass block entirely
+    character.hp = Math.max(0, character.hp - totalDamage);
+    addToCombatLog(`${character.name} takes ${totalDamage} ${def.name} damage (ignores block)`);
+    return totalDamage;
+  }
+
+  // Reduced by block
   const totalBlock = character.blockLayers.reduce((sum, layer) => sum + layer.amount, 0);
-  
-  // Bleed - reduced by block
-  const bleedStacks = getStatusStacks(character, 'bleed');
-  if (bleedStacks > 0) {
-    const bleedDamage = bleedStacks;
-    const blockReduction = Math.min(bleedDamage, totalBlock);
-    const actualDamage = bleedDamage - blockReduction;
-    
-    if (actualDamage > 0) {
-      character.hp = Math.max(0, character.hp - actualDamage);
-      addToCombatLog(`${character.name} takes ${actualDamage} bleed damage`);
-    }
-    if (blockReduction > 0) {
-      // Reduce block
-      let remainingBlockReduction = blockReduction;
-      for (const layer of character.blockLayers) {
-        if (remainingBlockReduction <= 0) break;
-        const reduction = Math.min(layer.amount, remainingBlockReduction);
-        layer.amount -= reduction;
-        remainingBlockReduction -= reduction;
-      }
-      character.blockLayers = character.blockLayers.filter(l => l.amount > 0);
-    }
+  const blockReduction = Math.min(totalDamage, totalBlock);
+  const actualDamage = totalDamage - blockReduction;
+
+  if (actualDamage > 0) {
+    character.hp = Math.max(0, character.hp - actualDamage);
+    addToCombatLog(`${character.name} takes ${actualDamage} ${statusId} damage`);
   }
-  
-  // Shock - reduced by block
-  const shockStacks = getStatusStacks(character, 'shock');
-  if (shockStacks > 0) {
-    const shockDamage = shockStacks;
-    const blockReduction = Math.min(shockDamage, totalBlock);
-    const actualDamage = shockDamage - blockReduction;
-    
-    if (actualDamage > 0) {
-      character.hp = Math.max(0, character.hp - actualDamage);
-      addToCombatLog(`${character.name} takes ${actualDamage} shock damage`);
+  if (blockReduction > 0) {
+    let remaining = blockReduction;
+    for (const layer of character.blockLayers) {
+      if (remaining <= 0) break;
+      const reduction = Math.min(layer.amount, remaining);
+      layer.amount -= reduction;
+      remaining -= reduction;
     }
-    if (blockReduction > 0) {
-      // Reduce block
-      let remainingBlockReduction = blockReduction;
-      for (const layer of character.blockLayers) {
-        if (remainingBlockReduction <= 0) break;
-        const reduction = Math.min(layer.amount, remainingBlockReduction);
-        layer.amount -= reduction;
-        remainingBlockReduction -= reduction;
-      }
-      character.blockLayers = character.blockLayers.filter(l => l.amount > 0);
-    }
+    character.blockLayers = character.blockLayers.filter(l => l.amount > 0);
   }
-  
-  // Radiation - bypasses block, half-life decay
-  const radiationStacks = getStatusStacks(character, 'radiation');
-  if (radiationStacks > 0) {
-    character.hp = Math.max(0, character.hp - radiationStacks);
-    addToCombatLog(`${character.name} takes ${radiationStacks} radiation damage (ignores block)`);
-    // Half-life decay: halve stacks each turn (round up), remove at 1
-    const newStacks = radiationStacks <= 1 ? 0 : Math.ceil(radiationStacks / 2);
-    if (newStacks <= 0) {
-      character.statuses = character.statuses.filter(s => s.id !== 'radiation');
-      addToCombatLog(`${character.name}'s radiation has decayed`);
-    } else {
-      const status = character.statuses.find(s => s.id === 'radiation');
-      if (status) status.stacks = newStacks;
+
+  return actualDamage;
+}
+
+/**
+ * Apply stack decay for a single status based on its definition.
+ * Mutates the character's statuses array (may remove the status).
+ */
+function applyDecay(character: Character, statusId: string, currentStacks: number, def: StatusDefinition): void {
+  const decay = def.decay;
+  if (decay.mode === 'none') return;
+
+  const minRemove = decay.min_remove ?? 1;
+  let newStacks: number;
+
+  switch (decay.mode) {
+    case 'linear':
+      newStacks = currentStacks - 1;
+      break;
+
+    case 'half_life': {
+      if (currentStacks <= minRemove) {
+        newStacks = 0;
+      } else {
+        const roundFn = decay.round === 'floor' ? Math.floor : Math.ceil;
+        newStacks = roundFn(currentStacks / 2);
+      }
+      break;
+    }
+
+    default:
+      return;
+  }
+
+  if (newStacks <= 0) {
+    character.statuses = character.statuses.filter(s => s.id !== statusId);
+    addToCombatLog(`${character.name}'s ${def.name} has decayed`);
+  } else {
+    const status = character.statuses.find(s => s.id === statusId);
+    if (status) status.stacks = newStacks;
+  }
+}
+
+/**
+ * Process all status effects on a character for a given cadence.
+ * Only ticks statuses whose definition matches the cadence.
+ * Statuses without a definition default to 'turn_end' cadence with no DoT.
+ */
+export function processStatusEffects(character: Character, cadence: StatusCadence): void {
+  // Snapshot status ids to avoid mutation issues during iteration
+  const statusSnapshot = [...character.statuses];
+
+  for (const status of statusSnapshot) {
+    // Skip already-removed statuses (from previous iteration)
+    if (!character.statuses.some(s => s.id === status.id)) continue;
+
+    const def = getStatusDef(status.id);
+
+    // Default cadence is 'turn_end' for unknown statuses
+    const statusCadence = def?.cadence ?? 'turn_end';
+    if (statusCadence !== cadence) continue;
+
+    // Apply DoT damage if defined
+    if (def?.dot) {
+      applyDot(character, status.id, status.stacks, def);
+    }
+
+    // Apply decay if defined
+    if (def) {
+      applyDecay(character, status.id, status.stacks, def);
     }
   }
 }
+
+/**
+ * Legacy wrapper — processes all turn_end DoTs.
+ * @deprecated Use processStatusEffects(character, cadence) instead.
+ */
+export function processDoTs(character: Character): void {
+  processStatusEffects(character, 'turn_end');
+}
+
+// ── Duration decay ───────────────────────────────────────────────────
 
 /**
  * Decay status durations at end of turn
@@ -157,12 +263,9 @@ export function decayStatusDurations(character: Character): void {
     if (status.duration !== undefined && status.duration > 0) {
       status.duration--;
       if (status.duration <= 0) {
-        // Status expires
         return null;
       }
     }
     return status;
   }).filter((status): status is Status => status !== null);
 }
-
-

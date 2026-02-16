@@ -1,5 +1,7 @@
-// Victory modal – shown when all enemies are defeated.
-// Displays the gear reward and lets the player click a character to equip it.
+// Victory modal – two-phase overlay after all enemies are defeated.
+//
+// Phase 1 (pendingReward set): Show gear reward, let player equip it.
+// Phase 2 (pendingReward null): Show wave summary + "Next Wave" button.
 
 import type { Application } from 'pixi.js';
 import { Container, Graphics, Text } from 'pixi.js';
@@ -8,6 +10,7 @@ import { WIDTH, HEIGHT } from '../core/constants.js';
 import { getModifierRegistry } from '../core/modifiers.js';
 import { addToCombatLog } from '../core/gameState.js';
 import { render } from './renderer.js';
+import { startNextWave, WAVE_HEAL_FRACTION } from '../core/waveTransition.js';
 
 // ── Rarity colours ──────────────────────────────────────────────────
 const RARITY_COLORS: Record<string, number> = {
@@ -24,22 +27,20 @@ const SLOT_LABELS: Record<GearSlot, string> = {
 
 /**
  * Render the victory modal overlay on top of the game scene.
+ * Dispatches to phase 1 or phase 2 based on pendingReward state.
  */
 export function renderVictoryModal(app: Application, gameState: GameState): void {
-  const reward = gameState.pendingReward;
-  if (!reward) return;
+  if (gameState.pendingReward) {
+    renderGearRewardPhase(app, gameState, gameState.pendingReward);
+  } else {
+    renderWaveCompletePhase(app, gameState);
+  }
+}
 
-  const modal = new Container();
-  modal.zIndex = 8000;
-  modal.sortableChildren = true;
+// ── Phase 1: Gear Reward ─────────────────────────────────────────────
 
-  // ── Full-screen semi-transparent overlay ────────────────────────────
-  const overlay = new Graphics();
-  overlay.rect(0, 0, WIDTH, HEIGHT);
-  overlay.fill({ color: 0x000000, alpha: 0.75 });
-  overlay.eventMode = 'static'; // block clicks through to game
-  overlay.zIndex = 0;
-  modal.addChild(overlay);
+function renderGearRewardPhase(app: Application, gameState: GameState, reward: GearDefinition): void {
+  const modal = createModalContainer();
 
   // ── Title ──────────────────────────────────────────────────────────
   const title = new Text({
@@ -49,11 +50,7 @@ export function renderVictoryModal(app: Application, gameState: GameState): void
       fontSize: 48,
       fontWeight: 'bold',
       fontFamily: 'monospace',
-      dropShadow: {
-        color: 0x000000,
-        blur: 6,
-        distance: 2,
-      },
+      dropShadow: { color: 0x000000, blur: 6, distance: 2 },
     },
   });
   title.anchor.set(0.5);
@@ -71,16 +68,13 @@ export function renderVictoryModal(app: Application, gameState: GameState): void
   const rarityCol = RARITY_COLORS[reward.rarity] ?? 0xffffff;
 
   const panel = new Graphics();
-  // Border
   panel.roundRect(panelX - 2, panelY - 2, panelW + 4, panelH + 4, 12);
   panel.fill({ color: rarityCol, alpha: 0.9 });
-  // Inner fill
   panel.roundRect(panelX, panelY, panelW, panelH, 10);
   panel.fill({ color: 0x1e293b, alpha: 0.95 });
   panel.zIndex = 1;
   modal.addChild(panel);
 
-  // Gear name
   const gearName = new Text({
     text: reward.name,
     style: { fill: rarityCol, fontSize: 24, fontWeight: 'bold', fontFamily: 'monospace' },
@@ -91,7 +85,6 @@ export function renderVictoryModal(app: Application, gameState: GameState): void
   gearName.zIndex = 2;
   modal.addChild(gearName);
 
-  // Slot + rarity line
   const slotLine = new Text({
     text: `${SLOT_LABELS[reward.slot]} · ${reward.rarity.charAt(0).toUpperCase() + reward.rarity.slice(1)}`,
     style: { fill: 0x94a3b8, fontSize: 14, fontFamily: 'monospace' },
@@ -102,7 +95,6 @@ export function renderVictoryModal(app: Application, gameState: GameState): void
   slotLine.zIndex = 2;
   modal.addChild(slotLine);
 
-  // Description
   const desc = new Text({
     text: reward.description,
     style: { fill: 0xe2e8f0, fontSize: 15, fontFamily: 'monospace', wordWrap: true, wordWrapWidth: panelW - 32 },
@@ -113,7 +105,6 @@ export function renderVictoryModal(app: Application, gameState: GameState): void
   desc.zIndex = 2;
   modal.addChild(desc);
 
-  // Stat bonus lines
   const bonusLines = reward.modifiers.map(m => {
     const opLabel = m.op === 'add' ? (m.value >= 0 ? `+${m.value}` : `${m.value}`) : `×${m.value}`;
     return `${opLabel} ${m.target}`;
@@ -159,24 +150,14 @@ export function renderVictoryModal(app: Application, gameState: GameState): void
     btn.zIndex = 2;
     btn.eventMode = 'static';
     btn.cursor = 'pointer';
-    btn.hitArea = new (await_rect())(bx, btnY, btnW, btnH);
+    btn.hitArea = new (makeHitRect())(bx, btnY, btnW, btnH);
 
-    // Hover effect
-    btn.on('pointerover', () => {
-      btn.tint = 0xbbddff;
-    });
-    btn.on('pointerout', () => {
-      btn.tint = 0xffffff;
-    });
-
-    // Click handler — equip the gear
-    btn.on('pointertap', () => {
-      equipGear(char, reward, gameState);
-    });
+    btn.on('pointerover', () => { btn.tint = 0xbbddff; });
+    btn.on('pointerout', () => { btn.tint = 0xffffff; });
+    btn.on('pointertap', () => { equipGear(char, reward, gameState); });
 
     modal.addChild(btn);
 
-    // Character name
     const nameText = new Text({
       text: char.name,
       style: { fill: 0xffffff, fontSize: 16, fontWeight: 'bold', fontFamily: 'monospace' },
@@ -188,16 +169,13 @@ export function renderVictoryModal(app: Application, gameState: GameState): void
     nameText.eventMode = 'none';
     modal.addChild(nameText);
 
-    // Current gear in this slot
     const currentGear = char.gear[reward.slot];
-    const currentLabel = currentGear ? `[${SLOT_LABELS[reward.slot]}: ${currentGear.name}]` : `[${SLOT_LABELS[reward.slot]}: empty]`;
+    const currentLabel = currentGear
+      ? `[${SLOT_LABELS[reward.slot]}: ${currentGear.name}]`
+      : `[${SLOT_LABELS[reward.slot]}: empty]`;
     const currentText = new Text({
       text: currentLabel,
-      style: {
-        fill: currentGear ? 0xfbbf24 : 0x64748b,
-        fontSize: 12,
-        fontFamily: 'monospace',
-      },
+      style: { fill: currentGear ? 0xfbbf24 : 0x64748b, fontSize: 12, fontFamily: 'monospace' },
     });
     currentText.anchor.set(0.5, 0);
     currentText.x = bx + btnW / 2;
@@ -206,7 +184,6 @@ export function renderVictoryModal(app: Application, gameState: GameState): void
     currentText.eventMode = 'none';
     modal.addChild(currentText);
 
-    // HP indicator
     const hpText = new Text({
       text: `HP ${char.hp}/${char.maxHp}`,
       style: { fill: 0x4ade80, fontSize: 12, fontFamily: 'monospace' },
@@ -222,12 +199,130 @@ export function renderVictoryModal(app: Application, gameState: GameState): void
   app.stage.addChild(modal);
 }
 
-// ── Hit-area helper (avoids top-level await for Rectangle import) ───
-function await_rect() {
-  // Rectangle is already imported from pixi.js at the module scope if needed.
-  // Since we import Graphics/Text etc., Rectangle is available from pixi.js.
-  // But pixi v8 doesn't always export Rectangle from main barrel, so we
-  // use a simple object that satisfies PIXI's hitArea interface.
+// ── Phase 2: Wave Complete + Next Wave ───────────────────────────────
+
+function renderWaveCompletePhase(app: Application, gameState: GameState): void {
+  const modal = createModalContainer();
+
+  // ── Title ──────────────────────────────────────────────────────────
+  const title = new Text({
+    text: `WAVE ${gameState.waveNumber} COMPLETE!`,
+    style: {
+      fill: 0xfbbf24,
+      fontSize: 44,
+      fontWeight: 'bold',
+      fontFamily: 'monospace',
+      dropShadow: { color: 0x000000, blur: 6, distance: 2 },
+    },
+  });
+  title.anchor.set(0.5);
+  title.x = WIDTH / 2;
+  title.y = 120;
+  title.zIndex = 1;
+  modal.addChild(title);
+
+  // ── Summary panel ──────────────────────────────────────────────────
+  const livingAllies = gameState.characters.filter(c => c.isPlayer && c.hp > 0);
+  const totalHp = livingAllies.reduce((s, c) => s + c.hp, 0);
+  const totalMaxHp = livingAllies.reduce((s, c) => s + c.maxHp, 0);
+  const dmgDealt = gameState.stats.cumulativeDamage;
+
+  const summaryLines = [
+    `Allies alive: ${livingAllies.length}`,
+    `Team HP: ${totalHp} / ${totalMaxHp}`,
+    `Total damage dealt: ${dmgDealt}`,
+  ];
+
+  const panelW = 400;
+  const panelH = 180;
+  const panelX = (WIDTH - panelW) / 2;
+  const panelY = 180;
+
+  const panel = new Graphics();
+  panel.roundRect(panelX, panelY, panelW, panelH, 10);
+  panel.fill({ color: 0x1e293b, alpha: 0.95 });
+  panel.stroke({ width: 2, color: 0x475569 });
+  panel.zIndex = 1;
+  modal.addChild(panel);
+
+  summaryLines.forEach((line, i) => {
+    const lineText = new Text({
+      text: line,
+      style: { fill: 0xe2e8f0, fontSize: 18, fontFamily: 'monospace' },
+    });
+    lineText.anchor.set(0.5, 0);
+    lineText.x = WIDTH / 2;
+    lineText.y = panelY + 24 + i * 34;
+    lineText.zIndex = 2;
+    lineText.eventMode = 'none';
+    modal.addChild(lineText);
+  });
+
+  // Heal preview line
+  const healPreview = new Text({
+    text: `Allies will recover ${Math.round(getModifierRegistry().resolve('wave_heal_fraction', WAVE_HEAL_FRACTION) * 100)}% of missing HP`,
+    style: { fill: 0x4ade80, fontSize: 14, fontFamily: 'monospace', fontStyle: 'italic' },
+  });
+  healPreview.anchor.set(0.5, 0);
+  healPreview.x = WIDTH / 2;
+  healPreview.y = panelY + panelH - 32;
+  healPreview.zIndex = 2;
+  healPreview.eventMode = 'none';
+  modal.addChild(healPreview);
+
+  // ── Next Wave button ───────────────────────────────────────────────
+  const btnW = 260;
+  const btnH = 60;
+  const btnX = (WIDTH - btnW) / 2;
+  const btnY = panelY + panelH + 40;
+
+  const btn = new Graphics();
+  btn.roundRect(btnX, btnY, btnW, btnH, 10);
+  btn.fill({ color: 0x16a34a, alpha: 0.95 });
+  btn.stroke({ width: 2, color: 0x22c55e });
+  btn.zIndex = 2;
+  btn.eventMode = 'static';
+  btn.cursor = 'pointer';
+  btn.hitArea = new (makeHitRect())(btnX, btnY, btnW, btnH);
+
+  btn.on('pointerover', () => { btn.tint = 0xccffcc; });
+  btn.on('pointerout', () => { btn.tint = 0xffffff; });
+  btn.on('pointertap', () => { startNextWave(); });
+
+  modal.addChild(btn);
+
+  const btnLabel = new Text({
+    text: `NEXT WAVE  >>`,
+    style: { fill: 0xffffff, fontSize: 24, fontWeight: 'bold', fontFamily: 'monospace' },
+  });
+  btnLabel.anchor.set(0.5);
+  btnLabel.x = btnX + btnW / 2;
+  btnLabel.y = btnY + btnH / 2;
+  btnLabel.zIndex = 3;
+  btnLabel.eventMode = 'none';
+  modal.addChild(btnLabel);
+
+  app.stage.addChild(modal);
+}
+
+// ── Shared helpers ───────────────────────────────────────────────────
+
+function createModalContainer(): Container {
+  const modal = new Container();
+  modal.zIndex = 8000;
+  modal.sortableChildren = true;
+
+  const overlay = new Graphics();
+  overlay.rect(0, 0, WIDTH, HEIGHT);
+  overlay.fill({ color: 0x000000, alpha: 0.75 });
+  overlay.eventMode = 'static';
+  overlay.zIndex = 0;
+  modal.addChild(overlay);
+
+  return modal;
+}
+
+function makeHitRect() {
   return class SimpleRect {
     x: number; y: number; width: number; height: number;
     constructor(x: number, y: number, w: number, h: number) {

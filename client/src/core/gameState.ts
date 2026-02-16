@@ -1,6 +1,7 @@
 // Game state management
 
 import type { GameState } from './types.js';
+import { pickRandomMap } from '../rendering/renderBackground.js';
 
 // Game state singleton
 let gameState: GameState = {
@@ -8,6 +9,7 @@ let gameState: GameState = {
   cardLibrary: {},
   characterLibrary: {},
   gearLibrary: {},
+  statusLibrary: {},
   cardInstances: {}, // Store unique card instances
   selectedCardId: null,
   currentPlayerId: '',
@@ -21,6 +23,8 @@ let gameState: GameState = {
   },
   combatResult: 'ongoing',
   pendingReward: null,
+  waveNumber: 1,
+  currentMap: pickRandomMap(),
 };
 
 /**

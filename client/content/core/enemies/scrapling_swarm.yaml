@@ -6,6 +6,7 @@ description: "Small, feral machines cobbled from rusted parts, glowing erratic c
 role: dps
 theme: "Swarm DPS – weak individually, dangerous in numbers."
 sprite: "/assets/game/enemies/swarm.png"
+spriteScale: .8
 isPlayer: false
 stats:
   hp: 15

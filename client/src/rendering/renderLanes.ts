@@ -2,11 +2,9 @@
 
 import type { Application } from 'pixi.js';
 import { Graphics, Text } from 'pixi.js';
-import { WIDTH, HEIGHT, MAX_SLOTS, ALLY_SLOT_END, ENEMY_SLOT_START } from '../core/constants.js';
+import { WIDTH, HEIGHT, MAX_SLOTS, ALLY_SLOT_END, ENEMY_SLOT_START, SPRITE_CENTER } from '../core/constants.js';
 
-const BATTLE_Y_OFFSET = 290;
-// Character sprites are ~200px wide; the slot x is the left edge, so visual center = x + SPRITE_CENTER
-const SPRITE_CENTER = 100;
+const BATTLE_Y_OFFSET = 265;
 
 /**
  * Render lane indicators on the battlefield.
@@ -15,8 +13,8 @@ const SPRITE_CENTER = 100;
  */
 export function renderLanes(app: Application): void {
   const battleY = HEIGHT - BATTLE_Y_OFFSET;
-  const leftBase = 100;
-  const rightBase = WIDTH - 200;
+  const leftBase = 20;
+  const rightBase = WIDTH - SPRITE_CENTER * 2;
   const availableWidth = rightBase - leftBase;
   const slotSpacing = MAX_SLOTS > 1 ? availableWidth / (MAX_SLOTS - 1) : 0;
 

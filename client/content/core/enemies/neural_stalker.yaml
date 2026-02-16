@@ -5,6 +5,8 @@ title: "AI Assassin"
 description: "Nimble AI assassin, skeletal frame with hacking tendrils."
 role: utility
 theme: "Debuffer / Harasser – punishes energy usage."
+sprite: "/assets/game/enemies/neural-stalker.png"
+spriteScale: 1.3
 isPlayer: false
 stats:
   hp: 45

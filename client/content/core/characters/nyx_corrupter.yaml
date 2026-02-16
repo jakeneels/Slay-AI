@@ -1,6 +1,8 @@
 schemaVersion: 1
 id: nyx_corrupter
 name: "Nyx"
+sprite: "/assets/game/allies/nyx.png"
+spriteScale: 1.2
 title: "Radborn Corrupter"
 description: "Survivor mutated by radiation, glowing with toxic energy, body partly armored with metallic growths."
 role: utility

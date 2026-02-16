@@ -7,6 +7,10 @@ import {
   RANGE_OPTIMAL_BONUS, RANGE_PENALTY_PER_SLOT, RANGE_MODIFIER_MIN, RANGE_MODIFIER_MAX,
   SUPPRESSION_DISTANCE, SUPPRESSION_RANGED_THRESHOLD, SUPPRESSION_BASE_COST, SUPPRESSION_STACK_COST,
 } from '../core/constants.js';
+import {
+  WAVE_BASE_BUDGET, WAVE_BUDGET_INCREMENT, WAVE_BUDGET_JITTER, WAVE_MIN_ENEMIES, WAVE_MAX_ENEMIES,
+} from '../core/waveGenerator.js';
+import { WAVE_HEAL_FRACTION } from '../core/waveTransition.js';
 
 let initialized = false;
 
@@ -37,6 +41,13 @@ const GLOBAL_TWEAKS: TweakDef[] = [
   { target: 'range_penalty_per_slot',    label: 'Range Penalty/Slot',     defaultValue: RANGE_PENALTY_PER_SLOT,    step: 0.05, min: 0, max: 1 },
   { target: 'range_modifier_min',        label: 'Range Modifier Floor',   defaultValue: RANGE_MODIFIER_MIN,        step: 0.05, min: 0, max: 2 },
   { target: 'range_modifier_max',        label: 'Range Modifier Cap',     defaultValue: RANGE_MODIFIER_MAX,        step: 0.05, min: 0, max: 3 },
+  // Wave generation tuning
+  { target: 'wave_base_budget',          label: 'Wave Base Budget',       defaultValue: WAVE_BASE_BUDGET,          step: 10, min: 20, max: 500 },
+  { target: 'wave_budget_increment',     label: 'Wave Budget Incr.',      defaultValue: WAVE_BUDGET_INCREMENT,     step: 5,  min: 0,  max: 100 },
+  { target: 'wave_budget_jitter',        label: 'Wave Budget Jitter',     defaultValue: WAVE_BUDGET_JITTER,        step: 0.05, min: 0, max: 1 },
+  { target: 'wave_min_enemies',          label: 'Wave Min Enemies',       defaultValue: WAVE_MIN_ENEMIES,          step: 1, min: 1, max: 4 },
+  { target: 'wave_max_enemies',          label: 'Wave Max Enemies',       defaultValue: WAVE_MAX_ENEMIES,          step: 1, min: 1, max: 8 },
+  { target: 'wave_heal_fraction',        label: 'Wave Heal Fraction',     defaultValue: WAVE_HEAL_FRACTION,        step: 0.05, min: 0, max: 1 },
 ];
 
 const CHAR_TWEAKS: TweakDef[] = [

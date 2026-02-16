@@ -5,6 +5,8 @@ title: "Scrap-Mutant Beast"
 description: "Scrap-mutant machine-beast, glowing green targeting core."
 role: tank
 theme: "Bruiser / Pressure – advances relentlessly."
+sprite: "/assets/game/enemies/rustbeast-quadruped.png"
+spriteScale: 0.9
 isPlayer: false
 stats:
   hp: 65

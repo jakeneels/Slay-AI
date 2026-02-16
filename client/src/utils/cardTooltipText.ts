@@ -1,7 +1,7 @@
 // Templated card tooltip text generation
 // Pure logic — no PIXI dependency. Generates structured tooltip data from a Card object.
 
-import type { Card, CardEffect, BaseCardEffect, BlockEffect, StatusEffect, KnockbackEffect, DeckInjectEffect, ModifierEffect } from '../core/types.js';
+import type { Card, CardEffect, BaseCardEffect, BlockEffect, StatusEffect, StatusModifyEffect, StatusSpreadEffect, KnockbackEffect, DeckInjectEffect, ModifierEffect } from '../core/types.js';
 import { RANGE_OPTIMAL_BONUS, RANGE_PENALTY_PER_SLOT, RANGE_MODIFIER_MIN } from '../core/constants.js';
 
 // ---------------------------------------------------------------------------
@@ -195,7 +195,7 @@ function describeEffect(effect: CardEffect, card: Card): TooltipEffectLine {
           subLines.push(`${stacks} damage/turn (reduced by Block)`);
           break;
         case 'radiation':
-          subLines.push(`${stacks} dmg/turn, halves each turn. Ignores Block. Requires 0 Block to apply.`);
+          subLines.push(`${stacks} dmg/side, halves each tick. Ignores Block. Requires 0 Block to apply.`);
           break;
         case 'fortify':
           subLines.push('Reduces Block decay by 10% per stack');
@@ -211,6 +211,43 @@ function describeEffect(effect: CardEffect, card: Card): TooltipEffectLine {
         icon: null,
         text: `Applies ${stacks} ${capitalise(se.status)}`,
         subLines,
+        targetLabel,
+      };
+    }
+
+    case 'status_modify': {
+      const sm = effect as StatusModifyEffect;
+      const statusName = capitalise(sm.status);
+      let opText: string;
+      switch (sm.op) {
+        case 'multiply':
+          opText = `×${sm.amount} ${statusName} stacks`;
+          break;
+        case 'add':
+          opText = sm.amount >= 0
+            ? `+${sm.amount} ${statusName} stacks`
+            : `${sm.amount} ${statusName} stacks`;
+          break;
+        case 'set':
+          opText = `Set ${statusName} to ${sm.amount} stacks`;
+          break;
+      }
+      return {
+        icon: null,
+        text: opText,
+        subLines: ['Only affects targets that already have the status'],
+        targetLabel,
+      };
+    }
+
+    case 'status_spread': {
+      const ss = effect as StatusSpreadEffect;
+      const statusName = capitalise(ss.status);
+      const pct = Math.round(ss.fraction * 100);
+      return {
+        icon: null,
+        text: `Spreads ${pct}% ${statusName} to adjacent`,
+        subLines: ['Reads stacks from target, applies fraction to neighbors'],
         targetLabel,
       };
     }

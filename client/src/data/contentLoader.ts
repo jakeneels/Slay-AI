@@ -3,7 +3,7 @@
 // Just drop a .yaml file into the appropriate folder and it gets loaded automatically.
 
 import jsyaml from 'js-yaml';
-import type { Card, CardEffect, CharacterDefinition, GearDefinition, LoadedContent, EffectTarget, AoePattern, GameModifier, ModifierScope } from '../core/types.js';
+import type { Card, CardEffect, CharacterDefinition, GearDefinition, StatusDefinition, StatusCadence, DecayMode, LoadedContent, EffectTarget, AoePattern, GameModifier, ModifierScope } from '../core/types.js';
 import { getModifierRegistry } from '../core/modifiers.js';
 
 // Auto-discover all YAML files via Vite glob imports (eager, raw strings)
@@ -11,6 +11,7 @@ const cardYamlModules = import.meta.glob('/content/core/cards/*.yaml', { query: 
 const characterYamlModules = import.meta.glob('/content/core/characters/*.yaml', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
 const enemyYamlModules = import.meta.glob('/content/core/enemies/*.yaml', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
 const gearYamlModules = import.meta.glob('/content/core/gear/*.yaml', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
+const statusYamlModules = import.meta.glob('/content/core/statuses/*.yaml', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
 const balanceYamlModules = import.meta.glob('/content/core/balance.yaml', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
 
 /**
@@ -176,17 +177,52 @@ export async function loadContent(): Promise<LoadedContent> {
       }
     }
 
+    // --- Load all status YAML files ---
+    const statuses: Record<string, StatusDefinition> = {};
+    for (const [filePath, yamlText] of Object.entries(statusYamlModules)) {
+      try {
+        const d = jsyaml.load(yamlText) as any;
+        statuses[d.id] = {
+          id: d.id,
+          name: d.name || d.id,
+          description: d.description || '',
+          cadence: (d.cadence || 'turn_end') as StatusCadence,
+          dot: d.dot === null || d.dot === undefined ? null : {
+            damage_per_stack: d.dot.damage_per_stack ?? 1,
+            ignores_block: d.dot.ignores_block ?? false,
+          },
+          decay: {
+            mode: (d.decay?.mode || 'none') as DecayMode,
+            round: d.decay?.round || 'ceil',
+            min_remove: d.decay?.min_remove ?? 1,
+          },
+          apply: {
+            requires_zero_block: d.apply?.requires_zero_block ?? false,
+          },
+          display: d.display ? {
+            iconColor: d.display.iconColor,
+            bgColor: d.display.bgColor,
+            borderColor: d.display.borderColor,
+            icon: d.display.icon,
+          } : undefined,
+        };
+      } catch (e) {
+        console.warn(`Failed to load status ${filePath}:`, e);
+      }
+    }
+
     console.log('Loaded cards:', Object.keys(cards));
     console.log('Loaded characters:', Object.keys(characters));
     console.log('Loaded gear:', Object.keys(gear));
+    console.log('Loaded statuses:', Object.keys(statuses));
 
     // --- Load balance.yaml modifiers ---
     loadBalanceModifiers();
     
-    return { cards, characters, gear };
+    return { cards, characters, gear, statuses };
   } catch (error) {
     console.error('Failed to load content:', error);
-    return { cards: {}, characters: {}, gear: {} };
+    return { cards: {}, characters: {}, gear: {}, statuses: {} };
   }
 }
 

@@ -1,0 +1,20 @@
+schemaVersion: 1
+id: disrupt
+name: "Disrupt"
+description: "Interferes with abilities. May increase costs or reduce effectiveness."
+
+cadence: turn_end
+
+dot: null
+
+decay:
+  mode: none
+
+apply:
+  requires_zero_block: false
+
+display:
+  iconColor: 0xc084fc
+  bgColor: 0x2e1146
+  borderColor: 0x581c87
+  icon: disrupt

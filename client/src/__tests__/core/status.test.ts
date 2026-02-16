@@ -1,11 +1,56 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { applyStatus, removeStatusStacks, hasStatus, getStatusStacks, processDoTs, decayStatusDurations } from '../../core/status.js';
-import { resetGameState, createMockCharacter } from '../utils/test-helpers.js';
+import { applyStatus, removeStatusStacks, hasStatus, getStatusStacks, processStatusEffects, decayStatusDurations } from '../../core/status.js';
+import { resetGameState, createMockCharacter, setupGameState } from '../utils/test-helpers.js';
 import { getTotalBlock } from '../../core/block.js';
+import type { StatusDefinition } from '../../core/types.js';
+
+// ── Test status definitions (mirrors the YAML files) ─────────────────
+
+const BLEED_DEF: StatusDefinition = {
+  id: 'bleed', name: 'Bleed', description: '',
+  cadence: 'turn_end',
+  dot: { damage_per_stack: 1, ignores_block: false },
+  decay: { mode: 'none' },
+};
+
+const SHOCK_DEF: StatusDefinition = {
+  id: 'shock', name: 'Shock', description: '',
+  cadence: 'turn_end',
+  dot: { damage_per_stack: 1, ignores_block: false },
+  decay: { mode: 'none' },
+};
+
+const RADIATION_DEF: StatusDefinition = {
+  id: 'radiation', name: 'Radiation', description: '',
+  cadence: 'side_end',
+  dot: { damage_per_stack: 1, ignores_block: true },
+  decay: { mode: 'half_life', round: 'ceil', min_remove: 1 },
+  apply: { requires_zero_block: true },
+};
+
+const FORTIFY_DEF: StatusDefinition = {
+  id: 'fortify', name: 'Fortify', description: '',
+  cadence: 'turn_end',
+  dot: null,
+  decay: { mode: 'none' },
+};
+
+const ALL_STATUS_DEFS: Record<string, StatusDefinition> = {
+  bleed: BLEED_DEF,
+  shock: SHOCK_DEF,
+  radiation: RADIATION_DEF,
+  fortify: FORTIFY_DEF,
+};
+
+/** Set up game state with all status definitions loaded. */
+function setupWithStatuses() {
+  setupGameState({ statusLibrary: ALL_STATUS_DEFS });
+}
 
 describe('status', () => {
   beforeEach(() => {
     resetGameState();
+    setupWithStatuses();
   });
 
   describe('applyStatus', () => {
@@ -74,10 +119,8 @@ describe('status', () => {
       
       applyStatus(character, 'radiation', 3);
       
-      // Radiation should be rejected — block is still up
       expect(hasStatus(character, 'radiation')).toBe(false);
       expect(character.statuses).toHaveLength(0);
-      // Block should be unchanged
       expect(getTotalBlock(character)).toBe(5);
     });
 
@@ -89,7 +132,6 @@ describe('status', () => {
       
       applyStatus(character, 'radiation', 3);
       
-      // Radiation should be applied — no block
       expect(hasStatus(character, 'radiation')).toBe(true);
       expect(getStatusStacks(character, 'radiation')).toBe(3);
     });
@@ -168,7 +210,7 @@ describe('status', () => {
     });
   });
 
-  describe('processDoTs', () => {
+  describe('processStatusEffects — turn_end', () => {
     it('should apply bleed damage reduced by block', () => {
       const character = createMockCharacter({
         hp: 100,
@@ -176,9 +218,8 @@ describe('status', () => {
         statuses: [{ id: 'bleed', stacks: 3 }]
       });
       
-      processDoTs(character);
+      processStatusEffects(character, 'turn_end');
       
-      // 3 bleed damage, 5 block -> 0 damage to HP, 3 block used
       expect(character.hp).toBe(100);
       expect(getTotalBlock(character)).toBe(2);
     });
@@ -190,9 +231,8 @@ describe('status', () => {
         statuses: [{ id: 'bleed', stacks: 5 }]
       });
       
-      processDoTs(character);
+      processStatusEffects(character, 'turn_end');
       
-      // 5 bleed, 2 block -> 3 damage to HP
       expect(character.hp).toBe(97);
       expect(getTotalBlock(character)).toBe(0);
     });
@@ -204,26 +244,52 @@ describe('status', () => {
         statuses: [{ id: 'shock', stacks: 6 }]
       });
       
-      processDoTs(character);
+      processStatusEffects(character, 'turn_end');
       
-      // 6 shock, 4 block -> 2 damage to HP
       expect(character.hp).toBe(98);
       expect(getTotalBlock(character)).toBe(0);
     });
 
-    it('should apply radiation damage ignoring block and halve stacks', () => {
+    it('should NOT tick radiation on turn_end (radiation is side_end)', () => {
+      const character = createMockCharacter({
+        hp: 100,
+        blockLayers: [],
+        statuses: [{ id: 'radiation', stacks: 5 }]
+      });
+      
+      processStatusEffects(character, 'turn_end');
+      
+      // Radiation should NOT have ticked
+      expect(character.hp).toBe(100);
+      expect(getStatusStacks(character, 'radiation')).toBe(5);
+    });
+
+    it('should not reduce HP below 0', () => {
+      const character = createMockCharacter({
+        hp: 3,
+        blockLayers: [],
+        statuses: [{ id: 'bleed', stacks: 10 }]
+      });
+      
+      processStatusEffects(character, 'turn_end');
+      
+      expect(character.hp).toBe(0);
+    });
+  });
+
+  describe('processStatusEffects — side_end', () => {
+    it('should tick radiation on side_end, ignoring block', () => {
       const character = createMockCharacter({
         hp: 100,
         blockLayers: [{ amount: 10, decay_percent: 20 }],
         statuses: [{ id: 'radiation', stacks: 5 }]
       });
       
-      processDoTs(character);
+      processStatusEffects(character, 'side_end');
       
-      // 5 radiation, ignores block -> 5 damage to HP, block unchanged
       expect(character.hp).toBe(95);
       expect(getTotalBlock(character)).toBe(10);
-      // Half-life decay: 5 -> ceil(5/2) = 3
+      // Half-life decay ceil: 5 -> ceil(5/2) = 3
       expect(getStatusStacks(character, 'radiation')).toBe(3);
     });
 
@@ -234,10 +300,10 @@ describe('status', () => {
         statuses: [{ id: 'radiation', stacks: 8 }]
       });
       
-      processDoTs(character);
+      processStatusEffects(character, 'side_end');
       
-      expect(character.hp).toBe(92); // 8 damage
-      expect(getStatusStacks(character, 'radiation')).toBe(4); // 8 -> 4
+      expect(character.hp).toBe(92);
+      expect(getStatusStacks(character, 'radiation')).toBe(4);
     });
 
     it('should halve radiation from 3 to 2 stacks after tick (ceil)', () => {
@@ -247,10 +313,10 @@ describe('status', () => {
         statuses: [{ id: 'radiation', stacks: 3 }]
       });
       
-      processDoTs(character);
+      processStatusEffects(character, 'side_end');
       
-      expect(character.hp).toBe(97); // 3 damage
-      expect(getStatusStacks(character, 'radiation')).toBe(2); // 3 -> ceil(3/2) = 2
+      expect(character.hp).toBe(97);
+      expect(getStatusStacks(character, 'radiation')).toBe(2);
     });
 
     it('should remove radiation after 1 stack ticks', () => {
@@ -260,41 +326,50 @@ describe('status', () => {
         statuses: [{ id: 'radiation', stacks: 1 }]
       });
       
-      processDoTs(character);
+      processStatusEffects(character, 'side_end');
       
-      expect(character.hp).toBe(99); // 1 damage
-      expect(hasStatus(character, 'radiation')).toBe(false); // 1 stack -> deals damage then removed
+      expect(character.hp).toBe(99);
+      expect(hasStatus(character, 'radiation')).toBe(false);
     });
 
-    it('should process multiple DoT statuses', () => {
+    it('should NOT tick bleed on side_end (bleed is turn_end)', () => {
+      const character = createMockCharacter({
+        hp: 100,
+        blockLayers: [],
+        statuses: [{ id: 'bleed', stacks: 5 }]
+      });
+      
+      processStatusEffects(character, 'side_end');
+      
+      expect(character.hp).toBe(100);
+      expect(getStatusStacks(character, 'bleed')).toBe(5);
+    });
+  });
+
+  describe('processStatusEffects — mixed statuses', () => {
+    it('should only process statuses matching the cadence', () => {
       const character = createMockCharacter({
         hp: 100,
         blockLayers: [{ amount: 10, decay_percent: 20 }],
         statuses: [
           { id: 'bleed', stacks: 3 },
           { id: 'shock', stacks: 2 },
-          { id: 'radiation', stacks: 1 }
+          { id: 'radiation', stacks: 4 }
         ]
       });
       
-      processDoTs(character);
+      // turn_end: only bleed + shock tick
+      processStatusEffects(character, 'turn_end');
       
-      // 3 bleed + 2 shock = 5 total reduced by 10 block = 0, plus 1 radiation = 1 total damage
-      expect(character.hp).toBe(99);
-      // 1 stack radiation decays to 0 -> removed
-      expect(hasStatus(character, 'radiation')).toBe(false);
-    });
-
-    it('should not reduce HP below 0', () => {
-      const character = createMockCharacter({
-        hp: 3,
-        blockLayers: [],
-        statuses: [{ id: 'bleed', stacks: 10 }]
-      });
+      // 3+2=5 reduced by 10 block = 0 damage, radiation untouched
+      expect(character.hp).toBe(100);
+      expect(getStatusStacks(character, 'radiation')).toBe(4);
       
-      processDoTs(character);
+      // side_end: only radiation ticks
+      processStatusEffects(character, 'side_end');
       
-      expect(character.hp).toBe(0);
+      expect(character.hp).toBe(96); // 4 radiation damage
+      expect(getStatusStacks(character, 'radiation')).toBe(2); // ceil(4/2) = 2
     });
   });
 
@@ -348,4 +423,3 @@ describe('status', () => {
     });
   });
 });
-

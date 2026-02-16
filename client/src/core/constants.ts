@@ -16,6 +16,9 @@ export const SLOTS_PER_SIDE = 4;
 export const ALLY_SLOT_END = 3;   // Allies occupy slots 0-3
 export const ENEMY_SLOT_START = 4; // Enemies occupy slots 4-7
 
+// Character sprite layout: slot x is left edge, visual center = x + SPRITE_CENTER
+export const SPRITE_CENTER = 125;
+
 // ── Default values (used as base for modifier resolution) ───────────
 
 // Range modifier defaults

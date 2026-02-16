@@ -9,14 +9,18 @@ import { getSuppressionStackCost } from '../core/constants.js';
 import { render as renderCallback } from './renderer.js';
 import { registerCharacterSprite } from '../../animations.js';
 import { getTotalBlock } from '../core/block.js';
-import { MAX_SLOTS, calculateRangeModifier } from '../core/constants.js';
+import { MAX_SLOTS, SPRITE_CENTER, calculateRangeModifier } from '../core/constants.js';
 import { createEnergyIcon } from './icons/energyIcon.js';
 import { createHealIcon } from './icons/healIcon.js';
 import { getStatusDisplay } from './statusConfig.js';
 import { setHoveredStatus } from './tooltipState.js';
 
-const BATTLE_Y_OFFSET = 300;
+const BATTLE_Y_OFFSET = 265;
 const SPACING = 140;
+
+/** Typical character sprite size (max width or height). */
+const CHAR_SPRITE_SIZE = 250;
+const CHAR_CENTER = CHAR_SPRITE_SIZE / 2;
 
 export const ENERGY_ICON_SIZE = 14;
 
@@ -36,8 +40,8 @@ const characterSpriteMap = new Map<string, SpriteImpl>();
 export function renderCharacters(app: Application, gameState: GameState): void {
   const battleY = 800 - BATTLE_Y_OFFSET; // Move characters down towards bottom
   const width = 1200;
-  const leftBase = 100;
-  const rightBase = width - 200;
+  const leftBase = 20;
+  const rightBase = width - CHAR_SPRITE_SIZE;
   
   // Clear sprite map for this render cycle
   characterSpriteMap.clear();
@@ -101,7 +105,7 @@ export function renderCharacters(app: Application, gameState: GameState): void {
           const slotX = leftBase + slot * slotSpacing;
           const hitW = 80;
           const hitH = 200;
-          const hitX = slotX + 100 - hitW / 2; // center in the slot (sprite center = slotX + 100)
+          const hitX = slotX + SPRITE_CENTER - hitW / 2;
           const hitY = battleY - 20;
 
           // Semi-transparent hit area so player can see it's clickable
@@ -137,14 +141,13 @@ export function renderCharacters(app: Application, gameState: GameState): void {
               const tcSprite = characterSpriteMap.get(tc.id);
               if (tcSprite) {
                 const hl = new Graphics();
-                hl.roundRect(
-                  -padding, -padding,
-                  tcSprite.width + padding * 2,
-                  tcSprite.height + padding * 2,
-                  8
-                ).stroke({ width: 4, color: highlightColor, alpha: 0.9 });
-                hl.x = tcSprite.x;
-                hl.y = tcSprite.y;
+                const hlW = tcSprite.width + padding * 2;
+                const hlH = tcSprite.height + padding * 2;
+                hl.roundRect(-padding, -padding, hlW, hlH, 8)
+                  .stroke({ width: 4, color: highlightColor, alpha: 0.9 });
+                // Rect drawn at (-padding,-padding); position so rect top-left = sprite top-left - padding
+                hl.x = tcSprite.x - tcSprite.width / 2;
+                hl.y = tcSprite.y - tcSprite.height / 2;
                 hl.zIndex = -1;
                 hl.eventMode = 'none';
                 app.stage.addChild(hl);
@@ -188,23 +191,27 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
   if (charDef && charDef.sprite) {
       Assets.load(charDef.sprite).then((texture: Texture) => {
       const sprite = new SpriteImpl(texture);
-      sprite.x = x;
-      sprite.y = y - 20; // Move sprite up 20 pixels
-      
-      // Try setting anti-aliasing and smoothing
       sprite.roundPixels = false;
-      
+
       // Maintain aspect ratio and make larger for better quality
+      const baseSize = 200;
+      const scale = charDef.spriteScale ?? 1;
+      const targetSize = baseSize * scale;
       const aspectRatio = texture.width / texture.height;
       if (aspectRatio > 1) {
-        // Wider than tall
-        sprite.width = 200;
-        sprite.height = 200 / aspectRatio;
+        sprite.width = targetSize;
+        sprite.height = targetSize / aspectRatio;
       } else {
-        // Taller than wide
-        sprite.height = 200;
-        sprite.width = 200 * aspectRatio;
+        sprite.height = targetSize;
+        sprite.width = targetSize * aspectRatio;
       }
+
+      // Center anchor (with optional per-character override) so sprite stays centered when scaling
+      const anchorX = charDef.spriteAnchorX ?? 0.5;
+      const anchorY = charDef.spriteAnchorY ?? 0.5;
+      sprite.anchor.set(anchorX, anchorY);
+      sprite.x = x + SPRITE_CENTER;
+      sprite.y = y - 20 + sprite.height * anchorY;
       
       // Make targetable based on card's targeting type
       const selectedCardId = getSelectedCardId();
@@ -267,23 +274,12 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
             let primaryHighlight: Graphics | null = null;
             
             // Universal hover effects for all targeting types
+            // With center anchor, sprite.x/sprite.y are the center; scaling stays centered automatically
             sprite.on('pointerenter', () => {
-              // Store original position (needed for restoring and highlight positioning)
-              const originalX = sprite.x;
-              const originalY = sprite.y;
-              
-              // Calculate center point of sprite (assuming top-left anchor)
-              const centerX = originalX + originalSpriteWidth / 2;
-              const centerY = originalY + originalSpriteHeight / 2;
-              
-              // Apply sprite zoom (1.1x scale)
+              const centerX = sprite.x;
+              const centerY = sprite.y;
+
               sprite.scale.set(originalScaleX * 1.1, originalScaleY * 1.1);
-              
-              // Adjust position to zoom from center
-              const newWidth = originalSpriteWidth * 1.1;
-              const newHeight = originalSpriteHeight * 1.1;
-              sprite.x = centerX - newWidth / 2;
-              sprite.y = centerY - newHeight / 2;
 
               // Range modifier badge (shows % damage when hovering target)
               if (card.optimalRange !== undefined && card.targeting !== 'self') {
@@ -329,9 +325,9 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
                 8
               )
                 .stroke({ width: 4, color: highlightColor, alpha: 0.9 });
-              // Position highlight at the center point (where sprite is zooming from)
-              primaryHighlight.x = centerX - (originalSpriteWidth + padding * 2) / 2;
-              primaryHighlight.y = centerY - (originalSpriteHeight + padding * 2) / 2;
+              // Rect drawn at (-padding,-padding); position so rect wraps sprite with padding
+              primaryHighlight.x = centerX - originalSpriteWidth / 2;
+              primaryHighlight.y = centerY - originalSpriteHeight / 2;
               primaryHighlight.zIndex = -1;
               app.stage.addChild(primaryHighlight);
               highlightGraphics.push(primaryHighlight);
@@ -353,16 +349,12 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
                     const targetSprite = characterSpriteMap.get(targetChar.id);
                     if (targetSprite) {
                       const highlight = new Graphics();
-                      highlight.roundRect(
-                        -padding, 
-                        -padding, 
-                        targetSprite.width + padding * 2, 
-                        targetSprite.height + padding * 2, 
-                        8
-                      )
+                      const hw = targetSprite.width + padding * 2;
+                      const hh = targetSprite.height + padding * 2;
+                      highlight.roundRect(-padding, -padding, hw, hh, 8)
                         .stroke({ width: 4, color: highlightColor, alpha: 0.9 });
-                      highlight.x = targetSprite.x;
-                      highlight.y = targetSprite.y;
+                      highlight.x = targetSprite.x - targetSprite.width / 2;
+                      highlight.y = targetSprite.y - targetSprite.height / 2;
                       highlight.zIndex = -1;
                       app.stage.addChild(highlight);
                       highlightGraphics.push(highlight);
@@ -382,17 +374,13 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
                     const targetSprite = characterSpriteMap.get(targetChar.id);
                     if (targetSprite) {
                       const highlight = new Graphics();
-                      const padding = 8;
-                      highlight.roundRect(
-                        -padding, 
-                        -padding, 
-                        targetSprite.width + padding * 2, 
-                        targetSprite.height + padding * 2, 
-                        8
-                      )
+                      const pad = 8;
+                      const hw = targetSprite.width + pad * 2;
+                      const hh = targetSprite.height + pad * 2;
+                      highlight.roundRect(-pad, -pad, hw, hh, 8)
                         .stroke({ width: 4, color: highlightColor, alpha: 0.9 });
-                      highlight.x = targetSprite.x;
-                      highlight.y = targetSprite.y;
+                      highlight.x = targetSprite.x - targetSprite.width / 2;
+                      highlight.y = targetSprite.y - targetSprite.height / 2;
                       highlight.zIndex = -1;
                       app.stage.addChild(highlight);
                       highlightGraphics.push(highlight);
@@ -404,19 +392,8 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
             
             // Remove hover effects
             sprite.on('pointerleave', () => {
-              // Store current center point before resetting
-              const currentWidth = sprite.width;
-              const currentHeight = sprite.height;
-              const centerX = sprite.x + currentWidth / 2;
-              const centerY = sprite.y + currentHeight / 2;
-              
-              // Reset sprite scale
               sprite.scale.set(originalScaleX, originalScaleY);
-              
-              // Restore original position (center-based)
-              sprite.x = centerX - originalSpriteWidth / 2;
-              sprite.y = centerY - originalSpriteHeight / 2;
-              
+
               // Remove all highlight graphics
               highlightGraphics.forEach(highlight => {
                 if (highlight.parent) {
@@ -452,7 +429,7 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
     text: char.name,
     style: { fill: 0xffffff, fontSize: 14, fontWeight: 'bold' }
   });
-  name.x = x + 100 - name.width/2; // Center under larger sprite
+  name.x = x + SPRITE_CENTER - name.width/2;
   name.y = y + 180; // Move down for larger sprites
   name.eventMode = 'none';
   app.stage.addChild(name);
@@ -460,7 +437,7 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
   // --- Stat bars below name ---
   // Layout: [icon] [===bar===]  aligned vertically, HP bar on top, energy bar below
   const totalBarRowW = BAR_ICON_SIZE + BAR_ICON_GAP + BAR_WIDTH;
-  const barStartX = x + 100 - totalBarRowW / 2;
+  const barStartX = x + SPRITE_CENTER - totalBarRowW / 2;
   const barX = barStartX + BAR_ICON_SIZE + BAR_ICON_GAP;
   const hpBarY = y + 200;
   const barGap = 4; // vertical gap between bars
@@ -590,7 +567,7 @@ function renderCharacter(app: Application, gameState: GameState, char: Character
   const totalBlock = getTotalBlock(char);
 
   if (totalBlock > 0) {
-    const shieldX = x + 100 + totalBarRowW / 2 + 14;
+    const shieldX = x + SPRITE_CENTER + totalBarRowW / 2 + 14;
     const shieldY = hpBarY + BAR_HEIGHT / 2;
     const shieldWidth = 32;
     const shieldHeight = 38;
@@ -731,9 +708,9 @@ function renderStatusBadges(
     return { status, config, labelText, badgeW };
   });
 
-  // Center the badge row above the character (character center = charX + 100)
+  // Center the badge row above the character
   const totalWidth = badgeData.reduce((sum, b) => sum + b.badgeW, 0) + Math.max(0, badgeData.length - 1) * BADGE_GAP;
-  const charCenterX = charX + 100;
+  const charCenterX = charX + SPRITE_CENTER;
   let badgeX = charCenterX - totalWidth / 2;
 
   for (const { status, config, labelText, badgeW } of badgeData) {

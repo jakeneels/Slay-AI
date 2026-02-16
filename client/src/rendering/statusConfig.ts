@@ -2,6 +2,7 @@
 // Maps status IDs to their visual properties for rendering badges on characters.
 
 import { Graphics } from 'pixi.js';
+import { getGameState } from '../core/gameState.js';
 
 export type IconDrawFn = (g: Graphics, size: number) => void;
 
@@ -263,10 +264,41 @@ export const STATUS_DISPLAY: Record<string, StatusDisplayConfig> = {
   },
 };
 
+// ── Icon draw function registry (keyed by icon name from YAML) ───────
+
+const ICON_DRAW_REGISTRY: Record<string, IconDrawFn[]> = {
+  bleed: [drawBleedIcon],
+  shock: [drawShockIcon],
+  radiation: [drawRadiationIcon],
+  fortify: [drawFortifyIcon],
+  disrupt: [drawDisruptIcon],
+  suppressed: [drawSuppressedIcon, drawEnergySmallIcon],
+  speed_up: [drawSpeedUpIcon],
+  speed_down: [drawSpeedDownIcon],
+};
+
 /**
  * Get the display config for a status ID.
- * Returns undefined for unknown statuses (they won't render a badge).
+ * Merges YAML-driven display data (description, colors) with code-side icon drawers.
+ * Falls back to hardcoded STATUS_DISPLAY for statuses without YAML definitions.
+ * Returns undefined for completely unknown statuses.
  */
 export function getStatusDisplay(statusId: string): StatusDisplayConfig | undefined {
-  return STATUS_DISPLAY[statusId];
+  const hardcoded = STATUS_DISPLAY[statusId];
+  const def = getGameState().statusLibrary[statusId];
+
+  if (!def?.display) return hardcoded;
+
+  // Merge: YAML display data overrides hardcoded values, icon drawers come from code
+  const iconKey = def.display.icon || statusId;
+  const drawIcons = ICON_DRAW_REGISTRY[iconKey] ?? hardcoded?.drawIcons ?? [];
+
+  return {
+    label: def.name,
+    description: def.description,
+    iconColor: def.display.iconColor ?? hardcoded?.iconColor ?? 0xd1d5db,
+    bgColor: def.display.bgColor ?? hardcoded?.bgColor ?? 0x1f2937,
+    borderColor: def.display.borderColor ?? hardcoded?.borderColor ?? 0x374151,
+    drawIcons,
+  };
 }

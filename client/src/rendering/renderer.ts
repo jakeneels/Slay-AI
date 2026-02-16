@@ -56,7 +56,8 @@ export function render(): void {
   renderStatusTooltip(app);
 
   // Victory modal overlay (renders on top of everything)
-  if (gameState.combatResult === 'victory' && gameState.pendingReward) {
+  // Phase 1: gear reward (pendingReward set), Phase 2: wave complete (pendingReward null)
+  if (gameState.combatResult === 'victory') {
     renderVictoryModal(app, gameState);
   }
 

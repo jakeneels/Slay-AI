@@ -6,6 +6,7 @@ description: "Human worshipper of AI overlords, armed with stolen tech relics."
 role: dps
 theme: "Aggressive Frontliner – reckless but high damage."
 sprite: "/assets/game/enemies/fanatic-zealot.png"
+spriteScale: 0.7
 isPlayer: false
 stats:
   hp: 30

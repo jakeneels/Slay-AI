@@ -91,6 +91,7 @@ export function createMockGameState(overrides?: Partial<GameState>): GameState {
     cardLibrary: overrides?.cardLibrary || {},
     characterLibrary: overrides?.characterLibrary || {},
     gearLibrary: overrides?.gearLibrary || {},
+    statusLibrary: overrides?.statusLibrary || {},
     cardInstances: overrides?.cardInstances || {},
     selectedCardId: overrides?.selectedCardId ?? null,
     currentPlayerId: overrides?.currentPlayerId || '',
@@ -104,6 +105,7 @@ export function createMockGameState(overrides?: Partial<GameState>): GameState {
     },
     combatResult: overrides?.combatResult ?? 'ongoing',
     pendingReward: overrides?.pendingReward ?? null,
+    waveNumber: overrides?.waveNumber ?? 1,
     ...overrides
   };
 }

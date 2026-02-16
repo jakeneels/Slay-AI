@@ -23,7 +23,7 @@ import {
   type AnimationConfig 
 } from '../../animations.js';
 import { applyDamageWithBlock, grantBlockLayer, decayBlockLayers } from './block.js';
-import { applyStatus, processDoTs, decayStatusDurations, getStatusStacks } from './status.js';
+import { applyStatus, modifyStatusStacks, processStatusEffects, decayStatusDurations, getStatusStacks } from './status.js';
 import { MAX_SLOTS, calculateRangeModifier, getSuppressionDistance, getSuppressionRangedThreshold, getSuppressionStackCost } from './constants.js';
 import { getModifierRegistry } from './modifiers.js';
 
@@ -913,6 +913,60 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
           ]).then(() => undefined);
           break;
 
+        case 'status_modify':
+          const modTarget = target;
+          const modStatusId = effect.status;
+          const modOp = effect.op;
+          const modValue = effect.amount;
+          modifyStatusStacks(modTarget, modStatusId, modOp, modValue);
+          sparkType = 'buff';
+          if (renderCallback) {
+            renderCallback();
+          }
+          animationPromise = Promise.all([
+            animateCharachterSpark(modTarget.id, sparkType, app),
+            animateParticles(modTarget.id, 'shadow', 10, app)
+          ]).then(() => undefined);
+          break;
+
+        case 'status_spread': {
+          const spreadStatusId = effect.status;
+          const sourceStacks = getStatusStacks(target, spreadStatusId);
+          if (sourceStacks > 0) {
+            const fraction = effect.fraction ?? 0.5;
+            const roundFn = effect.round === 'ceil' ? Math.ceil : Math.floor;
+            const spreadStacks = roundFn(sourceStacks * fraction);
+            if (spreadStacks > 0) {
+              // Find adjacent enemies (within 1 slot of primary target, same side, excluding the target itself)
+              const adjacentTargets = getGameState().characters.filter(c =>
+                c.hp > 0 &&
+                c.id !== target.id &&
+                c.isPlayer === target.isPlayer &&
+                Math.abs(c.slotIndex - target.slotIndex) <= 1
+              );
+              for (const adj of adjacentTargets) {
+                applyStatus(adj, spreadStatusId, spreadStacks);
+              }
+              if (adjacentTargets.length > 0) {
+                addToCombatLog(`${spreadStatusId} spreads to ${adjacentTargets.length} adjacent target${adjacentTargets.length > 1 ? 's' : ''} (${spreadStacks} stacks each)`);
+                sparkType = 'buff';
+                // Animate all adjacent targets
+                const spreadAnims = adjacentTargets.map(adj =>
+                  Promise.all([
+                    animateCharachterSpark(adj.id, 'buff', app),
+                    animateParticles(adj.id, 'shadow', 8, app)
+                  ])
+                );
+                animationPromise = Promise.all(spreadAnims).then(() => undefined);
+              }
+            }
+          }
+          if (renderCallback) {
+            renderCallback();
+          }
+          break;
+        }
+
         case 'knockback':
           const knockbackTarget = target;
           const slotBefore = knockbackTarget.slotIndex;
@@ -1055,8 +1109,19 @@ export function endTurn(renderCallback?: () => void): void {
       decayBlockLayers(character);
     }
     
-    // Process DoT effects (bleed, shock, radiation)
-    processDoTs(character);
+    // Process turn_end statuses (e.g. bleed, shock) — tick every character turn
+    processStatusEffects(character, 'turn_end');
+
+    // Process side_end statuses (e.g. radiation) — tick when a side finishes
+    if (sideChanged && character.isPlayer !== nextPlayer.isPlayer) {
+      // The finishing side is the PREVIOUS side (opposite of nextPlayer)
+      processStatusEffects(character, 'side_end');
+    }
+
+    // Process round_end statuses — tick once per full round (both sides acted)
+    if (wrapped) {
+      processStatusEffects(character, 'round_end');
+    }
     
     // Decay status durations
     decayStatusDurations(character);

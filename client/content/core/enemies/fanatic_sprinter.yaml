@@ -1,6 +1,7 @@
 schemaVersion: 1
 id: fanatic_sprinter
 name: "Fanatic Sprinter"
+spriteScale: .7
 title: "Wrathbound Charger"
 description: "A berserk cultist fused with salvaged tech relics, channeling corrupted energy through dual weapons. Charges headlong into the fray, hurling telekinetic debris before closing to melee range."
 role: dps

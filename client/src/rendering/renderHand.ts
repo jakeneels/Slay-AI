@@ -2,7 +2,7 @@
 
 import type { Application } from 'pixi.js';
 import { Graphics, Text, Rectangle } from 'pixi.js';
-import type { GameState, Character, Card, CardEffect, BaseCardEffect, StatusEffect } from '../core/types.js';
+import type { GameState, Character, Card, CardEffect, BaseCardEffect, StatusEffect, StatusModifyEffect, StatusSpreadEffect } from '../core/types.js';
 import { WIDTH, SLOTS_PER_SIDE } from '../core/constants.js';
 import { getCard } from '../core/card.js';
 import { getSelectedCardId, setSelectedCardId } from '../core/gameState.js';
@@ -195,6 +195,69 @@ function renderSingleEffect(
     stackText.x = ex; stackText.y = rowY; stackText.eventMode = 'none';
     app.stage.addChild(stackText);
     ex += stackText.width;
+
+    return ex;
+  }
+
+  // Status modify effects: show op symbol + status icon
+  if (effect.kind === 'status_modify') {
+    const sm = effect as StatusModifyEffect;
+    const statusDisplay = getStatusDisplay(sm.status);
+    let ex = startX;
+
+    // Draw the status icon from statusConfig if available
+    if (statusDisplay && statusDisplay.drawIcons.length > 0) {
+      const iconG = new Graphics();
+      statusDisplay.drawIcons[0](iconG, iconSize);
+      iconG.x = ex; iconG.y = rowY;
+      iconG.eventMode = 'none';
+      app.stage.addChild(iconG);
+      ex += iconSize + 2;
+    }
+
+    // Op label (e.g. "×3")
+    const color = statusDisplay?.iconColor ?? 0x9ca3af;
+    let opLabel: string;
+    switch (sm.op) {
+      case 'multiply': opLabel = `×${sm.amount}`; break;
+      case 'add': opLabel = sm.amount >= 0 ? `+${sm.amount}` : `${sm.amount}`; break;
+      case 'set': opLabel = `=${sm.amount}`; break;
+    }
+    const opText = new Text({
+      text: opLabel,
+      style: { fill: color, fontSize, fontWeight: 'bold' }
+    });
+    opText.x = ex; opText.y = rowY; opText.eventMode = 'none';
+    app.stage.addChild(opText);
+    ex += opText.width;
+
+    return ex;
+  }
+
+  // Status spread: show status icon + fraction label
+  if (effect.kind === 'status_spread') {
+    const ss = effect as StatusSpreadEffect;
+    const statusDisplay = getStatusDisplay(ss.status);
+    let ex = startX;
+
+    if (statusDisplay && statusDisplay.drawIcons.length > 0) {
+      const iconG = new Graphics();
+      statusDisplay.drawIcons[0](iconG, iconSize);
+      iconG.x = ex; iconG.y = rowY;
+      iconG.eventMode = 'none';
+      app.stage.addChild(iconG);
+      ex += iconSize + 2;
+    }
+
+    const color = statusDisplay?.iconColor ?? 0x9ca3af;
+    const pct = Math.round(ss.fraction * 100);
+    const spreadText = new Text({
+      text: `${pct}%→adj`,
+      style: { fill: color, fontSize: fontSize - 1, fontWeight: 'bold' }
+    });
+    spreadText.x = ex; spreadText.y = rowY; spreadText.eventMode = 'none';
+    app.stage.addChild(spreadText);
+    ex += spreadText.width;
 
     return ex;
   }

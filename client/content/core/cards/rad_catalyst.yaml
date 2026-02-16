@@ -1,0 +1,21 @@
+schemaVersion: 1
+id: rad_catalyst
+name: "Rad Catalyst"
+type: attack
+rarity: epic
+cost: 1
+copies: 1
+tags: [radiation, ranged]
+targeting: enemy
+maxRange: 7
+exhaust: true
+expires_after_turns: 0
+description: "A dirty catalyst shot that doubles existing radiation on the target."
+effects:
+  - kind: damage
+    amount: 3
+  - kind: status_modify
+    status: radiation
+    op: multiply
+    amount: 3
+    effectTarget: target

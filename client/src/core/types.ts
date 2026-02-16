@@ -184,6 +184,9 @@ export interface Character {
 
 export interface CharacterDefinition extends Character {
   sprite?: string;
+  spriteScale?: number;
+  spriteAnchorX?: number; // 0–1 horizontal anchor override (default 0.5 = center)
+  spriteAnchorY?: number; // 0–1 vertical anchor override (default 0.5 = center)
   startingDeck?: string[];
   stats: CharacterStats;
 }
@@ -266,6 +269,7 @@ export interface GameState {
   stats: GameStats;
   combatResult: 'ongoing' | 'victory' | 'defeat';
   pendingReward: GearDefinition | null;
+  currentMap: string;
 }
 
 export interface LoadedContent {

@@ -5,7 +5,8 @@ title: "Rustborn Sharpshooter"
 description: "Scavenger sniper with jury-rigged optics and weapon mods scavenged from AI ruins."
 role: dps
 theme: "Ranged DPS – excels at ranged damage and containment."
-sprite: "/assets/game/allies/sniper.png"
+sprite: "/assets/game/allies/didi.png"
+spriteScale: 0.70
 isPlayer: true
 stats:
   hp: 60

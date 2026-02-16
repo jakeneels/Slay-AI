@@ -1,0 +1,24 @@
+schemaVersion: 1
+id: radiation
+name: "Radiation"
+description: "Deals damage equal to stacks when side ends. Ignores block. Stacks halve each tick. Cannot be applied if target has block."
+
+cadence: side_end
+
+dot:
+  damage_per_stack: 1
+  ignores_block: true
+
+decay:
+  mode: half_life
+  round: ceil
+  min_remove: 1
+
+apply:
+  requires_zero_block: true
+
+display:
+  iconColor: 0x22c55e
+  bgColor: 0x113b1e
+  borderColor: 0x166534
+  icon: radiation

@@ -1,0 +1,22 @@
+schemaVersion: 1
+id: rad_grenade
+name: "Rad Grenade"
+type: attack
+rarity: rare
+cost: 2
+copies: 1
+tags: [radiation, ranged, grenade, aoe]
+targeting: enemy
+maxRange: 6
+exhaust: true
+expires_after_turns: 0
+description: "A dirty frag packed with irradiated shrapnel. Detonates on impact, spreading half the target's radiation to adjacent enemies."
+effects:
+  - kind: damage
+    amount: 4
+  - kind: status_spread
+    status: radiation
+    fraction: 0.70
+    round: floor
+    amount: 0
+    effectTarget: target

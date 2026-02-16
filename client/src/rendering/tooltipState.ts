@@ -59,3 +59,25 @@ export function setHoveredStatus(statusId: string | null, stacks: number = 0, x:
 export function getHoveredStatus(): { statusId: string | null; stacks: number; x: number; y: number } {
   return { statusId: hoveredStatusId, stacks: hoveredStatusStacks, x: hoveredStatusX, y: hoveredStatusY };
 }
+
+// ── Global clear ─────────────────────────────────────────────────────
+
+/**
+ * Clear all hover states at once (e.g. on window blur / visibility change).
+ * Returns true if anything was actually cleared.
+ */
+export function clearAllHoverStates(): boolean {
+  const hadCard = hoveredCardId !== null;
+  const hadStatus = hoveredStatusId !== null;
+
+  hoveredCardId = null;
+  hoveredCardX = 0;
+  hoveredCardY = 0;
+
+  hoveredStatusId = null;
+  hoveredStatusStacks = 0;
+  hoveredStatusX = 0;
+  hoveredStatusY = 0;
+
+  return hadCard || hadStatus;
+}

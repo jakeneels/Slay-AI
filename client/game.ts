@@ -10,10 +10,12 @@ import { drawCards } from './src/core/deck.js';
 import { shuffleArray } from './src/utils/shuffle.js';
 import { loadContent } from './src/data/contentLoader.js';
 import { render, setApp } from './src/rendering/renderer.js';
+import { clearAllHoverStates } from './src/rendering/tooltipState.js';
 import { setApp as setCombatApp } from './src/core/combat.js';
 import { WIDTH, HEIGHT } from './src/core/constants.js';
 import { initDevPanel } from './src/rendering/devPanel.js';
 import { getModifierRegistry } from './src/core/modifiers.js';
+import { generateWave } from './src/core/waveGenerator.js';
 
 let currentApp: Application | null = null;
 let initPromise: Promise<void> | null = null;
@@ -93,24 +95,26 @@ async function initGame(): Promise<void> {
   getModifierRegistry().clearAll();
 
   // Load content from YAML (also loads balance.yaml modifiers)
-  const { cards, characters, gear } = await loadContent();
+  const { cards, characters, gear, statuses } = await loadContent();
   const gameState = getGameState();
   gameState.cardLibrary = cards;
   gameState.characterLibrary = characters;
   gameState.gearLibrary = gear;
+  gameState.statusLibrary = statuses;
   gameState.combatResult = 'ongoing';
   gameState.pendingReward = null;
+  gameState.waveNumber = 1;
   setGameState(gameState);
 
-  // Initialize characters from YAML
-  const playerCharacters = Object.values(characters).filter(c => c.isPlayer).slice(0, 2);
-  const enemyCharacters = Object.values(characters).filter(c => !c.isPlayer).slice(0, 2);
+  // Initialize characters from YAML — explicit party roster
+  const partyIds = ['didi_sharpshooter', 'jacob_techblade', 'nyx_corrupter'];
+  const playerCharacters = partyIds
+    .map(id => characters[id])
+    .filter((c): c is typeof characters[string] => !!c && c.isPlayer);
 
-  // Add scrapling swarm as a third enemy if available
-  const scraplingDef = characters['scrapling_swarm'];
-  if (scraplingDef && !enemyCharacters.includes(scraplingDef)) {
-    enemyCharacters.push(scraplingDef);
-  }
+  // Generate first wave of enemies via difficulty budget
+  const enemyPool = Object.values(characters).filter(c => !c.isPlayer);
+  const enemyCharacters = generateWave(1, enemyPool);
 
   gameState.characters = [];
 
@@ -221,6 +225,17 @@ async function initGame(): Promise<void> {
   
   // Initialize dev panel toggle
   initDevPanel();
+
+  // Clear stuck hover states when the window/tab loses focus.
+  // pointerleave won't fire if the user alt-tabs or clicks outside the browser,
+  // so we listen for blur + visibilitychange and force a clean re-render.
+  const clearHoverAndRender = () => {
+    if (clearAllHoverStates()) render();
+  };
+  window.addEventListener('blur', clearHoverAndRender);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) clearHoverAndRender();
+  });
 
   // Initial render
   render();
