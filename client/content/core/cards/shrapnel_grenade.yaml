@@ -1,6 +1,6 @@
 schemaVersion: 1
 id: shrapnel_grenade
-name: "Shrapnel Grenade"
+name: "Shrapnel Gren"
 type: attack
 rarity: rare   # common, rare, epic, legendary, mythic.
 cost: 3
