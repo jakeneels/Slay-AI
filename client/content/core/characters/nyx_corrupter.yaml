@@ -30,6 +30,4 @@ mechanics:
   - "Can spread contamination across enemy slots"
 tags: ["mutant", "radiation", "dot", "debuffer"]
 startingDeck:
-  - "strike"
-  - "defend"
   - "heal"

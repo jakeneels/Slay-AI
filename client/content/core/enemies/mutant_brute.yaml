@@ -8,12 +8,13 @@ theme: "High-HP tank enemy that absorbs damage and retaliates."
 sprite: "/assets/game/enemies/mutant_brute.png"
 visual:
   preset: large
-  scale: 1.6
+  scale: 2
   anchorX: 0.5
   anchorY: 1
   offsetX: 0
   offsetY: 13
 isPlayer: false
+slotSize: 2
 stats:
   hp: 80
   maxHp: 80
@@ -29,7 +30,7 @@ mechanics:
 tags: ["mutant", "brute", "tank", "enemy", "radiation"]
 startingDeck:
   - "strike"
-  - "defend"
-  - "defend"
+  - "shockwave"
+  - "rad_cleave"
   - "linebreaker"
   

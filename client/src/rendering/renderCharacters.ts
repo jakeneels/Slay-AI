@@ -4,16 +4,16 @@ import type { Application, Texture, Sprite } from 'pixi.js';
 import { Assets, Text, Graphics, Sprite as SpriteImpl } from 'pixi.js';
 import type { GameState, Character, CharacterDefinition } from '../core/types.js';
 import { getSelectedCardId, getGameState } from '../core/gameState.js';
-import { playCard, calculateAoeTargets, getCharactersByPosition, resolveTargetSlot, isCharacterSuppressed, getNetSuppressionPenalty } from '../core/combat.js';
+import { playCard, calculateAoeTargets, getOccupiedSlots, getCharacterSlotSize, isCharacterSuppressed, getNetSuppressionPenalty } from '../core/combat.js';
 import { getSuppressionStackCost } from '../core/constants.js';
 import { render as renderCallback } from './renderer.js';
 import { registerCharacterSprite } from '../../animations.js';
 import { getTotalBlock } from '../core/block.js';
-import { MAX_SLOTS, WIDTH, calculateRangeModifier } from '../core/constants.js';
+import { MAX_SLOTS, WIDTH, HEIGHT, calculateRangeModifier } from '../core/constants.js';
 import { createEnergyIcon } from './icons/energyIcon.js';
 import { createHealIcon } from './icons/healIcon.js';
 import { getStatusDisplay } from './statusConfig.js';
-import { setHoveredStatus } from './tooltipState.js';
+import { setHoveredCharacter, setHoveredStatus } from './tooltipState.js';
 import { getModifierRegistry } from '../core/modifiers.js';
 
 const BATTLE_Y_OFFSET = 265;
@@ -22,8 +22,9 @@ const BATTLE_Y_OFFSET = 265;
 const CHAR_SPRITE_SIZE = 250;
 const CHAR_CENTER = CHAR_SPRITE_SIZE / 2;
 const BATTLE_GROUND_OFFSET = 180;
-const BATTLE_LEFT_BASE = 20;
-const BATTLE_RIGHT_BASE = WIDTH - CHAR_SPRITE_SIZE;
+const BATTLE_SIDE_OVERSCAN = 40;
+const BATTLE_LEFT_BASE = -BATTLE_SIDE_OVERSCAN;
+const BATTLE_RIGHT_BASE = WIDTH - CHAR_SPRITE_SIZE + BATTLE_SIDE_OVERSCAN;
 const LANE_SELECTOR_WIDTH = 80;
 const LANE_SELECTOR_HEIGHT = 200;
 const LANE_SELECTOR_RADIUS = 8;
@@ -39,10 +40,11 @@ const BAR_HEIGHT = 14;
 const BAR_RADIUS = 5;
 const BAR_GAP = 4;
 
-// HUD placement above characters
-const HUD_TOP_OFFSET = 86;
+// HUD placement below characters
+const HUD_BOTTOM_OFFSET = 14;
 const HUD_SECTION_GAP = 6;
 const STATUS_MAX_ROW_WIDTH = 130;
+const MAX_VISIBLE_STATUS_BADGES = 4;
 
 // Layering buckets
 const Z_SPRITE = 100;
@@ -141,6 +143,11 @@ function getSlotCenterX(slotIndex: number): number {
   return BATTLE_LEFT_BASE + slotIndex * getSlotSpacing() + CHAR_CENTER;
 }
 
+function getCharacterCenterSlotIndex(character: Character): number {
+  const size = getCharacterSlotSize(character);
+  return character.slotIndex + (size - 1) / 2;
+}
+
 function createLaneSelectorHighlight(
   slotCenterX: number,
   groundY: number,
@@ -167,7 +174,8 @@ function createLaneSelectorHighlight(
  * Render all characters on the battlefield
  */
 export function renderCharacters(app: Application, gameState: GameState): void {
-  const battleY = 800 - BATTLE_Y_OFFSET; // Move characters down towards bottom
+  const selectedCardId = getSelectedCardId();
+  const battleY = HEIGHT - BATTLE_Y_OFFSET; // Move characters down towards bottom
   const battleGroundY = battleY + BATTLE_GROUND_OFFSET;
   const showPositionDebug = shouldShowPositionDebugOverlay();
   const leftBase = BATTLE_LEFT_BASE;
@@ -176,28 +184,30 @@ export function renderCharacters(app: Application, gameState: GameState): void {
   // Clear sprite map for this render cycle
   characterSpriteMap.clear();
   
-  // Fixed 8 slots (0-7): allies 0-3, enemies 4-7
+  // Fixed lane grid: allies on low slots, enemies on high slots.
   const allies = gameState.characters.filter(c => c.isPlayer && c.hp > 0).sort((a, b) => a.slotIndex - b.slotIndex);
   const enemies = gameState.characters.filter(c => !c.isPlayer && c.hp > 0).sort((a, b) => a.slotIndex - b.slotIndex);
   const availableWidth = rightBase - leftBase;
   const slotSpacing = MAX_SLOTS > 1 ? availableWidth / (MAX_SLOTS - 1) : 0;
   
   allies.forEach((char) => {
-    const x = leftBase + char.slotIndex * slotSpacing;
-    renderCharacter(app, gameState, char, x, battleY, battleGroundY, showPositionDebug);
+    const centerSlot = getCharacterCenterSlotIndex(char);
+    const x = leftBase + centerSlot * slotSpacing;
+    renderCharacter(app, gameState, char, x, battleGroundY, showPositionDebug);
   });
   
   enemies.forEach((char) => {
-    const x = leftBase + char.slotIndex * slotSpacing;
-    renderCharacter(app, gameState, char, x, battleY, battleGroundY, showPositionDebug);
+    const centerSlot = getCharacterCenterSlotIndex(char);
+    const x = leftBase + centerSlot * slotSpacing;
+    renderCharacter(app, gameState, char, x, battleGroundY, showPositionDebug);
   });
 
   // --- Render clickable empty-slot hit areas for AOE cards ---
-  const selectedCardId = getSelectedCardId();
-  if (selectedCardId) {
+  const selectedCardIdForAoe = selectedCardId;
+  if (selectedCardIdForAoe) {
     const gsForCard = getGameState();
-    const card = gsForCard.cardLibrary[selectedCardId] || (() => {
-      const inst = gsForCard.cardInstances[selectedCardId];
+    const card = gsForCard.cardLibrary[selectedCardIdForAoe] || (() => {
+      const inst = gsForCard.cardInstances[selectedCardIdForAoe];
       return inst ? gsForCard.cardLibrary[inst.templateId] : null;
     })();
 
@@ -206,7 +216,9 @@ export function renderCharacters(app: Application, gameState: GameState): void {
       if (caster) {
         // Collect occupied slot indices (any living character)
         const occupiedSlots = new Set<number>();
-        gsForCard.characters.filter(c => c.hp > 0).forEach(c => occupiedSlots.add(c.slotIndex));
+        gsForCard.characters.filter(c => c.hp > 0).forEach(c => {
+          getOccupiedSlots(c).forEach(slot => occupiedSlots.add(slot));
+        });
 
         const highlightColor = 0xffaa00; // Same orange as AOE targeting
 
@@ -299,7 +311,7 @@ export function renderCharacters(app: Application, gameState: GameState): void {
           });
 
           hitArea.on('pointerdown', async () => {
-            await playCard(selectedCardId, `slot:${slot}`, renderCallback);
+            await playCard(selectedCardIdForAoe, `slot:${slot}`, renderCallback);
           });
 
           app.stage.addChild(hitArea);
@@ -317,7 +329,6 @@ function renderCharacter(
   gameState: GameState,
   char: Character,
   slotX: number,
-  hudY: number,
   groundY: number,
   showPositionDebug: boolean
 ): void {
@@ -395,7 +406,6 @@ function renderCharacter(
           }
           
           if (canTarget) {
-            sprite.eventMode = 'static';
             sprite.cursor = 'pointer';
             
             // Determine highlight color based on targeting type
@@ -482,7 +492,7 @@ function renderCharacter(
                   if (targetChar.id !== char.id) {
                     const targetSprite = characterSpriteMap.get(targetChar.id);
                     if (targetSprite) {
-                      const targetSlotCenterX = getSlotCenterX(targetChar.slotIndex);
+                      const targetSlotCenterX = getSlotCenterX(getCharacterCenterSlotIndex(targetChar));
                       const highlight = createLaneSelectorHighlight(targetSlotCenterX, groundY, highlightColor);
                       app.stage.addChild(highlight);
                       highlightGraphics.push(highlight);
@@ -501,7 +511,7 @@ function renderCharacter(
                   if (targetChar.id !== char.id) {
                     const targetSprite = characterSpriteMap.get(targetChar.id);
                     if (targetSprite) {
-                      const targetSlotCenterX = getSlotCenterX(targetChar.slotIndex);
+                      const targetSlotCenterX = getSlotCenterX(getCharacterCenterSlotIndex(targetChar));
                       const highlight = createLaneSelectorHighlight(targetSlotCenterX, groundY, highlightColor);
                       app.stage.addChild(highlight);
                       highlightGraphics.push(highlight);
@@ -545,18 +555,36 @@ function renderCharacter(
     });
   }
   
-  // --- Above-sprite HUD stack ---
-  // Bars are fixed at the same Y for all characters.
-  // Status rows anchor to the bars and cascade upward.
-  const hpBarY = hudY - HUD_TOP_OFFSET;
-  const statusBottomY = hpBarY - HUD_SECTION_GAP;
-  const statusLayout = renderStatusBadges(app, char, slotCenterX, statusBottomY, STATUS_MAX_ROW_WIDTH);
+  // --- Below-sprite HUD stack ---
+  // Bars anchor below each character's ground point so core combat stats stay under the sprite.
+  const hpBarY = groundY + HUD_BOTTOM_OFFSET;
 
   // --- Stat bars ---
   // Layout: [icon] [===bar===] aligned vertically, HP bar on top, energy bar below
   const totalBarRowW = BAR_ICON_SIZE + BAR_ICON_GAP + BAR_WIDTH;
   const barStartX = slotCenterX - totalBarRowW / 2;
   const barX = barStartX + BAR_ICON_SIZE + BAR_ICON_GAP;
+  const bindCharacterHover = (target: Graphics): void => {
+    target.eventMode = 'static';
+    target.cursor = 'help';
+    target.on('pointerenter', () => {
+      const selectedCardId = getSelectedCardId();
+      if (selectedCardId) {
+        if (setHoveredCharacter(null, 0, 0)) {
+          renderCallback();
+        }
+        return;
+      }
+      if (setHoveredCharacter(char.id, slotCenterX, hpBarY)) {
+        renderCallback();
+      }
+    });
+    target.on('pointerleave', () => {
+      if (setHoveredCharacter(null, 0, 0)) {
+        renderCallback();
+      }
+    });
+  };
   // --- HP bar ---
   {
     // Heal icon to the left of bar
@@ -623,6 +651,15 @@ function renderCharacter(
     hpText.eventMode = 'none';
     hpText.zIndex = Z_BARS + 2;
     app.stage.addChild(hpText);
+
+    // Hover zone so details show on HP row hover.
+    const hpHoverZone = new Graphics();
+    hpHoverZone.roundRect(0, 0, totalBarRowW, BAR_HEIGHT, BAR_RADIUS).fill({ color: 0xffffff, alpha: 0.001 });
+    hpHoverZone.x = barStartX;
+    hpHoverZone.y = hpBarY;
+    hpHoverZone.zIndex = Z_BARS + 3;
+    bindCharacterHover(hpHoverZone);
+    app.stage.addChild(hpHoverZone);
   }
 
   // --- Energy bar ---
@@ -690,18 +727,20 @@ function renderCharacter(
     enText.eventMode = 'none';
     enText.zIndex = Z_BARS + 2;
     app.stage.addChild(enText);
+
+    // Hover zone so details show on Energy row hover.
+    const energyHoverZone = new Graphics();
+    energyHoverZone.roundRect(0, 0, totalBarRowW, BAR_HEIGHT, BAR_RADIUS).fill({ color: 0xffffff, alpha: 0.001 });
+    energyHoverZone.x = barStartX;
+    energyHoverZone.y = energyBarY;
+    energyHoverZone.zIndex = Z_BARS + 3;
+    bindCharacterHover(energyHoverZone);
+    app.stage.addChild(energyHoverZone);
   }
 
-  // Character name under the energy bar (smaller, secondary text)
-  const name = new Text({
-    text: char.name,
-    style: { fill: 0xd1d5db, fontSize: 11, fontWeight: '600' }
-  });
-  name.x = slotCenterX - name.width / 2;
-  name.y = energyBarY + BAR_HEIGHT + 2;
-  name.eventMode = 'none';
-  name.zIndex = Z_NAME;
-  app.stage.addChild(name);
+  // Buff/debuff rows under the bars
+  const statusTopY = energyBarY + BAR_HEIGHT + HUD_SECTION_GAP;
+  const statusLayout = renderStatusBadges(app, char, slotCenterX, statusTopY, STATUS_MAX_ROW_WIDTH);
 
   // Block display - shield icon with number (like STS), positioned to the right of bars
   const totalBlock = getTotalBlock(char);
@@ -743,7 +782,7 @@ function renderCharacter(
     app.stage.addChild(blockText);
   }
 
-  // Add turn indicator arrow above status rows
+  // Keep the turn arrow near the character, above the sprite HUD.
   if (char.id === gameState.currentPlayerId) {
     const arrow = new Graphics();
     arrow.moveTo(0, 0)
@@ -756,7 +795,7 @@ function renderCharacter(
          .closePath()
          .fill(0xffeb3b); // Bright yellow arrow
     arrow.x = slotCenterX;
-    arrow.y = statusLayout.topY - 8;
+    arrow.y = hpBarY - 8;
     arrow.zIndex = Z_ARROW;
     app.stage.addChild(arrow);
   }
@@ -782,7 +821,7 @@ function calcBadgeWidth(iconCount: number, hasLabel: boolean): number {
 }
 
 /**
- * Render a row of status effect badges above a character's sprite.
+ * Render a row of status effect badges starting at a top edge.
  * Each badge is a small colored pill with icon(s) and optional stack/value text.
  * Badges are interactive: hovering shows a tooltip with the effect description.
  */
@@ -790,7 +829,7 @@ function renderStatusBadges(
   app: Application,
   char: Character,
   charCenterX: number,
-  rowBottomY: number,
+  rowTopY: number,
   maxRowWidth: number,
 ): { topY: number; bottomY: number; rows: number } {
   const statuses = char.statuses ?? [];
@@ -857,7 +896,7 @@ function renderStatusBadges(
   }
 
   if (visible.length === 0) {
-    return { topY: rowBottomY, bottomY: rowBottomY, rows: 0 };
+    return { topY: rowTopY, bottomY: rowTopY, rows: 0 };
   }
 
   // Pre-calculate badge widths and labels
@@ -879,62 +918,92 @@ function renderStatusBadges(
     return { status, config, labelText, badgeW };
   });
 
-  const rows: typeof badgeData[] = [];
-  let currentRow: typeof badgeData = [];
-  let currentRowWidth = 0;
+  // Compact mode: keep statuses on one row, collapsing overflow into a +N badge.
+  type BadgeEntry = (typeof badgeData)[number] & { isOverflow?: boolean };
+  const compactRow: BadgeEntry[] = [];
+  let rowWidth = 0;
+  let hiddenCount = 0;
+
   for (const badge of badgeData) {
-    const nextBadgeW = badge.badgeW + (currentRow.length > 0 ? BADGE_GAP : 0);
-    if (currentRow.length > 0 && currentRowWidth + nextBadgeW > maxRowWidth) {
-      rows.push(currentRow);
-      currentRow = [badge];
-      currentRowWidth = badge.badgeW;
-    } else {
-      currentRow.push(badge);
-      currentRowWidth += nextBadgeW;
+    if (compactRow.length >= MAX_VISIBLE_STATUS_BADGES) {
+      hiddenCount += 1;
+      continue;
     }
+    const nextBadgeW = badge.badgeW + (compactRow.length > 0 ? BADGE_GAP : 0);
+    if (compactRow.length > 0 && rowWidth + nextBadgeW > maxRowWidth) {
+      hiddenCount += 1;
+      continue;
+    }
+    compactRow.push(badge);
+    rowWidth += nextBadgeW;
   }
-  if (currentRow.length > 0) {
-    rows.push(currentRow);
+
+  if (hiddenCount > 0) {
+    let overflowW = calcBadgeWidth(0, true);
+    while (compactRow.length > 0 && rowWidth + BADGE_GAP + overflowW > maxRowWidth) {
+      const removed = compactRow.pop();
+      if (!removed) break;
+      hiddenCount += 1;
+      rowWidth -= removed.badgeW + (compactRow.length > 0 ? BADGE_GAP : 0);
+      overflowW = calcBadgeWidth(0, true);
+    }
+    compactRow.push({
+      status: { id: '_overflow', stacks: hiddenCount },
+      config: {
+        label: 'More',
+        description: '',
+        iconColor: 0xe5e7eb,
+        bgColor: 0x1f2937,
+        borderColor: 0x4b5563,
+        drawIcons: [],
+      },
+      labelText: `+${hiddenCount}`,
+      badgeW: overflowW,
+      isOverflow: true,
+    });
   }
+  const rows: BadgeEntry[][] = compactRow.length > 0 ? [compactRow] : [];
 
   rows.forEach((row, rowIndex) => {
     const totalWidth = row.reduce((sum, b) => sum + b.badgeW, 0) + Math.max(0, row.length - 1) * BADGE_GAP;
     let badgeX = charCenterX - totalWidth / 2;
-    const rowTopY = rowBottomY - BADGE_H - rowIndex * (BADGE_H + BADGE_GAP);
+    const currentRowTopY = rowTopY + rowIndex * (BADGE_H + BADGE_GAP);
 
-    for (const { status, config, labelText, badgeW } of row) {
+    for (const { status, config, labelText, badgeW, isOverflow } of row) {
       // Badge background pill (interactive for tooltip)
       const bg = new Graphics();
       bg.roundRect(0, 0, badgeW, BADGE_H, BADGE_RADIUS)
         .fill({ color: config.bgColor, alpha: 0.9 })
         .stroke({ width: 1.2, color: config.borderColor, alpha: 0.85 });
       bg.x = badgeX;
-      bg.y = rowTopY;
-      bg.eventMode = 'static';
-      bg.cursor = 'help';
+      bg.y = currentRowTopY;
+      bg.eventMode = isOverflow ? 'none' : 'static';
+      bg.cursor = isOverflow ? 'default' : 'help';
       bg.zIndex = Z_STATUS;
 
       // Hover: show tooltip
       const tooltipX = badgeX + badgeW / 2;
-      const tooltipY = rowTopY;
+      const tooltipY = currentRowTopY;
       const statusId = status.id;
       const stacks = status.stacks;
-      bg.on('pointerenter', () => {
-        if (setHoveredStatus(statusId, stacks, tooltipX, tooltipY)) {
-          renderCallback();
-        }
-      });
-      bg.on('pointerleave', () => {
-        if (setHoveredStatus(null, 0)) {
-          renderCallback();
-        }
-      });
+      if (!isOverflow) {
+        bg.on('pointerenter', () => {
+          if (setHoveredStatus(statusId, stacks, tooltipX, tooltipY)) {
+            renderCallback();
+          }
+        });
+        bg.on('pointerleave', () => {
+          if (setHoveredStatus(null, 0)) {
+            renderCallback();
+          }
+        });
+      }
 
       app.stage.addChild(bg);
 
       // Draw icons (supports multiple per badge)
       let iconX = badgeX + BADGE_PAD_X;
-      const iconY = rowTopY + (BADGE_H - BADGE_ICON_SIZE) / 2;
+      const iconY = currentRowTopY + (BADGE_H - BADGE_ICON_SIZE) / 2;
       for (const drawFn of config.drawIcons) {
         const icon = new Graphics();
         drawFn(icon, BADGE_ICON_SIZE);
@@ -958,7 +1027,7 @@ function renderStatusBadges(
           },
         });
         stackText.x = iconX + 1;
-        stackText.y = rowTopY + BADGE_H / 2 - stackText.height / 2;
+        stackText.y = currentRowTopY + BADGE_H / 2 - stackText.height / 2;
         stackText.eventMode = 'none';
         stackText.zIndex = Z_STATUS + 1;
         app.stage.addChild(stackText);
@@ -969,10 +1038,10 @@ function renderStatusBadges(
   });
 
   const rowsCount = rows.length;
-  const topY = rowBottomY - rowsCount * BADGE_H - Math.max(0, rowsCount - 1) * BADGE_GAP;
+  const bottomY = rowTopY + rowsCount * BADGE_H + Math.max(0, rowsCount - 1) * BADGE_GAP;
   return {
-    topY,
-    bottomY: rowBottomY,
+    topY: rowTopY,
+    bottomY,
     rows: rowsCount,
   }
 }

@@ -54,16 +54,16 @@ function labelForKey(key: string): { usePositionIndicator: boolean; targetType: 
   if (key === 'self') return { usePositionIndicator: true, targetType: 'self', filledCount: 1 };
   if (key === 'ally') return { usePositionIndicator: true, targetType: 'ally', filledCount: 1 };
   if (key === 'enemy') return { usePositionIndicator: true, targetType: 'enemy', filledCount: 1 };
-  if (key === 'allEnemies') return { usePositionIndicator: true, targetType: 'enemy', filledCount: 4 };
-  if (key === 'allAllies') return { usePositionIndicator: true, targetType: 'ally', filledCount: 4 };
+  if (key === 'allEnemies') return { usePositionIndicator: true, targetType: 'enemy', filledCount: SLOTS_PER_SIDE };
+  if (key === 'allAllies') return { usePositionIndicator: true, targetType: 'ally', filledCount: SLOTS_PER_SIDE };
   if (key.startsWith('aoe_')) {
-    const slots = Math.min(4, Math.max(1, parseInt(key.split('_')[1], 10) || 3));
+    const slots = Math.min(SLOTS_PER_SIDE, Math.max(1, parseInt(key.split('_')[1], 10) || 3));
     return { usePositionIndicator: true, targetType: 'enemy', filledCount: slots };
   }
   return { usePositionIndicator: false, targetType: 'enemy', filledCount: 0 };
 }
 
-/** Darkest Dungeon-style position indicator. Self and AOE: only filled circles. Enemy/Ally single: 4 slots with empties.
+/** Darkest Dungeon-style position indicator. Self and AOE: only filled circles. Enemy/Ally single: side slots with empties.
  *  When reachableSlots is provided, out-of-range positions are rendered very dim to show range limits.
  */
 function renderPositionIndicator(
@@ -77,7 +77,7 @@ function renderPositionIndicator(
   aoeTargetSide?: 'enemy' | 'ally',
   /** When true, only draw filled circles (no empties). Use for self and AOE/adjacent. */
   noEmptySlots?: boolean,
-  /** How many slots from frontline are in range (1-4). Undefined = all in range. */
+  /** How many slots from frontline are in range (1-SLOTS_PER_SIDE). Undefined = all in range. */
   reachableSlots?: number
 ): number {
   const effectiveType: TargetType = aoeTargetSide ?? targetType;
@@ -85,9 +85,9 @@ function renderPositionIndicator(
   const strokeColor = effectiveType === 'enemy' ? 0xb91c1c : effectiveType === 'ally' ? 0x166534 : 0x1d4ed8;
   const gap = 2;
 
-  // If range is limited, always show all 4 slots so the range restriction is visible
+  // If range is limited, always show all side slots so the range restriction is visible
   const hasRangeLimit = reachableSlots !== undefined && reachableSlots < SLOTS_PER_SIDE;
-  const totalSlots = (noEmptySlots && !hasRangeLimit) ? filledCount : 4;
+  const totalSlots = (noEmptySlots && !hasRangeLimit) ? filledCount : SLOTS_PER_SIDE;
   const maxReachable = reachableSlots ?? totalSlots;
 
   const totalW = totalSlots * circleSize + Math.max(0, totalSlots - 1) * gap;
@@ -251,8 +251,11 @@ function renderSingleEffect(
 
     const color = statusDisplay?.iconColor ?? 0x9ca3af;
     const pct = Math.round(ss.fraction * 100);
+    const spreadRange = Math.max(0, Math.floor(ss.spreadRange ?? 1));
+    const spreadSide = ss.spreadSide ?? 'same';
+    const sideTag = spreadSide === 'same' ? 'S' : spreadSide === 'opposing' ? 'O' : 'B';
     const spreadText = new Text({
-      text: `${pct}%→adj`,
+      text: `${pct}%→r${spreadRange}${sideTag}`,
       style: { fill: color, fontSize: fontSize - 1, fontWeight: 'bold' }
     });
     spreadText.x = ex; spreadText.y = rowY; spreadText.eventMode = 'none';

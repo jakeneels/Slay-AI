@@ -24,7 +24,7 @@ let gameState: GameState = {
   combatResult: 'ongoing',
   pendingReward: null,
   waveNumber: 1,
-  currentMap: pickRandomMap(),
+  currentMap: pickRandomMap(undefined, 1),
 };
 
 /**

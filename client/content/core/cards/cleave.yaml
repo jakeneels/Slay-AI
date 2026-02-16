@@ -1,0 +1,19 @@
+schemaVersion: 1
+id: cleave
+name: "Cleave"
+type: attack
+rarity: rare
+cost: 2
+copies: 2
+tags: [basic, melee]
+targeting: aoe
+aoeSlots: 2
+maxRange: 2
+minRange: 1
+# optimalRange: 4
+exhaust: false
+expires_after_turns: 0
+description: "Long-range single-target nuke — best at medium-far distance."
+effects:
+  - kind: damage
+    amount: 12

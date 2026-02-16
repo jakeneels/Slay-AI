@@ -11,11 +11,15 @@ import {
   WAVE_BASE_BUDGET, WAVE_BUDGET_INCREMENT, WAVE_BUDGET_JITTER, WAVE_MIN_ENEMIES, WAVE_MAX_ENEMIES,
 } from '../core/waveGenerator.js';
 import { WAVE_HEAL_FRACTION } from '../core/waveTransition.js';
+import { getShowLanesSetting, setShowLanesSetting } from './renderLanes.js';
 
 let initialized = false;
 
 // Track which sections are collapsed (persists across renders)
 const collapsedSections = new Set<string>();
+const PANEL_WIDTH_STORAGE_KEY = 'slayai:devpanel:width';
+const PANEL_WIDTH_MIN = 240;
+const PANEL_WIDTH_MAX = 720;
 
 // ── Balance tweak definitions ────────────────────────────────────────
 // Each entry maps a modifier target to its default value and label.
@@ -69,11 +73,22 @@ export function initDevPanel(): void {
 
   const panel = document.getElementById('devPanel');
   const toggle = document.getElementById('devPanelToggle');
+  const resizeHandle = document.getElementById('devPanelResizeHandle');
   if (!panel || !toggle) return;
+
+  let expandedWidth = loadDevPanelWidth() ?? clamp(Math.round(panel.getBoundingClientRect().width), PANEL_WIDTH_MIN, PANEL_WIDTH_MAX);
+  if (panel.classList.contains('expanded')) {
+    applyExpandedPanelWidth(panel, expandedWidth);
+  }
 
   toggle.addEventListener('click', () => {
     panel.classList.toggle('collapsed');
     panel.classList.toggle('expanded');
+    if (panel.classList.contains('expanded')) {
+      applyExpandedPanelWidth(panel, expandedWidth);
+    } else {
+      panel.style.removeProperty('width');
+    }
   });
 
   // Forward scroll events from the toggle bar to the content area
@@ -112,6 +127,51 @@ export function initDevPanel(): void {
         chevron.textContent = collapsedSections.has(sectionId) ? '▸' : '▾';
       }
     });
+
+    content.addEventListener('change', (e) => {
+      const input = e.target as HTMLInputElement;
+      if (!input || input.type !== 'checkbox') return;
+      if (input.dataset.devToggle !== 'show-lanes') return;
+
+      setShowLanesSetting(input.checked);
+      requestFullRender();
+    });
+  }
+
+  // Width resize drag handle
+  if (resizeHandle) {
+    resizeHandle.addEventListener('pointerdown', (e) => {
+      if (!panel.classList.contains('expanded')) return;
+      e.preventDefault();
+
+      const startX = e.clientX;
+      const startWidth = panel.getBoundingClientRect().width;
+      const previousTransition = panel.style.transition;
+      document.body.style.cursor = 'ew-resize';
+      document.body.style.userSelect = 'none';
+      panel.style.transition = 'none';
+
+      const onPointerMove = (moveEvent: PointerEvent): void => {
+        // Right panel grows when dragging the handle left.
+        const delta = startX - moveEvent.clientX;
+        expandedWidth = clamp(Math.round(startWidth + delta), PANEL_WIDTH_MIN, PANEL_WIDTH_MAX);
+        applyExpandedPanelWidth(panel, expandedWidth);
+      };
+
+      const stopResize = (): void => {
+        document.removeEventListener('pointermove', onPointerMove);
+        document.removeEventListener('pointerup', stopResize);
+        document.removeEventListener('pointercancel', stopResize);
+        document.body.style.removeProperty('cursor');
+        document.body.style.removeProperty('user-select');
+        panel.style.transition = previousTransition;
+        persistDevPanelWidth(expandedWidth);
+      };
+
+      document.addEventListener('pointermove', onPointerMove);
+      document.addEventListener('pointerup', stopResize);
+      document.addEventListener('pointercancel', stopResize);
+    });
   }
 
   // Create balance tweaks container (stable DOM, not wiped by renderDevPanel)
@@ -131,6 +191,17 @@ export function renderDevPanel(gameState: GameState): void {
 
   // Build HTML
   let html = '';
+
+  // ── Display options section ──
+  html += renderCollapsibleSection('display-options', 'Display', () => {
+    const checked = getShowLanesSetting() ? 'checked' : '';
+    return `
+      <label style="display:flex;align-items:center;gap:6px;color:#d1d5db;font-size:11px;cursor:pointer;">
+        <input type="checkbox" data-dev-toggle="show-lanes" ${checked} />
+        <span>Show visible lanes</span>
+      </label>
+    `;
+  });
 
   // ── Combat Log section ──
   html += renderCollapsibleSection('combat-log', 'Combat Log', () => {
@@ -178,6 +249,15 @@ function renderCollapsibleSection(id: string, title: string, renderBody: () => s
   html += `</div>`;
   html += `</div>`;
   return html;
+}
+
+function requestFullRender(): void {
+  // Dynamic import avoids a hard module cycle between devPanel and renderer.
+  void import('./renderer.js')
+    .then(({ render }) => render())
+    .catch(() => {
+      // Ignore render request failures in dev tooling.
+    });
 }
 
 // ─── Helpers ───────────────────────────────────────────────
@@ -589,6 +669,34 @@ function getCharactersForBalance(): Character[] {
     return gs?.characters ?? [];
   } catch {
     return [];
+  }
+}
+
+function applyExpandedPanelWidth(panel: HTMLElement, width: number): void {
+  panel.style.width = `${clamp(width, PANEL_WIDTH_MIN, PANEL_WIDTH_MAX)}px`;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function persistDevPanelWidth(width: number): void {
+  try {
+    localStorage.setItem(PANEL_WIDTH_STORAGE_KEY, String(clamp(Math.round(width), PANEL_WIDTH_MIN, PANEL_WIDTH_MAX)));
+  } catch {
+    // localStorage unavailable or full – silently ignore
+  }
+}
+
+function loadDevPanelWidth(): number | null {
+  try {
+    const raw = localStorage.getItem(PANEL_WIDTH_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isNaN(parsed)) return null;
+    return clamp(parsed, PANEL_WIDTH_MIN, PANEL_WIDTH_MAX);
+  } catch {
+    return null;
   }
 }
 

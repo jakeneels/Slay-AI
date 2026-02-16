@@ -44,6 +44,12 @@ function toFiniteNumber(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
+function normalizeSlotSize(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 1;
+  const whole = Math.floor(value);
+  return Math.max(1, Math.min(3, whole));
+}
+
 function inferPreset(charData: any): CharacterVisualPreset {
   const explicit = charData.visual?.preset ?? charData.spriteVisualPreset;
   if (explicit && VISUAL_PRESET_DEFAULTS[explicit as CharacterVisualPreset]) {
@@ -72,6 +78,7 @@ export function normalizeCharacterVisualConfig(charData: any): CharacterDefiniti
 
   return {
     ...charData,
+    slotSize: normalizeSlotSize(charData.slotSize),
     visual,
     // Keep legacy fields in sync so older renderer/tests stay stable.
     spriteScale: visual.scale,

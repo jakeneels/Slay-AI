@@ -7,14 +7,14 @@
 import { getModifierRegistry } from './modifiers.js';
 import type { ModifierContext } from './types.js';
 
-export const WIDTH = 1200;
+export const WIDTH = 1440;
 export const HEIGHT = 800;
 
-// Battlefield slots: 8 total, 4 per side
-export const MAX_SLOTS = 8;
-export const SLOTS_PER_SIDE = 4;
-export const ALLY_SLOT_END = 3;   // Allies occupy slots 0-3
-export const ENEMY_SLOT_START = 4; // Enemies occupy slots 4-7
+// Battlefield slots: 12 total, 6 per side
+export const MAX_SLOTS = 12;
+export const SLOTS_PER_SIDE = 6;
+export const ALLY_SLOT_END = SLOTS_PER_SIDE - 1; // Allies occupy slots 0..SLOTS_PER_SIDE-1
+export const ENEMY_SLOT_START = SLOTS_PER_SIDE;  // Enemies occupy slots SLOTS_PER_SIDE..MAX_SLOTS-1
 
 // Character sprite layout: slot x is left edge, visual center = x + SPRITE_CENTER
 export const SPRITE_CENTER = 125;

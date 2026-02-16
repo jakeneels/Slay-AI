@@ -25,7 +25,7 @@ import {
 } from '../../animations.js';
 import { applyDamageWithBlock, grantBlockLayer, decayBlockLayers } from './block.js';
 import { applyStatus, modifyStatusStacks, processStatusEffects, decayStatusDurations, getStatusStacks } from './status.js';
-import { MAX_SLOTS, calculateRangeModifier, getSuppressionDistance, getSuppressionRangedThreshold, getSuppressionStackCost } from './constants.js';
+import { MAX_SLOTS, SLOTS_PER_SIDE, calculateRangeModifier, getSuppressionDistance, getSuppressionRangedThreshold, getSuppressionStackCost } from './constants.js';
 import { getModifierRegistry } from './modifiers.js';
 
 let app: Application | null = null;
@@ -117,15 +117,63 @@ export function getCharactersByPosition(side: 'enemy' | 'ally'): Character[] {
   return chars.sort((a, b) => a.slotIndex - b.slotIndex);
 }
 
+export function getCharacterSlotSize(character: Character): number {
+  if (typeof character.slotSize !== 'number' || !Number.isFinite(character.slotSize)) return 1;
+  return Math.max(1, Math.floor(character.slotSize));
+}
+
+export function getOccupiedSlots(character: Character): number[] {
+  const slotSize = getCharacterSlotSize(character);
+  return Array.from({ length: slotSize }, (_, i) => character.slotIndex + i);
+}
+
+function rangesOverlap(a: number[], b: number[]): boolean {
+  return a.some(slot => b.includes(slot));
+}
+
+export function isSlotBlocked(
+  slotIndex: number,
+  isPlayer: boolean,
+  characters: Character[] = getGameState().characters,
+  excludingCharacterId?: string
+): boolean {
+  return characters.some(c =>
+    c.hp > 0 &&
+    c.isPlayer === isPlayer &&
+    c.id !== excludingCharacterId &&
+    getOccupiedSlots(c).includes(slotIndex)
+  );
+}
+
+export function canOccupyRange(
+  frontSlot: number,
+  slotSize: number,
+  isPlayer: boolean,
+  characters: Character[] = getGameState().characters,
+  excludingCharacterId?: string
+): boolean {
+  void isPlayer;
+  const normalizedSize = Math.max(1, Math.floor(slotSize));
+  const occupiedRange = Array.from({ length: normalizedSize }, (_, i) => frontSlot + i);
+  if (occupiedRange.some(slot => slot < 0 || slot >= MAX_SLOTS)) {
+    return false;
+  }
+  return !characters.some(c =>
+    c.hp > 0 &&
+    c.id !== excludingCharacterId &&
+    rangesOverlap(getOccupiedSlots(c), occupiedRange)
+  );
+}
+
 /**
  * Calculate AOE targets based on a center slot and aoeSlots configuration.
  * Returns array of characters that will be hit.
  * @param centerSlot - The slot index to center the AOE on (can be empty)
  * @param targetSide - Which side to target ('enemy', 'ally', or 'all' for friendly-fire AOE)
- * @param aoeSlots - Number of slots to hit (2, 3, or 4). Defaults to 3.
+ * @param aoeSlots - Number of slots to hit. Defaults to 3.
  *   2 = center + one adjacent (prefer right)
  *   3 = center ± 1
- *   4 = all characters on target side
+ *   >= SLOTS_PER_SIDE = all characters on target side
  */
 export function calculateAoeTargets(centerSlot: number, targetSide: 'enemy' | 'ally' | 'all', aoeSlots: number = 3): Character[] {
   const characters = targetSide === 'all'
@@ -136,26 +184,27 @@ export function calculateAoeTargets(centerSlot: number, targetSide: 'enemy' | 'a
     return [];
   }
 
-  // 4 slots = all characters on that side
-  if (aoeSlots === 4) {
+  // Side-wide AOE: hit everyone on the target side.
+  if (aoeSlots >= SLOTS_PER_SIDE) {
     return characters;
   }
 
+  const getTargetsForSlots = (slots: number[]): Character[] => {
+    const slotSet = new Set(slots);
+    return characters.filter(c =>
+      getOccupiedSlots(c).some(occupiedSlot => slotSet.has(occupiedSlot))
+    );
+  };
+
   if (aoeSlots === 2) {
     // 2 slots: center + 1 right; fallback to center + 1 left
-    const inRange = characters.filter(c =>
-      c.slotIndex === centerSlot || c.slotIndex === centerSlot + 1
-    );
+    const inRange = getTargetsForSlots([centerSlot, centerSlot + 1]);
     if (inRange.length > 0) return inRange;
-    return characters.filter(c =>
-      c.slotIndex === centerSlot || c.slotIndex === centerSlot - 1
-    );
+    return getTargetsForSlots([centerSlot - 1, centerSlot]);
   }
 
   // 3 slots (default): centerSlot ± 1 — only hits characters actually in adjacent slots
-  return characters.filter(c =>
-    Math.abs(c.slotIndex - centerSlot) <= 1
-  );
+  return getTargetsForSlots([centerSlot - 1, centerSlot, centerSlot + 1]);
 }
 
 /**
@@ -397,7 +446,7 @@ function pickBestAoeTarget(card: Card, caster: Character): string | null {
     if (score > bestScore) {
       bestScore = score;
       // Use the character on that slot (if any) as the target, else a raw slot ref
-      const charOnSlot = allLiving.find(c => c.slotIndex === slot);
+      const charOnSlot = allLiving.find(c => getOccupiedSlots(c).includes(slot));
       bestTargetId = charOnSlot ? charOnSlot.id : `slot:${slot}`;
     }
   }
@@ -432,35 +481,42 @@ export function moveCharacterForward(characterId: string, renderCallback?: () =>
   const { energyCost, usesCharge } = getMoveCost(char);
   if (!usesCharge && char.energy < energyCost) return false;
 
-  const allies = gameState.characters.filter(c => c.isPlayer && c.hp > 0);
-  const enemies = gameState.characters.filter(c => !c.isPlayer && c.hp > 0);
+  const allLiving = gameState.characters.filter(c => c.hp > 0);
+  const friendlies = allLiving.filter(c => c.isPlayer === char.isPlayer && c.id !== char.id);
+  const enemies = allLiving.filter(c => c.isPlayer !== char.isPlayer);
+  const slotSize = getCharacterSlotSize(char);
   // Forward = toward opponent: ally goes +1, enemy goes -1
   const targetSlot = char.isPlayer ? char.slotIndex + 1 : char.slotIndex - 1;
+  const targetRange = Array.from({ length: slotSize }, (_, i) => targetSlot + i);
 
-  if (char.isPlayer) {
-    const allyAtTarget = allies.find(c => c.slotIndex === targetSlot);
-    const enemyAtTarget = enemies.find(c => c.slotIndex === targetSlot);
-    if (allyAtTarget) {
-      allyAtTarget.slotIndex = char.slotIndex;
+  const blockedByEnemy = enemies.some(enemy =>
+    rangesOverlap(getOccupiedSlots(enemy), targetRange)
+  );
+  if (blockedByEnemy) return false;
+
+  // Preserve legacy swap behavior for 1-slot friendlies only.
+  const friendlyBlockers = friendlies.filter(friendly =>
+    rangesOverlap(getOccupiedSlots(friendly), targetRange)
+  );
+  if (friendlyBlockers.length > 0) {
+    const singleBlocker = friendlyBlockers.length === 1 ? friendlyBlockers[0] : null;
+    if (
+      slotSize === 1 &&
+      singleBlocker &&
+      getCharacterSlotSize(singleBlocker) === 1 &&
+      singleBlocker.slotIndex === targetSlot &&
+      canOccupyRange(char.slotIndex, 1, char.isPlayer, allLiving.filter(c => c.id !== char.id), singleBlocker.id)
+    ) {
+      singleBlocker.slotIndex = char.slotIndex;
       char.slotIndex = targetSlot;
-    } else if (enemyAtTarget) {
-      return false;
     } else {
-      if (targetSlot >= MAX_SLOTS) return false;
-      char.slotIndex = targetSlot;
+      return false;
     }
   } else {
-    const enemyAtTarget = enemies.find(c => c.slotIndex === targetSlot);
-    const allyAtTarget = allies.find(c => c.slotIndex === targetSlot);
-    if (enemyAtTarget) {
-      enemyAtTarget.slotIndex = char.slotIndex;
-      char.slotIndex = targetSlot;
-    } else if (allyAtTarget) {
+    if (!canOccupyRange(targetSlot, slotSize, char.isPlayer, allLiving, char.id)) {
       return false;
-    } else {
-      if (targetSlot < 0) return false;
-      char.slotIndex = targetSlot;
     }
+    char.slotIndex = targetSlot;
   }
 
   // Deduct cost: use charge if available, else spend energy and bank bonus charges
@@ -490,30 +546,44 @@ export function moveCharacterBack(characterId: string, renderCallback?: () => vo
   if (!char || char.hp <= 0) return false;
   // Back = away from opponent: ally goes -1, enemy goes +1
   const targetSlot = char.isPlayer ? char.slotIndex - 1 : char.slotIndex + 1;
-  if (targetSlot < 0 || targetSlot >= MAX_SLOTS) return false;
 
   const { energyCost, usesCharge } = getMoveCost(char);
   if (!usesCharge && char.energy < energyCost) return false;
 
-  const allies = gameState.characters.filter(c => c.isPlayer && c.hp > 0);
-  const enemies = gameState.characters.filter(c => !c.isPlayer && c.hp > 0);
+  const allLiving = gameState.characters.filter(c => c.hp > 0);
+  const friendlies = allLiving.filter(c => c.isPlayer === char.isPlayer && c.id !== char.id);
+  const enemies = allLiving.filter(c => c.isPlayer !== char.isPlayer);
+  const slotSize = getCharacterSlotSize(char);
+  const targetRange = Array.from({ length: slotSize }, (_, i) => targetSlot + i);
 
-  if (char.isPlayer) {
-    const allyAtTarget = allies.find(c => c.slotIndex === targetSlot);
-    if (allyAtTarget) {
-      allyAtTarget.slotIndex = char.slotIndex;
+  const blockedByEnemy = enemies.some(enemy =>
+    rangesOverlap(getOccupiedSlots(enemy), targetRange)
+  );
+  if (blockedByEnemy) return false;
+
+  // Preserve legacy swap behavior for 1-slot friendlies only.
+  const friendlyBlockers = friendlies.filter(friendly =>
+    rangesOverlap(getOccupiedSlots(friendly), targetRange)
+  );
+  if (friendlyBlockers.length > 0) {
+    const singleBlocker = friendlyBlockers.length === 1 ? friendlyBlockers[0] : null;
+    if (
+      slotSize === 1 &&
+      singleBlocker &&
+      getCharacterSlotSize(singleBlocker) === 1 &&
+      singleBlocker.slotIndex === targetSlot &&
+      canOccupyRange(char.slotIndex, 1, char.isPlayer, allLiving.filter(c => c.id !== char.id), singleBlocker.id)
+    ) {
+      singleBlocker.slotIndex = char.slotIndex;
       char.slotIndex = targetSlot;
     } else {
-      char.slotIndex = targetSlot;
+      return false;
     }
   } else {
-    const enemyAtTarget = enemies.find(c => c.slotIndex === targetSlot);
-    if (enemyAtTarget) {
-      enemyAtTarget.slotIndex = char.slotIndex;
-      char.slotIndex = targetSlot;
-    } else {
-      char.slotIndex = targetSlot;
+    if (!canOccupyRange(targetSlot, slotSize, char.isPlayer, allLiving, char.id)) {
+      return false;
     }
+    char.slotIndex = targetSlot;
   }
 
   // Deduct cost: use charge if available, else spend energy and bank bonus charges
@@ -542,7 +612,8 @@ export function moveCharacterBack(characterId: string, renderCallback?: () => vo
  */
 export function applyKnockback(target: Character, amount: number): number {
   const gameState = getGameState();
-  const allLiving = gameState.characters.filter(c => c.hp > 0 && c.id !== target.id);
+  const allLiving = gameState.characters.filter(c => c.hp > 0);
+  const targetSize = getCharacterSlotSize(target);
 
   // Positive amount = push back (away from caster), negative = pull forward (toward caster)
   const backDirection = target.isPlayer ? -1 : 1;
@@ -552,14 +623,7 @@ export function applyKnockback(target: Character, amount: number): number {
 
   for (let step = 0; step < steps; step++) {
     const nextSlot = target.slotIndex + direction;
-
-    // Boundary check
-    if (nextSlot < 0 || nextSlot >= MAX_SLOTS) break;
-
-    // Check if the slot is free (no living character occupies it)
-    const occupied = allLiving.some(c => c.slotIndex === nextSlot);
-    if (occupied) break;
-
+    if (!canOccupyRange(nextSlot, targetSize, target.isPlayer, allLiving, target.id)) break;
     target.slotIndex = nextSlot;
     slotsMoved++;
   }

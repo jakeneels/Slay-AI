@@ -5,6 +5,42 @@ import { Graphics, Text } from 'pixi.js';
 import { WIDTH, HEIGHT, MAX_SLOTS, ALLY_SLOT_END, ENEMY_SLOT_START, SPRITE_CENTER } from '../core/constants.js';
 
 const BATTLE_Y_OFFSET = 265;
+const BATTLE_SIDE_OVERSCAN = 40;
+const SHOW_LANES_STORAGE_KEY = 'slayai:debug:show-lanes';
+let showLanesSetting = true;
+
+function parseBoolFlag(value: string | null): boolean {
+  return value === '1' || value === 'true' || value === 'on';
+}
+
+function loadShowLanesSetting(): boolean {
+  try {
+    const fromQuery = new URLSearchParams(window.location.search).get('showLanes');
+    if (fromQuery !== null) {
+      return parseBoolFlag(fromQuery.toLowerCase());
+    }
+    const raw = window.localStorage.getItem(SHOW_LANES_STORAGE_KEY);
+    if (raw === null) return true; // default on for current behavior
+    return parseBoolFlag(raw.toLowerCase());
+  } catch {
+    return true;
+  }
+}
+
+showLanesSetting = loadShowLanesSetting();
+
+export function getShowLanesSetting(): boolean {
+  return showLanesSetting;
+}
+
+export function setShowLanesSetting(show: boolean): void {
+  showLanesSetting = show;
+  try {
+    window.localStorage.setItem(SHOW_LANES_STORAGE_KEY, show ? 'true' : 'false');
+  } catch {
+    // localStorage unavailable or full – silently ignore
+  }
+}
 
 /**
  * Render lane indicators on the battlefield.
@@ -12,9 +48,11 @@ const BATTLE_Y_OFFSET = 265;
  * and debug-only slot index labels at the bottom.
  */
 export function renderLanes(app: Application): void {
+  if (!showLanesSetting) return;
+
   const battleY = HEIGHT - BATTLE_Y_OFFSET;
-  const leftBase = 20;
-  const rightBase = WIDTH - SPRITE_CENTER * 2;
+  const leftBase = -BATTLE_SIDE_OVERSCAN;
+  const rightBase = WIDTH - SPRITE_CENTER * 2 + BATTLE_SIDE_OVERSCAN;
   const availableWidth = rightBase - leftBase;
   const slotSpacing = MAX_SLOTS > 1 ? availableWidth / (MAX_SLOTS - 1) : 0;
 
@@ -77,7 +115,7 @@ export function renderLanes(app: Application): void {
     app.stage.addChild(indexLabel);
   }
 
-  // Prominent dashed divider between ally side (slots 0-3) and enemy side (slots 4-7)
+  // Prominent dashed divider between ally and enemy sides.
   const allyEdgeCenter = leftBase + ALLY_SLOT_END * slotSpacing + SPRITE_CENTER;
   const enemyEdgeCenter = leftBase + ENEMY_SLOT_START * slotSpacing + SPRITE_CENTER;
   const dividerX = (allyEdgeCenter + enemyEdgeCenter) / 2;

@@ -11,6 +11,7 @@ import { generateWave } from './waveGenerator.js';
 import { getModifierRegistry } from './modifiers.js';
 import { render } from '../rendering/renderer.js';
 import { pickRandomMap } from '../rendering/renderBackground.js';
+import { ENEMY_SLOT_START, ALLY_SLOT_END, MAX_SLOTS } from './constants.js';
 
 // ── Default tuning (overridable via modifier registry / dev panel) ───
 
@@ -51,6 +52,27 @@ function cleanupCardInstances(instanceIds: string[]): void {
   }
 }
 
+function getOccupiedSlotsForPlacement(slotIndex: number, slotSize: number): number[] {
+  return Array.from({ length: slotSize }, (_, i) => slotIndex + i);
+}
+
+function findAvailableFrontSlot(characters: Character[], isPlayer: boolean, slotSize: number): number | null {
+  const sideMin = isPlayer ? 0 : ENEMY_SLOT_START;
+  const sideMax = isPlayer ? ALLY_SLOT_END : MAX_SLOTS - 1;
+  const maxFrontSlot = sideMax - slotSize + 1;
+  for (let frontSlot = sideMin; frontSlot <= maxFrontSlot; frontSlot++) {
+    const candidateSlots = getOccupiedSlotsForPlacement(frontSlot, slotSize);
+    const blocked = characters.some(existing => {
+      if (existing.hp <= 0 || existing.isPlayer !== isPlayer) return false;
+      const existingSize = Math.max(1, Math.floor(existing.slotSize ?? 1));
+      const existingSlots = getOccupiedSlotsForPlacement(existing.slotIndex, existingSize);
+      return existingSlots.some(slot => candidateSlots.includes(slot));
+    });
+    if (!blocked) return frontSlot;
+  }
+  return null;
+}
+
 // ── Public API ───────────────────────────────────────────────────────
 
 /**
@@ -69,7 +91,7 @@ export function startNextWave(): void {
 
   // ── 1. Increment wave number & rotate map ─────────────────────────
   gameState.waveNumber++;
-  gameState.currentMap = pickRandomMap(gameState.currentMap);
+  gameState.currentMap = pickRandomMap(gameState.currentMap, gameState.waveNumber);
   addToCombatLog(`--- Wave ${gameState.waveNumber} ---`);
 
   // ── 2–4. Reset living allies ───────────────────────────────────────
@@ -77,6 +99,7 @@ export function startNextWave(): void {
 
   const healFraction = getModifierRegistry().resolve('wave_heal_fraction', WAVE_HEAL_FRACTION);
 
+  const slottedAllies: Character[] = [];
   for (const ally of livingAllies) {
     // Partial heal based on configured fraction of missing HP
     const missingHp = ally.maxHp - ally.hp;
@@ -116,9 +139,15 @@ export function startNextWave(): void {
       ally.deck = shuffleArray([...ally.deck, ...allTemplateIds]);
     }
 
-    // Reset slot positions
-    const allyIndex = livingAllies.indexOf(ally);
-    ally.slotIndex = allyIndex;
+    const slotSize = Math.max(1, Math.floor(ally.slotSize ?? 1));
+    ally.slotSize = slotSize;
+    const allySlot = findAvailableFrontSlot(slottedAllies, true, slotSize);
+    if (allySlot !== null) {
+      ally.slotIndex = allySlot;
+      slottedAllies.push(ally);
+    } else {
+      console.warn(`No ally slot available for ${ally.name} (slotSize ${slotSize}), keeping previous slot`);
+    }
   }
 
   // ── 5. Remove all enemies ──────────────────────────────────────────
@@ -141,6 +170,12 @@ export function startNextWave(): void {
   const usedEnemyIds = new Set<string>();
   waveDefs.forEach((charDef, i) => {
     const deck = shuffleArray(buildDeckFromDefinition(charDef));
+    const slotSize = Math.max(1, Math.floor(charDef.slotSize ?? 1));
+    const slotIndex = findAvailableFrontSlot(gameState.characters, false, slotSize);
+    if (slotIndex === null) {
+      console.warn(`No enemy slot available for ${charDef.name} (slotSize ${slotSize}), skipping spawn`);
+      return;
+    }
 
     // Ensure unique IDs when the same enemy type appears more than once
     let id = charDef.id;
@@ -164,7 +199,8 @@ export function startNextWave(): void {
       blockLayers: [],
       statuses: [],
       isPlayer: false,
-      slotIndex: 4 + i,
+      slotIndex,
+      slotSize,
       speed: charDef.stats.speed ?? 0,
       moveCharges: 0,
       suppression: charDef.stats.suppression ?? 0,

@@ -12,13 +12,34 @@ import { loadContent } from './src/data/contentLoader.js';
 import { render, setApp } from './src/rendering/renderer.js';
 import { clearAllHoverStates } from './src/rendering/tooltipState.js';
 import { setApp as setCombatApp } from './src/core/combat.js';
-import { WIDTH, HEIGHT } from './src/core/constants.js';
+import { WIDTH, HEIGHT, ENEMY_SLOT_START, ALLY_SLOT_END, MAX_SLOTS } from './src/core/constants.js';
 import { initDevPanel } from './src/rendering/devPanel.js';
 import { getModifierRegistry } from './src/core/modifiers.js';
 import { generateWave } from './src/core/waveGenerator.js';
 
 let currentApp: Application | null = null;
 let initPromise: Promise<void> | null = null;
+
+function getOccupiedSlotsForPlacement(slotIndex: number, slotSize: number): number[] {
+  return Array.from({ length: slotSize }, (_, i) => slotIndex + i);
+}
+
+function findAvailableFrontSlot(characters: Character[], isPlayer: boolean, slotSize: number): number | null {
+  const sideMin = isPlayer ? 0 : ENEMY_SLOT_START;
+  const sideMax = isPlayer ? ALLY_SLOT_END : MAX_SLOTS - 1;
+  const maxFrontSlot = sideMax - slotSize + 1;
+  for (let frontSlot = sideMin; frontSlot <= maxFrontSlot; frontSlot++) {
+    const candidateSlots = getOccupiedSlotsForPlacement(frontSlot, slotSize);
+    const blocked = characters.some(existing => {
+      if (existing.hp <= 0 || existing.isPlayer !== isPlayer) return false;
+      const existingSize = Math.max(1, Math.floor(existing.slotSize ?? 1));
+      const existingSlots = getOccupiedSlotsForPlacement(existing.slotIndex, existingSize);
+      return existingSlots.some(slot => candidateSlots.includes(slot));
+    });
+    if (!blocked) return frontSlot;
+  }
+  return null;
+}
 
 /**
  * Clean up existing PIXI app
@@ -107,7 +128,7 @@ async function initGame(): Promise<void> {
   setGameState(gameState);
 
   // Initialize characters from YAML — explicit party roster
-  const partyIds = ['didi_sharpshooter', 'jacob_techblade', 'nyx_corrupter'];
+  const partyIds = ['didi_sharpshooter', 'jacob_techblade', 'kael_tactician', 'nyx_corrupter'];
   const playerCharacters = partyIds
     .map(id => characters[id])
     .filter((c): c is typeof characters[string] => !!c && c.isPlayer);
@@ -140,9 +161,15 @@ async function initGame(): Promise<void> {
     return deck;
   }
 
-  // Add player characters - slots 0-3 (ally side)
-  playerCharacters.forEach((charDef, i) => {
+  // Add player characters on ally-side slots (from left).
+  playerCharacters.forEach((charDef) => {
     const deck = shuffleArray(buildDeckFromDefinition(charDef));
+    const slotSize = Math.max(1, Math.floor(charDef.slotSize ?? 1));
+    const slotIndex = findAvailableFrontSlot(gameState.characters, true, slotSize);
+    if (slotIndex === null) {
+      console.warn(`No ally slot available for ${charDef.name} (slotSize ${slotSize}), skipping spawn`);
+      return;
+    }
     const character: Character = {
       id: charDef.id,
       name: charDef.name,
@@ -158,7 +185,8 @@ async function initGame(): Promise<void> {
       blockLayers: [],
       statuses: [],
       isPlayer: charDef.isPlayer,
-      slotIndex: i,
+      slotIndex,
+      slotSize,
       speed: charDef.stats.speed ?? 0,
       moveCharges: 0,
       suppression: charDef.stats.suppression ?? 0,
@@ -172,10 +200,16 @@ async function initGame(): Promise<void> {
     gameState.characters.push(character);
   });
 
-  // Add enemy characters - slots 4-7 (enemy side)
+  // Add enemy characters on enemy-side slots (from center-right).
   const usedEnemyIds = new Set<string>();
   enemyCharacters.forEach((charDef, i) => {
     const deck = shuffleArray(buildDeckFromDefinition(charDef));
+    const slotSize = Math.max(1, Math.floor(charDef.slotSize ?? 1));
+    const slotIndex = findAvailableFrontSlot(gameState.characters, false, slotSize);
+    if (slotIndex === null) {
+      console.warn(`No enemy slot available for ${charDef.name} (slotSize ${slotSize}), skipping spawn`);
+      return;
+    }
     // Ensure unique IDs when the same enemy type appears more than once
     let id = charDef.id;
     if (usedEnemyIds.has(id)) {
@@ -198,7 +232,8 @@ async function initGame(): Promise<void> {
       blockLayers: [],
       statuses: [],
       isPlayer: charDef.isPlayer,
-      slotIndex: 4 + i,
+      slotIndex,
+      slotSize,
       speed: charDef.stats.speed ?? 0,
       moveCharges: 0,
       suppression: charDef.stats.suppression ?? 0,

@@ -60,6 +60,31 @@ export function getHoveredStatus(): { statusId: string | null; stacks: number; x
   return { statusId: hoveredStatusId, stacks: hoveredStatusStacks, x: hoveredStatusX, y: hoveredStatusY };
 }
 
+// ── Character tooltip state ────────────────────────────────────────────
+
+let hoveredCharacterId: string | null = null;
+let hoveredCharacterX: number = 0;
+let hoveredCharacterY: number = 0;
+
+/**
+ * Set the currently hovered character.
+ * Returns true if the state actually changed.
+ */
+export function setHoveredCharacter(characterId: string | null, x: number = 0, y: number = 0): boolean {
+  if (hoveredCharacterId === characterId) return false;
+  hoveredCharacterId = characterId;
+  hoveredCharacterX = x;
+  hoveredCharacterY = y;
+  return true;
+}
+
+/**
+ * Get hovered character tooltip anchor.
+ */
+export function getHoveredCharacter(): { characterId: string | null; x: number; y: number } {
+  return { characterId: hoveredCharacterId, x: hoveredCharacterX, y: hoveredCharacterY };
+}
+
 // ── Global clear ─────────────────────────────────────────────────────
 
 /**
@@ -69,6 +94,7 @@ export function getHoveredStatus(): { statusId: string | null; stacks: number; x
 export function clearAllHoverStates(): boolean {
   const hadCard = hoveredCardId !== null;
   const hadStatus = hoveredStatusId !== null;
+  const hadCharacter = hoveredCharacterId !== null;
 
   hoveredCardId = null;
   hoveredCardX = 0;
@@ -79,5 +105,9 @@ export function clearAllHoverStates(): boolean {
   hoveredStatusX = 0;
   hoveredStatusY = 0;
 
-  return hadCard || hadStatus;
+  hoveredCharacterId = null;
+  hoveredCharacterX = 0;
+  hoveredCharacterY = 0;
+
+  return hadCard || hadStatus || hadCharacter;
 }

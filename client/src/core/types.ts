@@ -199,6 +199,7 @@ export interface Character {
   statuses: Status[]; // Active status effects
   isPlayer: boolean;
   slotIndex: number; // Position on battlefield (0 = leftmost ally / rightmost enemy)
+  slotSize?: number;          // Number of contiguous slots occupied from slotIndex (front-anchored, default 1)
   speed: number;              // Speed stat: determines slots per energy spent on movement (0 = baseline 1:1)
   moveCharges: number;        // Remaining free move charges this turn (resets to 0 each turn)
   suppression: number;        // How much ranged-attack penalty this character projects to nearby enemies

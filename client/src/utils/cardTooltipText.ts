@@ -244,10 +244,17 @@ function describeEffect(effect: CardEffect, card: Card): TooltipEffectLine {
       const ss = effect as StatusSpreadEffect;
       const statusName = capitalise(ss.status);
       const pct = Math.round(ss.fraction * 100);
+      const spreadRange = Math.max(0, Math.floor(ss.spreadRange ?? 1));
+      const spreadSide = ss.spreadSide ?? 'same';
+      const sideLabel = spreadSide === 'same'
+        ? 'same side'
+        : spreadSide === 'opposing'
+          ? 'opposing side'
+          : 'both sides';
       return {
         icon: null,
-        text: `Spreads ${pct}% ${statusName} to adjacent`,
-        subLines: ['Reads stacks from target, applies fraction to neighbors'],
+        text: `Spreads ${pct}% ${statusName} (${spreadRange} slot${spreadRange !== 1 ? 's' : ''}, ${sideLabel})`,
+        subLines: ['Reads stacks from target, applies fraction to nearby units'],
         targetLabel,
       };
     }

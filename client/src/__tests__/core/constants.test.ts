@@ -13,11 +13,16 @@ import {
 
 describe('constants', () => {
   it('should export WIDTH constant', () => {
-    expect(WIDTH).toBe(1200);
+    expect(WIDTH).toBe(1440);
   });
 
   it('should export HEIGHT constant', () => {
     expect(HEIGHT).toBe(800);
+  });
+
+  it('should export 12-lane battlefield constants', () => {
+    expect(MAX_SLOTS).toBe(12);
+    expect(SLOTS_PER_SIDE).toBe(6);
   });
 });
 

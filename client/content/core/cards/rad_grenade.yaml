@@ -18,5 +18,7 @@ effects:
     status: radiation
     fraction: 0.70
     round: floor
+    spreadRange: 1
+    spreadSide: same
     amount: 0
     effectTarget: target

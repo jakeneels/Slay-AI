@@ -9,6 +9,7 @@ import { renderHand } from './renderHand.js';
 import { renderTurnInfo } from './renderUI.js';
 import { renderCardTooltip } from './renderCardTooltip.js';
 import { renderStatusTooltip } from './renderStatusTooltip.js';
+import { renderCharacterTooltip } from './renderCharacterTooltip.js';
 import { renderDevPanel } from './devPanel.js';
 import { renderVictoryModal } from './renderVictoryModal.js';
 
@@ -53,6 +54,7 @@ export function render(): void {
   renderHand(app, gameState);
   renderTurnInfo(app, gameState);
   renderCardTooltip(app);
+  renderCharacterTooltip(app);
   renderStatusTooltip(app);
 
   // Victory modal overlay (renders on top of everything)

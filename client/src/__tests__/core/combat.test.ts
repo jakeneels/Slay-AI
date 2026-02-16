@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { playCard, endTurn, setApp, processEnemyTurn, calculateAoeTargets, getCharactersByPosition, moveCharacterForward, moveCharacterBack } from '../../core/combat.js';
+import { playCard, endTurn, setApp, processEnemyTurn, calculateAoeTargets, getCharactersByPosition, moveCharacterForward, moveCharacterBack, applyKnockback, canOccupyRange } from '../../core/combat.js';
 import { resetGameState, createMockCharacter, createMockCard, createMockCharacterDefinition, setupGameState } from '../utils/test-helpers.js';
 import { getGameState } from '../../core/gameState.js';
 import { createCardInstance } from '../../core/card.js';
+import { SLOTS_PER_SIDE } from '../../core/constants.js';
 import type { Application } from 'pixi.js';
 
 // Mock PixiJS Application
@@ -2399,7 +2400,7 @@ describe('combat', () => {
   });
 
   describe('calculateAoeTargets', () => {
-    it('should return all characters when aoeSlots is 4', () => {
+    it('should return all characters when aoeSlots equals side size', () => {
       const enemy1 = createMockCharacter({ id: 'enemy1', hp: 100, isPlayer: false, slotIndex: 4 });
       const enemy2 = createMockCharacter({ id: 'enemy2', hp: 100, isPlayer: false, slotIndex: 5 });
       const enemy3 = createMockCharacter({ id: 'enemy3', hp: 100, isPlayer: false, slotIndex: 6 });
@@ -2408,7 +2409,7 @@ describe('combat', () => {
         characters: [enemy1, enemy2, enemy3]
       });
 
-      const targets = calculateAoeTargets(4, 'enemy', 4);
+      const targets = calculateAoeTargets(4, 'enemy', SLOTS_PER_SIDE);
       
       expect(targets).toHaveLength(3);
       expect(targets.map(t => t.id)).toEqual(['enemy1', 'enemy2', 'enemy3']);
@@ -2610,6 +2611,25 @@ describe('combat', () => {
       expect(targets).toHaveLength(2);
       expect(targets.map(t => t.id)).toContain('player1');
       expect(targets.map(t => t.id)).toContain('player2');
+    });
+
+    it('should hit multi-slot targets only once per AOE resolution', () => {
+      const giant = createMockCharacter({
+        id: 'giant',
+        hp: 100,
+        isPlayer: false,
+        slotIndex: 4,
+        slotSize: 2
+      });
+
+      setupGameState({
+        characters: [giant]
+      });
+
+      // Center on slot 5: giant occupies [4,5] but should only appear once.
+      const targets = calculateAoeTargets(5, 'enemy', 3);
+      expect(targets).toHaveLength(1);
+      expect(targets[0].id).toBe('giant');
     });
 
     it('should handle AOE card that defeats target (hp <= 0 check)', async () => {
@@ -3411,7 +3431,7 @@ describe('combat', () => {
       expect(player1.energy).toBe(2);
     });
 
-    it('should shift enemies when ally advances past boundary (target has enemy)', () => {
+    it('should block ally forward movement when target has enemy', () => {
       const player = createMockCharacter({ id: 'player1', energy: 3, isPlayer: true, slotIndex: 1 });
       const enemy1 = createMockCharacter({ id: 'enemy1', isPlayer: false, slotIndex: 2 });
       const enemy2 = createMockCharacter({ id: 'enemy2', isPlayer: false, slotIndex: 3 });
@@ -3422,10 +3442,10 @@ describe('combat', () => {
       });
 
       const result = moveCharacterForward('player1');
-      expect(result).toBe(true);
-      expect(player.slotIndex).toBe(2);
-      expect(enemy1.slotIndex).toBe(3);
-      expect(enemy2.slotIndex).toBe(4);
+      expect(result).toBe(false);
+      expect(player.slotIndex).toBe(1);
+      expect(enemy1.slotIndex).toBe(2);
+      expect(enemy2.slotIndex).toBe(3);
     });
 
     it('should fail when insufficient energy', () => {
@@ -3481,7 +3501,7 @@ describe('combat', () => {
       expect(enemy.slotIndex).toBe(1);
     });
 
-    it('should shift allies when enemy advances past boundary (target has ally)', () => {
+    it('should block enemy forward movement when target has ally', () => {
       const player1 = createMockCharacter({ id: 'player1', isPlayer: true, slotIndex: 0 });
       const player2 = createMockCharacter({ id: 'player2', isPlayer: true, slotIndex: 1 });
       const enemy = createMockCharacter({ id: 'enemy1', energy: 3, isPlayer: false, slotIndex: 2 });
@@ -3492,10 +3512,10 @@ describe('combat', () => {
       });
 
       const result = moveCharacterForward('enemy1');
-      expect(result).toBe(true);
-      expect(enemy.slotIndex).toBe(1);
+      expect(result).toBe(false);
+      expect(enemy.slotIndex).toBe(2);
       expect(player1.slotIndex).toBe(0);
-      expect(player2.slotIndex).toBe(2);
+      expect(player2.slotIndex).toBe(1);
     });
 
     it('should call renderCallback when provided', () => {
@@ -3626,6 +3646,95 @@ describe('combat', () => {
 
       moveCharacterBack('player1', renderCallback);
       expect(renderCallback).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('multi-slot occupancy', () => {
+    it('should block forward movement when any destination footprint slot is occupied', () => {
+      const brute = createMockCharacter({
+        id: 'brute',
+        isPlayer: true,
+        energy: 3,
+        slotIndex: 0,
+        slotSize: 2
+      });
+      const blocker = createMockCharacter({
+        id: 'blocker',
+        isPlayer: false,
+        slotIndex: 2
+      });
+      setupGameState({
+        characters: [brute, blocker],
+        currentPlayerId: 'brute'
+      });
+
+      const moved = moveCharacterForward('brute');
+      expect(moved).toBe(false);
+      expect(brute.slotIndex).toBe(0);
+    });
+
+    it('should allow movement when entire footprint is free', () => {
+      const brute = createMockCharacter({
+        id: 'brute',
+        isPlayer: true,
+        energy: 3,
+        slotIndex: 0,
+        slotSize: 2
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy',
+        isPlayer: false,
+        slotIndex: 4
+      });
+      setupGameState({
+        characters: [brute, enemy],
+        currentPlayerId: 'brute'
+      });
+
+      const moved = moveCharacterForward('brute');
+      expect(moved).toBe(true);
+      expect(brute.slotIndex).toBe(1);
+    });
+
+    it('should stop knockback when next footprint is blocked', () => {
+      const target = createMockCharacter({
+        id: 'target',
+        isPlayer: false,
+        slotIndex: 6,
+        slotSize: 2
+      });
+      const blocker = createMockCharacter({
+        id: 'blocker',
+        isPlayer: false,
+        slotIndex: 8
+      });
+      setupGameState({
+        characters: [target, blocker]
+      });
+
+      const moved = applyKnockback(target, 2);
+      expect(moved).toBe(0);
+      expect(target.slotIndex).toBe(6);
+    });
+
+    it('should validate contiguous placement with canOccupyRange', () => {
+      const ally = createMockCharacter({
+        id: 'ally',
+        isPlayer: true,
+        slotIndex: 1,
+        slotSize: 2
+      });
+      setupGameState({
+        characters: [ally]
+      });
+
+      // Proposed range [2,3] overlaps ally footprint [1,2].
+      const blocked = canOccupyRange(2, 2, true);
+      expect(blocked).toBe(false);
+
+      // Proposed range [4,5] is clear and on ally side.
+      const clear = canOccupyRange(4, 2, true);
+      expect(clear).toBe(true);
     });
   });
 
