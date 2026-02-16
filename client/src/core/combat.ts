@@ -421,8 +421,7 @@ export function getMoveCost(char: Character): { energyCost: number; usesCharge: 
  * Move a character forward (toward center/opponent) one slot.
  * Unified slot model: allies on left (low indices), enemies on right (high indices).
  * - If target slot has a friendly: swap (they move back).
- * - If target has an enemy (ally advancing past boundary): shift all enemies forward (slotIndex += 1).
- * - Mirror logic for enemies moving forward (toward allies).
+ * - If target slot has an opposing unit: movement is blocked.
  */
 export function moveCharacterForward(characterId: string, renderCallback?: () => void): boolean {
   const gameState = getGameState();
@@ -444,12 +443,7 @@ export function moveCharacterForward(characterId: string, renderCallback?: () =>
       allyAtTarget.slotIndex = char.slotIndex;
       char.slotIndex = targetSlot;
     } else if (enemyAtTarget) {
-      // No room on friendly side - shift enemies at/beyond target slot; fail if would exceed MAX_SLOTS
-      const toShift = enemies.filter(e => e.slotIndex >= targetSlot).sort((a, b) => b.slotIndex - a.slotIndex);
-      const maxAfterShift = toShift.length > 0 ? toShift[0].slotIndex + 1 : targetSlot;
-      if (maxAfterShift >= MAX_SLOTS) return false;
-      toShift.forEach(e => { e.slotIndex += 1; });
-      char.slotIndex = targetSlot;
+      return false;
     } else {
       if (targetSlot >= MAX_SLOTS) return false;
       char.slotIndex = targetSlot;
@@ -461,12 +455,7 @@ export function moveCharacterForward(characterId: string, renderCallback?: () =>
       enemyAtTarget.slotIndex = char.slotIndex;
       char.slotIndex = targetSlot;
     } else if (allyAtTarget) {
-      // No room on enemy side - shift allies at/beyond target slot; fail if would exceed MAX_SLOTS
-      const toShift = allies.filter(a => a.slotIndex >= targetSlot).sort((a, b) => b.slotIndex - a.slotIndex);
-      const maxAfterShift = toShift.length > 0 ? toShift[0].slotIndex + 1 : targetSlot;
-      if (maxAfterShift >= MAX_SLOTS) return false;
-      toShift.forEach(a => { a.slotIndex += 1; });
-      char.slotIndex = targetSlot;
+      return false;
     } else {
       if (targetSlot < 0) return false;
       char.slotIndex = targetSlot;
