@@ -14,6 +14,7 @@ import { renderDevPanel } from './devPanel.js';
 import { renderVictoryModal } from './renderVictoryModal.js';
 import { renderPlayedCardsStack } from './renderPlayedCards.js';
 import { renderActiveCardShowcases } from '../../animations.js';
+import { renderPreFightModal } from './renderPreFightModal.js';
 
 let app: Application | null = null;
 
@@ -62,6 +63,13 @@ export function render(): void {
   renderBackground(app);
   renderLanes(app, gameState);
   renderCharacters(app, gameState);
+
+  if (gameState.preFight.active) {
+    renderPreFightModal(app, gameState);
+    renderDevPanel(gameState);
+    return;
+  }
+
   renderHand(app, gameState);
   renderPlayedCardsStack(app, gameState);
   renderTurnInfo(app, gameState);

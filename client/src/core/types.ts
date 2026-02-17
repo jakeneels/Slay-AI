@@ -349,6 +349,25 @@ export interface LaneHazard {
   sourceCardId?: string;
 }
 
+export type PreFightSource = 'run_start' | 'stage_trigger';
+
+export interface PreFightState {
+  active: boolean;
+  page: 'lineup' | 'cards';
+  useDefaultCards: boolean;
+  candidateAllyIds: string[];
+  selectedAllyIds: string[];
+  requiredLineupSize: number;
+  source: PreFightSource;
+  pendingThreatScore: number | null;
+  activeCardEditorAllyId: string | null;
+  activeCardSlotIndex: number | null;
+  cardCatalogScroll: number;
+  cardPoolIds: string[];
+  cardsByAlly: Record<string, string[]>;
+  threatBudget: number;
+}
+
 // ── Game state ───────────────────────────────────────────────────────
 
 export interface GameState {
@@ -374,11 +393,13 @@ export interface GameState {
   currentMap: string;
   playedCardsStack: PlayedCardEntry[];
   laneHazards: LaneHazard[];
+  preFight: PreFightState;
 }
 
 export interface LoadedContent {
   cards: Record<string, Card>;
   characters: Record<string, CharacterDefinition>;
   gear: Record<string, GearDefinition>;
+  statuses: Record<string, StatusDefinition>;
 }
 

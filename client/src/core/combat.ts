@@ -772,7 +772,12 @@ export function setApp(application: Application): void {
  * Play a card
  */
 export async function playCard(cardId: string, targetId?: string, renderCallback?: () => void): Promise<void> {
-  if (!app) return;
+  if (!app) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H1',location:'combat.ts:playCard:app-guard',message:'playCard returned early because app is not set',data:{cardId,targetId},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    return;
+  }
   
   const gameState = getGameState();
   // Block card plays after combat is over
@@ -1564,7 +1569,13 @@ export function endTurn(renderCallback?: () => void): void {
 
   // If it's an enemy turn, trigger AI after a delay
   if (!nextPlayer.isPlayer) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H2',location:'combat.ts:endTurn:enemy-timeout-scheduled',message:'Scheduling enemy turn timeout',data:{nextPlayerId:nextPlayer.id,nextPlayerName:nextPlayer.name,turnIndex:gameState.turnIndex,turnQueueIndex:gameState.turnQueueIndex,isProcessingTurn:gameState.isProcessingTurn},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     setTimeout(() => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H2',location:'combat.ts:endTurn:enemy-timeout-fired',message:'Enemy turn timeout fired',data:{nextPlayerId:nextPlayer.id,nextPlayerName:nextPlayer.name,turnIndex:gameState.turnIndex,turnQueueIndex:gameState.turnQueueIndex,isProcessingTurn:gameState.isProcessingTurn},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       processEnemyTurn(nextPlayer!, renderCallback);
     }, 1000);
   }
@@ -1747,6 +1758,9 @@ function tryEnemyOptimalMove(enemy: Character, renderCallback?: () => void): boo
  */
 export async function processEnemyTurn(enemy: Character, renderCallback?: () => void): Promise<void> {
   const gameState = getGameState();
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H3',location:'combat.ts:processEnemyTurn:entry',message:'Entered processEnemyTurn',data:{enemyId:enemy.id,enemyName:enemy.name,currentPlayerId:gameState.currentPlayerId,isProcessingTurn:gameState.isProcessingTurn,enemyEnergy:enemy.energy,enemyHandSize:enemy.hand.length},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   if (gameState.isProcessingTurn) return;
   gameState.isProcessingTurn = true;
 
@@ -1770,10 +1784,17 @@ export async function processEnemyTurn(enemy: Character, renderCallback?: () => 
 
   let cardsPlayed = 0;
   let consecutiveMoveAttempts = 0;
+  let aiLoopIteration = 0;
   const MAX_MOVE_ATTEMPTS = 3; // safety cap so we never loop forever
 
   // ── Card-play loop ──────────────────────────────────────────────────
   while (true) {
+    aiLoopIteration++;
+    if (aiLoopIteration <= 12) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H4',location:'combat.ts:processEnemyTurn:loop-start',message:'Enemy AI loop iteration',data:{enemyId:enemy.id,iteration:aiLoopIteration,cardsPlayed,enemyEnergy:enemy.energy,enemyHandSize:enemy.hand.length,isProcessingTurn:gameState.isProcessingTurn},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+    }
     // Re-check living players (a previous card may have killed everyone)
     const alivePlayers = gameState.characters.filter(c => c.isPlayer && c.hp > 0);
     if (alivePlayers.length === 0) break;
@@ -1894,7 +1915,15 @@ export async function processEnemyTurn(enemy: Character, renderCallback?: () => 
     }
 
     try {
+      const energyBeforePlay = enemy.energy;
+      const handBeforePlay = enemy.hand.length;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H5',location:'combat.ts:processEnemyTurn:before-playCard',message:'About to call playCard',data:{enemyId:enemy.id,chosenCardId,chosenTargetId,energyBeforePlay,handBeforePlay},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       await playCard(chosenCardId!, chosenTargetId!, renderCallback);
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H5',location:'combat.ts:processEnemyTurn:after-playCard',message:'Returned from playCard',data:{enemyId:enemy.id,chosenCardId,chosenTargetId,energyBeforePlay,energyAfterPlay:enemy.energy,handBeforePlay,handAfterPlay:enemy.hand.length},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
     } catch (err: any) {
       break;
     }

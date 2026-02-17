@@ -114,6 +114,12 @@ export function generateWave(
     picked = pickEnemies(enemyPool, budget, minEnemies, maxEnemies, cardLibrary);
   }
 
+  // Dev option: force Actual Kyle into the first enemy lineup.
+  const forceActualKyle = waveNumber === 1 && reg.resolve('force_actual_kyle_wave1', 0) >= 1;
+  if (forceActualKyle) {
+    picked = ensureEnemyInWave(picked, enemyPool, 'actual_kyle', maxEnemies);
+  }
+
   return picked;
 }
 
@@ -185,4 +191,34 @@ function isSameComposition(picked: CharacterDefinition[], previousIds: string[])
   const a = [...picked.map(d => d.id)].sort();
   const b = [...previousIds].sort();
   return a.every((id, i) => id === b[i]);
+}
+
+/**
+ * Ensure a specific enemy id appears in the wave.
+ * If at max capacity, replace the first non-forced entry.
+ */
+function ensureEnemyInWave(
+  picked: CharacterDefinition[],
+  pool: CharacterDefinition[],
+  forcedId: string,
+  maxEnemies: number,
+): CharacterDefinition[] {
+  if (picked.some(def => def.id === forcedId)) return picked;
+  const forcedDef = pool.find(def => def.id === forcedId);
+  if (!forcedDef) {
+    console.warn(`Forced enemy "${forcedId}" not found in enemy pool`);
+    return picked;
+  }
+
+  const next = [...picked];
+  if (next.length >= maxEnemies) {
+    const replaceIndex = next.findIndex(def => def.id !== forcedId);
+    if (replaceIndex >= 0) {
+      next[replaceIndex] = forcedDef;
+    }
+    return next;
+  }
+
+  next.push(forcedDef);
+  return next;
 }

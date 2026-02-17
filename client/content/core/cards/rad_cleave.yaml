@@ -1,6 +1,6 @@
 schemaVersion: 1
-id: rad_round
-name: "Rad Round"
+id: rad_cleave
+name: "Rad Cleave"
 type: attack
 rarity: rare   # common, rare, epic, legendary, mythic.
 cost: 3

@@ -14,6 +14,8 @@ import { WAVE_HEAL_FRACTION } from '../core/waveTransition.js';
 import { getShowLanesSetting, setShowLanesSetting } from './renderLanes.js';
 
 let initialized = false;
+const FORCE_ACTUAL_KYLE_TARGET = 'force_actual_kyle_wave1';
+const FORCE_ACTUAL_KYLE_MOD_ID = `devpanel:global:${FORCE_ACTUAL_KYLE_TARGET}`;
 
 // Track which sections are collapsed (persists across renders)
 const collapsedSections = new Set<string>();
@@ -131,10 +133,16 @@ export function initDevPanel(): void {
     content.addEventListener('change', (e) => {
       const input = e.target as HTMLInputElement;
       if (!input || input.type !== 'checkbox') return;
-      if (input.dataset.devToggle !== 'show-lanes') return;
-
-      setShowLanesSetting(input.checked);
-      requestFullRender();
+      const toggle = input.dataset.devToggle;
+      if (toggle === 'show-lanes') {
+        setShowLanesSetting(input.checked);
+        requestFullRender();
+        return;
+      }
+      if (toggle === 'force-actual-kyle-wave1') {
+        setForceActualKyleWave1(input.checked);
+        requestFullRender();
+      }
     });
   }
 
@@ -195,10 +203,15 @@ export function renderDevPanel(gameState: GameState): void {
   // ── Display options section ──
   html += renderCollapsibleSection('display-options', 'Display', () => {
     const checked = getShowLanesSetting() ? 'checked' : '';
+    const forceKyleChecked = isForceActualKyleWave1Enabled() ? 'checked' : '';
     return `
       <label style="display:flex;align-items:center;gap:6px;color:#d1d5db;font-size:11px;cursor:pointer;">
         <input type="checkbox" data-dev-toggle="show-lanes" ${checked} />
         <span>Show visible lanes</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;color:#d1d5db;font-size:11px;cursor:pointer;margin-top:6px;">
+        <input type="checkbox" data-dev-toggle="force-actual-kyle-wave1" ${forceKyleChecked} />
+        <span>Force Actual Kyle in wave 1</span>
       </label>
     `;
   });
@@ -660,6 +673,27 @@ function refreshActiveModifiers(): void {
   // This is lightweight enough to not cause issues
 }
 
+function isForceActualKyleWave1Enabled(): boolean {
+  return getModifierRegistry().resolve(FORCE_ACTUAL_KYLE_TARGET, 0) >= 1;
+}
+
+function setForceActualKyleWave1(enabled: boolean): void {
+  const registry = getModifierRegistry();
+  if (enabled) {
+    registry.add({
+      id: FORCE_ACTUAL_KYLE_MOD_ID,
+      target: FORCE_ACTUAL_KYLE_TARGET,
+      op: 'set',
+      value: 1,
+      source: 'devpanel',
+      scope: { kind: 'global' },
+    });
+  } else {
+    registry.remove(FORCE_ACTUAL_KYLE_MOD_ID);
+  }
+  persistDevPanelModifiers();
+}
+
 /**
  * Get characters from game state for the balance panel character selector.
  */
@@ -735,4 +769,8 @@ function restoreDevPanelModifiers(): void {
   } catch {
     // Corrupt data or localStorage unavailable – silently ignore
   }
+}
+
+export function restoreDevPanelOverridesFromStorage(): void {
+  restoreDevPanelModifiers();
 }

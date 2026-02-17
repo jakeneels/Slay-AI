@@ -11,11 +11,12 @@ import { shuffleArray } from './src/utils/shuffle.js';
 import { loadContent } from './src/data/contentLoader.js';
 import { render, setApp } from './src/rendering/renderer.js';
 import { clearAllHoverStates } from './src/rendering/tooltipState.js';
-import { setApp as setCombatApp, buildTurnQueue, processEnemyTurn } from './src/core/combat.js';
+import { setApp as setCombatApp } from './src/core/combat.js';
 import { WIDTH, HEIGHT, ENEMY_SLOT_START, ALLY_SLOT_END, MAX_SLOTS } from './src/core/constants.js';
-import { initDevPanel } from './src/rendering/devPanel.js';
+import { initDevPanel, restoreDevPanelOverridesFromStorage } from './src/rendering/devPanel.js';
 import { getModifierRegistry } from './src/core/modifiers.js';
 import { generateWave, computeDifficulty } from './src/core/waveGenerator.js';
+import { beginPreFightSetup } from './src/core/preFight.js';
 
 let currentApp: Application | null = null;
 let initPromise: Promise<void> | null = null;
@@ -114,6 +115,8 @@ async function initGame(): Promise<void> {
   
   // Clear modifier registry on re-init (HMR safety)
   getModifierRegistry().clearAll();
+  // Restore persisted devpanel overrides before first wave generation.
+  restoreDevPanelOverridesFromStorage();
 
   // Load content from YAML (also loads balance.yaml modifiers)
   const { cards, characters, gear, statuses } = await loadContent();
@@ -128,7 +131,7 @@ async function initGame(): Promise<void> {
   setGameState(gameState);
 
   // Initialize characters from YAML — explicit party roster
-  const partyIds = ['didi_sharpshooter', 'ted_techblade', 'kael_tactician', 'nyx_corrupter'];
+  const partyIds = ['didi_sharpshooter', 'kael_tactician', 'nyx_corrupter', 'ted_techblade'];
   const playerCharacters = partyIds
     .map(id => characters[id])
     .filter((c): c is typeof characters[string] => !!c && c.isPlayer);
@@ -255,19 +258,15 @@ async function initGame(): Promise<void> {
     addToCombatLog(`${character.name} appears! (Threat: ${Math.round(enemyThreat)})`);
   });
   
-  // Build initial speed-based turn queue
-  if (gameState.characters.length > 0) {
-    gameState.turnQueue = buildTurnQueue();
-    gameState.turnQueueIndex = 0;
-    gameState.roundNumber = 1;
-    gameState.currentPlayerId = gameState.turnQueue[0] || gameState.characters[0].id;
-    const threatScore = enemyCharacters.reduce(
-      (sum, def) => sum + computeDifficulty(def, gameState.cardLibrary),
-      0,
-    );
-    addToCombatLog(`--- Wave 1 --- (Threat: ${Math.round(threatScore)})`);
-    addToCombatLog(`── Round 1 ── (Threat: ${Math.round(threatScore)})`);
-  }
+  const initialThreatScore = enemyCharacters.reduce(
+    (sum, def) => sum + computeDifficulty(def, gameState.cardLibrary),
+    0,
+  );
+  beginPreFightSetup({
+    source: 'run_start',
+    requiredLineupSize: 4,
+    pendingThreatScore: initialThreatScore,
+  });
   
   setGameState(gameState);
   
@@ -288,13 +287,6 @@ async function initGame(): Promise<void> {
   // Initial render
   render();
 
-  // If the first character in the queue is an enemy, trigger their AI
-  if (gameState.characters.length > 0) {
-    const firstChar = gameState.characters.find(c => c.id === gameState.currentPlayerId);
-    if (firstChar && !firstChar.isPlayer) {
-      setTimeout(() => processEnemyTurn(firstChar, render), 1000);
-    }
-  }
     } finally {
       initPromise = null;
     }

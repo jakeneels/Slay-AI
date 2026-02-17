@@ -238,6 +238,8 @@ export function startNextWave(): void {
   gameState.turnIndex = 0;
   gameState.roundNumber = 0;
   gameState.playedCardsStack = [];
+  // Stage transition should fully clear lingering lane hazards (fire, etc.).
+  gameState.laneHazards = [];
 
   // Draw initial hands for allies
   for (const ally of livingAllies) {

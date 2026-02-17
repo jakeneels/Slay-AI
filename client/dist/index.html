@@ -16,16 +16,6 @@
             max-width: 1800px;
             margin: 0 auto;
         }
-        h1 {
-            font-size: 2rem;
-            font-weight: bold;
-            margin-bottom: 0.5rem;
-        }
-        .subtitle {
-            color: #9ca3af;
-            font-size: 0.875rem;
-            margin-bottom: 1rem;
-        }
         .game-row {
             display: flex;
             gap: 0;
@@ -54,6 +44,7 @@
             flex-shrink: 0;
             height: auto;
             align-self: stretch;
+            position: relative;
         }
         #devPanel.collapsed {
             width: 32px;
@@ -98,6 +89,22 @@
         #devPanelInner {
             position: relative;
             height: 100%;
+        }
+        #devPanelResizeHandle {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 8px;
+            height: 100%;
+            cursor: ew-resize;
+            z-index: 5;
+            background: transparent;
+        }
+        #devPanelResizeHandle:hover {
+            background: rgba(148, 163, 184, 0.12);
+        }
+        #devPanel.collapsed #devPanelResizeHandle {
+            display: none;
         }
         #devPanelContent {
             padding: 12px;
@@ -178,18 +185,17 @@
             margin-bottom: 2px;
         }
     </style>
-  <script type="module" crossorigin src="/assets/index-DXgcQnEI.js"></script>
+  <script type="module" crossorigin src="/Slay-AI/assets/index-BYYR4JYR.js"></script>
 </head>
 <body>
     <div class="container">
-        <h1>ai</h1>
-        <p class="subtitle">Pure PIXI.js click enemies to attack, use End Turn button.</p>
         <div class="game-row">
             <div class="game-container">
                 <div id="gameCanvas"></div>
             </div>
             <div id="devPanel" class="expanded">
                 <div id="devPanelInner">
+                    <div id="devPanelResizeHandle" aria-hidden="true"></div>
                     <div id="devPanelContent"></div>
                     <button id="devPanelToggle">DEV</button>
                 </div>
@@ -200,6 +206,6 @@
     <!-- Load PIXI.js from CDN -->
     <!-- <script src="https://cdn.jsdelivr.net/npm/pixi.js@8.12.0/dist/pixi.min.js"></script> -->
     <!-- Load js-yaml for content loading -->
-    <!-- <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script> -->
+    <!-- <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script> -->
 </body>
 </html>

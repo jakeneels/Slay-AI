@@ -1,0 +1,36 @@
+schemaVersion: 1
+id: actual_kyle
+name: "Actual Kyle"
+title: "Golden Monolith"
+description: "A towering zealot wrapped in radiant metal, advancing as an immovable wall."
+role: tank
+theme: "Large frontliner that controls space and shrugs off pressure."
+sprite: "/assets/game/enemies/actual-kyle.png"
+visual:
+  preset: large
+  scale: 2.2
+  anchorX: 0.5
+  anchorY: 0.92
+  offsetX: 0
+  offsetY: 8
+isPlayer: false
+slotSize: 3
+stats:
+  hp: 130
+  maxHp: 130
+  energy: 3
+  maxEnergy: 3
+  speed: 0
+  suppression: 3
+  suppressionResist: 3
+mechanics:
+  - "Occupies 3 enemy slots"
+  - "High durability and suppression pressure"
+  - "AOE-focused attacks"
+tags: ["enemy", "elite", "tank", "zealot", "radiation"]
+startingDeck:
+  - "rad_cleave"
+  - "shockwave"
+  - "rad_wave"
+  - "shield_dome"
+  - "defend"

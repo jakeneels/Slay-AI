@@ -30,6 +30,22 @@ let gameState: GameState = {
   currentMap: pickRandomMap(undefined, 1),
   playedCardsStack: [],
   laneHazards: [],
+  preFight: {
+    active: false,
+    page: 'lineup',
+    useDefaultCards: true,
+    candidateAllyIds: [],
+    selectedAllyIds: [],
+    requiredLineupSize: 0,
+    source: 'run_start',
+    pendingThreatScore: null,
+    activeCardEditorAllyId: null,
+    activeCardSlotIndex: null,
+    cardCatalogScroll: 0,
+    cardPoolIds: [],
+    cardsByAlly: {},
+    threatBudget: 0,
+  },
 };
 
 /**

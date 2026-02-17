@@ -21,15 +21,36 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
   const endBtnReserve = 160;
   const rightBound = WIDTH - endBtnReserve;
 
-  // Row 1: Round badge + turn text (compact)
+  // Row 1: Stage + round badges + turn text (compact)
   const headerY = 12;
+  const stageBadgeW = 80;
+  const badgeH = 26;
+  const stageBg = new Graphics();
+  stageBg.roundRect(0, 0, stageBadgeW, badgeH, 6)
+    .fill(0x3a2f0f)
+    .stroke({ width: 1, color: 0xf59e0b });
+  stageBg.x = 20;
+  stageBg.y = headerY;
+  stageBg.zIndex = 2000;
+  stageBg.eventMode = 'none';
+  app.stage.addChild(stageBg);
+
+  const stageText = new Text({
+    text: `Stage ${gameState.waveNumber}`,
+    style: { fill: 0xfde68a, fontSize: 13, fontWeight: 'bold' }
+  });
+  stageText.x = 20 + (stageBadgeW - stageText.width) / 2;
+  stageText.y = headerY + (badgeH - stageText.height) / 2;
+  stageText.zIndex = 2001;
+  stageText.eventMode = 'none';
+  app.stage.addChild(stageText);
+
   const roundBadgeW = 68;
-  const roundBadgeH = 26;
   const roundBg = new Graphics();
-  roundBg.roundRect(0, 0, roundBadgeW, roundBadgeH, 6)
+  roundBg.roundRect(0, 0, roundBadgeW, badgeH, 6)
     .fill(0x1e3a5f)
     .stroke({ width: 1, color: 0x3b82f6 });
-  roundBg.x = 20;
+  roundBg.x = 20 + stageBadgeW + 8;
   roundBg.y = headerY;
   roundBg.zIndex = 2000;
   roundBg.eventMode = 'none';
@@ -39,8 +60,8 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
     text: `Rd ${gameState.roundNumber}`,
     style: { fill: 0x93c5fd, fontSize: 14, fontWeight: 'bold' }
   });
-  roundText.x = 20 + (roundBadgeW - roundText.width) / 2;
-  roundText.y = headerY + (roundBadgeH - roundText.height) / 2;
+  roundText.x = roundBg.x + (roundBadgeW - roundText.width) / 2;
+  roundText.y = headerY + (badgeH - roundText.height) / 2;
   roundText.zIndex = 2001;
   roundText.eventMode = 'none';
   app.stage.addChild(roundText);
@@ -49,8 +70,8 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
     text: `${currentPlayer?.name ?? '—'}'s turn`,
     style: { fill: 0xffffff, fontSize: 16, fontWeight: 'bold' }
   });
-  turnText.x = 20 + roundBadgeW + 12;
-  turnText.y = headerY + (roundBadgeH - turnText.height) / 2;
+  turnText.x = roundBg.x + roundBadgeW + 12;
+  turnText.y = headerY + (badgeH - turnText.height) / 2;
   turnText.eventMode = 'none';
   turnText.zIndex = 2000;
   app.stage.addChild(turnText);
