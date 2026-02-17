@@ -8,14 +8,14 @@ copies: 1
 targeting: aoe
 aoeSlots: 4
 minRange: 3
-maxRange: 7
+maxRange: 9
 # optimalRange: 3
 exhaust: false
 expires_after_turns: 0
 description: "Fly a rigged drone for explosive area damage."
 effects:
   - kind: damage
-    amount: 15
+    amount: 16
 animation:
   damage:
     projectileColor: 0x00ffff  # Cyan/blue lightning

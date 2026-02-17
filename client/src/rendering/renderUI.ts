@@ -142,11 +142,32 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
       
       const selectedText = new Text({
         text: `Selected: ${card.name} - ${instructionText}`,
-        style: { fill: 0x22c55e, fontSize: 14 }
+        style: {
+          fill: 0x4ade80,
+          fontSize: 14,
+          fontWeight: 'bold',
+          stroke: { color: 0x052e16, width: 3 }
+        }
       });
-      // Keep card targeting instructions clear of the top HUD by centering and moving lower.
-      selectedText.x = (WIDTH - selectedText.width) / 2;
-      selectedText.y = 102;
+      const selectedPadX = 14;
+      const selectedPadY = 6;
+      const selectedPillW = selectedText.width + selectedPadX * 2;
+      const selectedPillH = selectedText.height + selectedPadY * 2;
+      const selectedPillX = (WIDTH - selectedPillW) / 2;
+      const selectedPillY = 297;
+
+      const selectedBg = new Graphics();
+      selectedBg.roundRect(0, 0, selectedPillW, selectedPillH, 8)
+        .fill({ color: 0x0b1220, alpha: 0.86 })
+        .stroke({ width: 2, color: 0x16a34a, alpha: 0.95 });
+      selectedBg.x = selectedPillX;
+      selectedBg.y = selectedPillY;
+      selectedBg.eventMode = 'none';
+      selectedBg.zIndex = 1999;
+      app.stage.addChild(selectedBg);
+
+      selectedText.x = selectedPillX + selectedPadX;
+      selectedText.y = selectedPillY + selectedPadY;
       selectedText.eventMode = 'none';
       selectedText.zIndex = 2000;
       app.stage.addChild(selectedText);

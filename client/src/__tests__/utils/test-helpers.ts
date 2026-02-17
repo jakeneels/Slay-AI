@@ -111,6 +111,8 @@ export function createMockGameState(overrides?: Partial<GameState>): GameState {
     combatResult: overrides?.combatResult ?? 'ongoing',
     pendingReward: overrides?.pendingReward ?? null,
     waveNumber: overrides?.waveNumber ?? 1,
+    playedCardsStack: overrides?.playedCardsStack || [],
+    laneHazards: overrides?.laneHazards || [],
     ...overrides
   };
 }

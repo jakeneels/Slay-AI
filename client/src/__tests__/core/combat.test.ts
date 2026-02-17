@@ -29,6 +29,7 @@ vi.mock('../../../animations.js', () => ({
   animateEnhancedScreenShake: vi.fn().mockResolvedValue(undefined),
   animateCameraZoom: vi.fn().mockResolvedValue(undefined),
   animateParticles: vi.fn().mockResolvedValue(undefined),
+  animateCardPlayShowcase: vi.fn().mockResolvedValue(undefined),
   registerCharacterSprite: vi.fn(),
 }));
 
@@ -3492,6 +3493,72 @@ describe('combat', () => {
       
       vi.useRealTimers();
     });
+
+    it('should move before casting aoe when forward position improves hits', async () => {
+      vi.useFakeTimers();
+      setApp(mockApp);
+
+      const player1 = createMockCharacter({
+        id: 'player1',
+        name: 'Player 1',
+        hp: 100,
+        isPlayer: true,
+        slotIndex: 0,
+      });
+      const player2 = createMockCharacter({
+        id: 'player2',
+        name: 'Player 2',
+        hp: 100,
+        isPlayer: true,
+        slotIndex: 1,
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        hp: 100,
+        energy: 4,
+        maxEnergy: 4,
+        isPlayer: false,
+        slotIndex: 4,
+        speed: 0,
+      });
+
+      const shockwave = createMockCard({
+        id: 'shockwave_test',
+        name: 'Shockwave Test',
+        cost: { energy: 3 },
+        targeting: 'aoe',
+        targetSide: 'enemy',
+        aoeSlots: 2,
+        maxRange: 3,
+        effects: [{ kind: 'damage', amount: 5 }],
+      });
+
+      setupGameState({
+        characters: [player1, player2, enemy],
+        cardLibrary: { shockwave_test: shockwave },
+        currentPlayerId: 'enemy1',
+        turnQueue: ['enemy1', 'player1', 'player2'],
+        turnQueueIndex: 0,
+        roundNumber: 1,
+      });
+
+      const instanceId = createCardInstance('shockwave_test');
+      if (instanceId) {
+        enemy.hand.push(instanceId);
+      }
+
+      const renderCallback = vi.fn();
+      const turnPromise = processEnemyTurn(enemy, renderCallback);
+
+      await vi.runAllTimersAsync();
+      await turnPromise;
+
+      expect(enemy.slotIndex).toBe(3);
+      expect(enemy.energy).toBe(0);
+
+      vi.useRealTimers();
+    });
   });
 
   describe('moveCharacterForward', () => {
@@ -4335,6 +4402,227 @@ describe('combat', () => {
       expect(target.hp).toBe(100);
       const p = state.characters.find(c => c.id === 'player1')!;
       expect(p.energy).toBe(5);
+    });
+  });
+
+  describe('lane hazards', () => {
+    it('should create a lane hazard from card effects', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        energy: 3,
+        isPlayer: true,
+        slotIndex: 0
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        hp: 30,
+        isPlayer: false,
+        slotIndex: 3
+      });
+
+      const incendiary = createMockCard({
+        id: 'incendiary',
+        name: 'Incendiary',
+        cost: { energy: 1 },
+        targeting: 'enemy',
+        effects: [
+          { kind: 'damage', amount: 3 },
+          { kind: 'lane_hazard', damage: 5, duration_turns: 2 }
+        ]
+      });
+
+      setupGameState({
+        characters: [player, enemy],
+        cardLibrary: { incendiary },
+        currentPlayerId: 'player1'
+      });
+
+      const instanceId = createCardInstance('incendiary');
+      if (instanceId) player.hand.push(instanceId);
+
+      await playCard(instanceId!, 'enemy1');
+
+      const state = getGameState();
+      expect(state.laneHazards).toHaveLength(1);
+      expect(state.laneHazards[0].slotIndex).toBe(3);
+      expect(state.laneHazards[0].damage).toBe(5);
+      expect(state.laneHazards[0].remainingTurns).toBe(2);
+    });
+
+    it('should stack damage and duration when lane hazard is re-applied', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        energy: 5,
+        isPlayer: true,
+        slotIndex: 0
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        hp: 40,
+        isPlayer: false,
+        slotIndex: 3
+      });
+
+      const incendiary = createMockCard({
+        id: 'incendiary_stack',
+        name: 'Incendiary Stack',
+        cost: { energy: 1 },
+        targeting: 'enemy',
+        effects: [
+          { kind: 'damage', amount: 1 },
+          { kind: 'lane_hazard', damage: 4, duration_turns: 3 }
+        ]
+      });
+
+      setupGameState({
+        characters: [player, enemy],
+        cardLibrary: { incendiary_stack: incendiary },
+        currentPlayerId: 'player1'
+      });
+
+      const first = createCardInstance('incendiary_stack');
+      const second = createCardInstance('incendiary_stack');
+      if (first) player.hand.push(first);
+      if (second) player.hand.push(second);
+
+      await playCard(first!, 'enemy1');
+      await playCard(second!, 'enemy1');
+
+      const hazard = getGameState().laneHazards[0];
+      expect(hazard.damage).toBe(8);
+      expect(hazard.remainingTurns).toBe(6);
+    });
+
+    it('should damage characters when moving through a hazard lane', () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        hp: 40,
+        energy: 3,
+        isPlayer: true,
+        slotIndex: 0
+      });
+
+      setupGameState({
+        characters: [player],
+        currentPlayerId: 'player1',
+        laneHazards: [{
+          slotIndex: 1,
+          damage: 6,
+          remainingTurns: 2,
+          ownerIsPlayer: false
+        }]
+      });
+
+      const moved = moveCharacterForward('player1');
+      expect(moved).toBe(true);
+      expect(player.slotIndex).toBe(1);
+      expect(player.hp).toBe(34);
+    });
+
+    it('should damage targets knocked through a hazard lane', () => {
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        hp: 40,
+        isPlayer: false,
+        slotIndex: 2
+      });
+
+      setupGameState({
+        characters: [enemy],
+        laneHazards: [{
+          slotIndex: 3,
+          damage: 4,
+          remainingTurns: 3,
+          ownerIsPlayer: true
+        }]
+      });
+
+      const moved = applyKnockback(enemy, 2);
+      expect(moved).toBe(2);
+      expect(enemy.slotIndex).toBe(4);
+      expect(enemy.hp).toBe(36);
+    });
+
+    it('should damage character at start of turn when standing in hazard', () => {
+      const player1 = createMockCharacter({
+        id: 'player1',
+        name: 'Player One',
+        isPlayer: true,
+        slotIndex: 0,
+        energy: 3
+      });
+      const player2 = createMockCharacter({
+        id: 'player2',
+        name: 'Player Two',
+        hp: 30,
+        isPlayer: true,
+        slotIndex: 1,
+        energy: 3
+      });
+
+      setupGameState({
+        characters: [player1, player2],
+        currentPlayerId: 'player1',
+        turnQueue: ['player1', 'player2'],
+        turnQueueIndex: 0,
+        roundNumber: 1,
+        laneHazards: [{
+          slotIndex: 1,
+          damage: 7,
+          remainingTurns: 2,
+          ownerIsPlayer: false
+        }]
+      });
+
+      endTurn();
+
+      expect(getGameState().currentPlayerId).toBe('player2');
+      expect(player2.hp).toBe(23);
+    });
+
+    it('should damage at round end and expire hazards', () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        hp: 50,
+        isPlayer: true,
+        slotIndex: 0,
+        energy: 3
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        hp: 30,
+        isPlayer: false,
+        slotIndex: 6
+      });
+
+      setupGameState({
+        characters: [player, enemy],
+        currentPlayerId: 'player1',
+        turnQueue: ['player1'],
+        turnQueueIndex: 0,
+        roundNumber: 1,
+        laneHazards: [{
+          slotIndex: 0,
+          damage: 5,
+          remainingTurns: 1,
+          ownerIsPlayer: false
+        }]
+      });
+
+      endTurn();
+
+      const state = getGameState();
+      expect(player.hp).toBe(45);
+      expect(state.laneHazards).toHaveLength(0);
+      expect(state.roundNumber).toBe(2);
     });
   });
 });

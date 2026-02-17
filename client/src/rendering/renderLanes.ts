@@ -1,13 +1,15 @@
 // Lane rendering - visual slot indicators with debug indexes
 
 import type { Application } from 'pixi.js';
-import { Graphics, Text } from 'pixi.js';
+import { Container, Graphics, Text } from 'pixi.js';
 import { WIDTH, HEIGHT, MAX_SLOTS, ALLY_SLOT_END, ENEMY_SLOT_START, SPRITE_CENTER } from '../core/constants.js';
+import type { GameState } from '../core/types.js';
 
 const BATTLE_Y_OFFSET = 265;
 const BATTLE_SIDE_OVERSCAN = 40;
 const SHOW_LANES_STORAGE_KEY = 'slayai:debug:show-lanes';
 let showLanesSetting = true;
+const laneAnimationCleanups: Array<() => void> = [];
 
 function parseBoolFlag(value: string | null): boolean {
   return value === '1' || value === 'true' || value === 'on';
@@ -42,12 +44,20 @@ export function setShowLanesSetting(show: boolean): void {
   }
 }
 
+export function cleanupLaneAnimations(): void {
+  while (laneAnimationCleanups.length > 0) {
+    const cleanup = laneAnimationCleanups.pop();
+    if (!cleanup) continue;
+    cleanup();
+  }
+}
+
 /**
  * Render lane indicators on the battlefield.
  * Shows subtle vertical lanes for each slot, a divider between ally/enemy sides,
  * and debug-only slot index labels at the bottom.
  */
-export function renderLanes(app: Application): void {
+export function renderLanes(app: Application, gameState: GameState): void {
   if (!showLanesSetting) return;
 
   const battleY = HEIGHT - BATTLE_Y_OFFSET;
@@ -113,6 +123,94 @@ export function renderLanes(app: Application): void {
     indexLabel.eventMode = 'none';
     indexLabel.zIndex = -498;
     app.stage.addChild(indexLabel);
+  }
+
+  // Lane hazard overlays (render above lane strips but below characters).
+  for (const hazard of gameState.laneHazards) {
+    const slot = hazard.slotIndex;
+    if (slot < 0 || slot >= MAX_SLOTS) continue;
+    const slotX = leftBase + slot * slotSpacing;
+    const visualCenter = slotX + SPRITE_CENTER;
+    const laneLeft = Math.max(0, visualCenter - halfLane);
+    const laneRight = Math.min(WIDTH, visualCenter + halfLane);
+    const laneW = laneRight - laneLeft;
+
+    const hazardContainer = new Container();
+    hazardContainer.zIndex = -350;
+    hazardContainer.eventMode = 'none';
+    app.stage.addChild(hazardContainer);
+
+    const hazardOverlay = new Graphics();
+    hazardOverlay.rect(laneLeft, laneTop, laneW, laneHeight)
+      .fill({ color: 0xff5a1f, alpha: 0.14 })
+      .stroke({ width: 2, color: 0xffa726, alpha: 0.45 });
+    hazardOverlay.eventMode = 'none';
+    hazardContainer.addChild(hazardOverlay);
+
+    const hazardGlow = new Graphics();
+    hazardGlow.rect(laneLeft, laneTop, laneW, laneHeight)
+      .fill({ color: 0xffd54f, alpha: 0.06 });
+    hazardGlow.eventMode = 'none';
+    hazardContainer.addChild(hazardGlow);
+
+    const emberCount = 8;
+    const embers = Array.from({ length: emberCount }, () => {
+      const ember = new Graphics();
+      ember.circle(0, 0, 1.7 + Math.random() * 1.8)
+        .fill({ color: 0xffc26b, alpha: 0.75 });
+      ember.x = laneLeft + Math.random() * laneW;
+      ember.y = laneBottom - 14 - Math.random() * 60;
+      ember.eventMode = 'none';
+      ember.alpha = 0.45 + Math.random() * 0.45;
+      hazardContainer.addChild(ember);
+      return {
+        sprite: ember,
+        speed: 22 + Math.random() * 28,
+        drift: (Math.random() - 0.5) * 12,
+      };
+    });
+
+    const hazardText = new Text({
+      text: `${hazard.damage} / ${hazard.remainingTurns}t`,
+      style: {
+        fill: 0xffd180,
+        fontSize: 10,
+        fontWeight: 'bold',
+        stroke: { color: 0x000000, width: 3 },
+      },
+    });
+    hazardText.x = visualCenter - hazardText.width / 2;
+    hazardText.y = laneTop + 22;
+    hazardText.alpha = 0.9;
+    hazardText.eventMode = 'none';
+    hazardText.zIndex = -349;
+    hazardContainer.addChild(hazardText);
+
+    let t = Math.random() * Math.PI * 2;
+    const tick = (ticker: { deltaMS: number }) => {
+      const dt = Math.max(0.001, ticker.deltaMS / 1000);
+      t += dt;
+      const flicker = 0.5 + 0.5 * Math.sin(t * 9);
+      const glow = 0.5 + 0.5 * Math.sin(t * 5 + 1.2);
+      hazardOverlay.alpha = 0.11 + flicker * 0.12;
+      hazardGlow.alpha = 0.04 + glow * 0.1;
+
+      for (const ember of embers) {
+        ember.sprite.y -= ember.speed * dt;
+        ember.sprite.x += ember.drift * dt;
+        const life = (laneBottom - ember.sprite.y) / laneHeight;
+        ember.sprite.alpha = Math.max(0, 0.85 - life);
+        if (ember.sprite.y < laneTop + 14) {
+          ember.sprite.y = laneBottom - 10 - Math.random() * 18;
+          ember.sprite.x = laneLeft + Math.random() * laneW;
+          ember.speed = 22 + Math.random() * 28;
+          ember.drift = (Math.random() - 0.5) * 12;
+          ember.sprite.alpha = 0.45 + Math.random() * 0.45;
+        }
+      }
+    };
+    app.ticker.add(tick);
+    laneAnimationCleanups.push(() => app.ticker.remove(tick));
   }
 
   // Prominent dashed divider between ally and enemy sides.

@@ -106,6 +106,12 @@ export interface DeckInjectEffect {
   copies?: number; // Number of copies (default 1)
 }
 
+export interface LaneHazardEffect {
+  kind: 'lane_hazard';
+  damage: number;
+  duration_turns: number;
+}
+
 // Union type for all card effects
 export type CardEffect = 
   | DamageEffect 
@@ -118,6 +124,7 @@ export type CardEffect =
   | StatusModifyEffect
   | StatusSpreadEffect
   | KnockbackEffect
+  | LaneHazardEffect
   | ModifierEffect 
   | DeckInjectEffect;
 
@@ -334,6 +341,14 @@ export interface PlayedCardEntry {
   isPlayer: boolean;
 }
 
+export interface LaneHazard {
+  slotIndex: number;
+  damage: number;
+  remainingTurns: number;
+  ownerIsPlayer: boolean;
+  sourceCardId?: string;
+}
+
 // ── Game state ───────────────────────────────────────────────────────
 
 export interface GameState {
@@ -358,6 +373,7 @@ export interface GameState {
   waveNumber: number;
   currentMap: string;
   playedCardsStack: PlayedCardEntry[];
+  laneHazards: LaneHazard[];
 }
 
 export interface LoadedContent {

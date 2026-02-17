@@ -1,0 +1,16 @@
+schemaVersion: 1
+id: rad_defend
+name: "Rad Armor"
+type: skill
+rarity: rare     #common, rare, epic, legendary, mythic.
+cost: 1
+copies: 3
+targeting: self
+exhaust: false
+expires_after_turns: 0
+description: "Grow a protective layer of radiation armor around yourself."
+effects:
+  - kind: grant_block_layer
+    amount: 5
+    decay_percent: 0
+

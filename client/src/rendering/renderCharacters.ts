@@ -654,7 +654,20 @@ function renderCharacter(
         renderCallback();
       }
     });
-    target.on('pointerleave', () => {
+    // Use pointerout (instead of pointerleave) because these HUD elements are
+    // recreated on every render; pointerleave can be missed when a hovered
+    // object is replaced during a re-render.
+    target.on('pointerout', () => {
+      if (setHoveredCharacter(null, 0, 0)) {
+        renderCallback();
+      }
+    });
+    target.on('pointerupoutside', () => {
+      if (setHoveredCharacter(null, 0, 0)) {
+        renderCallback();
+      }
+    });
+    target.on('pointercancel', () => {
       if (setHoveredCharacter(null, 0, 0)) {
         renderCallback();
       }

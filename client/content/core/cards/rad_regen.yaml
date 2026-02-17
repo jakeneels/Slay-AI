@@ -3,7 +3,7 @@ id: rad_bio
 name: "Rad Bio-Repair"
 type: skill
 rarity: rare
-cost: 2
+cost: 1
 copies: 2
 tags: [heal, regeneration, support]
 targeting: aoe

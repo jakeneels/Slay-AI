@@ -8,6 +8,7 @@ copies: 3
 tags: [radiation, ranged]
 targeting: enemy
 maxRange: 12
+minRange: 4
 exhaust: false
 expires_after_turns: 0
 description: "A slug laced with radioactive material. Deals light damage and irradiates exposed targets."

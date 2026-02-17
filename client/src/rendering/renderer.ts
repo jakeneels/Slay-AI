@@ -3,7 +3,7 @@
 import type { Application } from 'pixi.js';
 import { getGameState } from '../core/gameState.js';
 import { renderBackground } from './renderBackground.js';
-import { renderLanes } from './renderLanes.js';
+import { cleanupLaneAnimations, renderLanes } from './renderLanes.js';
 import { renderCharacters } from './renderCharacters.js';
 import { renderHand } from './renderHand.js';
 import { renderTurnInfo } from './renderUI.js';
@@ -38,6 +38,7 @@ export function render(): void {
   if (!app) return;
   
   const gameState = getGameState();
+  cleanupLaneAnimations();
   app.stage.removeChildren();
   app.stage.sortableChildren = true;
 
@@ -59,7 +60,7 @@ export function render(): void {
   }
   
   renderBackground(app);
-  renderLanes(app);
+  renderLanes(app, gameState);
   renderCharacters(app, gameState);
   renderHand(app, gameState);
   renderPlayedCardsStack(app, gameState);

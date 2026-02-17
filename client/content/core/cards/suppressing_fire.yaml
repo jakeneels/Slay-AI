@@ -14,7 +14,7 @@ expires_after_turns: 0
 description: "Lightning arcs across the battlefield, striking all enemies in range."
 effects:
   - kind: damage
-    amount: 8
+    amount: 12
   - kind: speed 
     amount: -1
     effectTarget: target

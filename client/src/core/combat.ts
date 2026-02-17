@@ -1,7 +1,7 @@
 // Combat logic - card playing, turn management, enemy AI
 
 import type { Application } from 'pixi.js';
-import type { Character, CardEffect, Card, BaseCardEffect, SpeedEffect, StatusSpreadEffect } from './types.js';
+import type { Character, CardEffect, Card, BaseCardEffect, SpeedEffect, StatusSpreadEffect, LaneHazardEffect } from './types.js';
 import { getGameState } from './gameState.js';
 import { getCard } from './card.js';
 import { drawCards } from './deck.js';
@@ -165,6 +165,82 @@ export function canOccupyRange(
     c.id !== excludingCharacterId &&
     rangesOverlap(getOccupiedSlots(c), occupiedRange)
   );
+}
+
+type HazardTrigger = 'movement' | 'turn_start' | 'round_end';
+
+function getHazardTriggerLabel(trigger: HazardTrigger): string {
+  switch (trigger) {
+    case 'turn_start':
+      return 'start of turn';
+    case 'round_end':
+      return 'round end';
+    case 'movement':
+    default:
+      return 'moving through fire';
+  }
+}
+
+function applyLaneHazardsToCharacter(
+  character: Character,
+  trigger: HazardTrigger,
+  renderCallback?: () => void,
+): number {
+  const gameState = getGameState();
+  if (character.hp <= 0) return 0;
+  const occupied = getOccupiedSlots(character);
+  const hazards = gameState.laneHazards.filter(h =>
+    h.remainingTurns > 0 &&
+    h.ownerIsPlayer !== character.isPlayer &&
+    occupied.includes(h.slotIndex)
+  );
+  if (hazards.length === 0) return 0;
+
+  let totalDamage = 0;
+  const triggerLabel = getHazardTriggerLabel(trigger);
+  for (const hazard of hazards) {
+    if (character.hp <= 0) break;
+    const baseDamage = Math.max(0, Math.floor(hazard.damage));
+    if (baseDamage <= 0) continue;
+    const actualDamage = applyDamageWithBlock(character, baseDamage);
+    if (actualDamage > 0) {
+      totalDamage += actualDamage;
+      addToCombatLog(`${character.name} takes ${actualDamage} fire damage (${triggerLabel})`);
+    }
+  }
+
+  if (totalDamage > 0 && renderCallback) {
+    renderCallback();
+  }
+  if (character.hp <= 0) {
+    logCharacterDefeated(character.name, character.id, character.isPlayer);
+    addToCombatLog(`${character.name} is defeated!`);
+  }
+  return totalDamage;
+}
+
+function checkCombatResolutionAfterHazards(): void {
+  const gameState = getGameState();
+  const livingEnemies = gameState.characters.filter(c => !c.isPlayer && c.hp > 0);
+  const livingAllies = gameState.characters.filter(c => c.isPlayer && c.hp > 0);
+
+  if (livingEnemies.length === 0 && gameState.combatResult === 'ongoing') {
+    logAllEnemiesDead();
+    gameState.combatResult = 'victory';
+    const gearIds = Object.keys(gameState.gearLibrary);
+    if (gearIds.length > 0) {
+      const randomId = gearIds[Math.floor(Math.random() * gearIds.length)];
+      gameState.pendingReward = gameState.gearLibrary[randomId];
+    }
+    gameState.isProcessingTurn = true;
+    addToCombatLog('Victory! All enemies defeated.');
+  }
+
+  if (livingAllies.length === 0 && gameState.combatResult === 'ongoing') {
+    logAllAlliesDead();
+    gameState.combatResult = 'defeat';
+    addToCombatLog('Defeat! All allies have fallen.');
+  }
 }
 
 /**
@@ -383,19 +459,18 @@ function getAITargetCandidates(card: Card, caster: Character): Character[] {
   }
 }
 
+type AoePlan = {
+  targetId: string | null;
+  score: number;
+  opponentHits: number;
+};
+
 /**
  * For an AOE card, find the best center slot that maximises damage to opponents
- * while minimising friendly-fire.  Evaluates every in-range slot and returns the
- * targetId string to pass to playCard, or null if no slot is worth casting on.
- *
- * Scoring per character caught in the blast:
- *   +2  opponent
- *  -1.5 allied character (not self)
- *  -10  self if the hit would be lethal, -3 otherwise
- *
- * The card is only worth casting when the best score is > 0.
+ * while minimising friendly-fire. Evaluates every in-range slot from the provided
+ * casterSlot and returns score metadata for AI planning.
  */
-function pickBestAoeTarget(card: Card, caster: Character): string | null {
+function evaluateBestAoePlan(card: Card, caster: Character, casterSlot: number): AoePlan {
   const gameState = getGameState();
   const aoeSlots = card.aoeSlots ?? 3;
 
@@ -409,30 +484,33 @@ function pickBestAoeTarget(card: Card, caster: Character): string | null {
 
   let bestScore = -Infinity;
   let bestTargetId: string | null = null;
+  let bestOpponentHits = 0;
 
   const allLiving = gameState.characters.filter(c => c.hp > 0);
 
   for (let slot = 0; slot < MAX_SLOTS; slot++) {
     // Range check from caster
-    const dist = Math.abs(caster.slotIndex - slot);
+    const dist = Math.abs(casterSlot - slot);
     if (card.maxRange && dist > card.maxRange) continue;
     if (card.minRange && dist < card.minRange) continue;
 
     // Who would the blast hit?
     let targets = calculateAoeTargets(slot, 'all', aoeSlots);
     if (card.maxRange) {
-      targets = targets.filter(t => Math.abs(caster.slotIndex - t.slotIndex) <= card.maxRange!);
+      targets = targets.filter(t => Math.abs(casterSlot - t.slotIndex) <= card.maxRange!);
     }
     if (targets.length === 0) continue;
 
     let score = 0;
     let hitsOpponent = false;
+    let opponentHits = 0;
 
     for (const t of targets) {
       if (t.isPlayer !== caster.isPlayer) {
         // Hitting an opponent — good
         score += 2;
         hitsOpponent = true;
+        opponentHits++;
       } else if (t.id === caster.id) {
         // Hitting self — very bad, especially if lethal
         score -= (caster.hp <= estimatedDamage) ? 10 : 3;
@@ -447,13 +525,49 @@ function pickBestAoeTarget(card: Card, caster: Character): string | null {
 
     if (score > bestScore) {
       bestScore = score;
+      bestOpponentHits = opponentHits;
       // Use the character on that slot (if any) as the target, else a raw slot ref
       const charOnSlot = allLiving.find(c => getOccupiedSlots(c).includes(slot));
       bestTargetId = charOnSlot ? charOnSlot.id : `slot:${slot}`;
     }
   }
 
-  return bestScore > 0 ? bestTargetId : null;
+  if (bestScore <= 0 || !bestTargetId) {
+    return { targetId: null, score: -Infinity, opponentHits: 0 };
+  }
+  return { targetId: bestTargetId, score: bestScore, opponentHits: bestOpponentHits };
+}
+
+function canMoveForwardForPlanning(char: Character): boolean {
+  const allLiving = getGameState().characters.filter(c => c.hp > 0);
+  const enemies = allLiving.filter(c => c.isPlayer !== char.isPlayer);
+  const friendlies = allLiving.filter(c => c.isPlayer === char.isPlayer && c.id !== char.id);
+  const slotSize = getCharacterSlotSize(char);
+  const targetSlot = char.isPlayer ? char.slotIndex + 1 : char.slotIndex - 1;
+  const targetRange = Array.from({ length: slotSize }, (_, i) => targetSlot + i);
+
+  if (targetRange.some(slot => slot < 0 || slot >= MAX_SLOTS)) return false;
+
+  const blockedByEnemy = enemies.some(enemy =>
+    rangesOverlap(getOccupiedSlots(enemy), targetRange),
+  );
+  if (blockedByEnemy) return false;
+
+  const friendlyBlockers = friendlies.filter(friendly =>
+    rangesOverlap(getOccupiedSlots(friendly), targetRange),
+  );
+  if (friendlyBlockers.length === 0) {
+    return canOccupyRange(targetSlot, slotSize, char.isPlayer, allLiving, char.id);
+  }
+
+  const singleBlocker = friendlyBlockers.length === 1 ? friendlyBlockers[0] : null;
+  return !!(
+    slotSize === 1 &&
+    singleBlocker &&
+    getCharacterSlotSize(singleBlocker) === 1 &&
+    singleBlocker.slotIndex === targetSlot &&
+    canOccupyRange(char.slotIndex, 1, char.isPlayer, allLiving.filter(c => c.id !== char.id), singleBlocker.id)
+  );
 }
 
 /**
@@ -533,6 +647,10 @@ export function moveCharacterForward(characterId: string, renderCallback?: () =>
     }
     addToCombatLog(`${char.name} moves forward (${energyCost} energy)`);
   }
+  const movementHazardDamage = applyLaneHazardsToCharacter(char, 'movement', renderCallback);
+  if (movementHazardDamage > 0 || char.hp <= 0) {
+    checkCombatResolutionAfterHazards();
+  }
   if (renderCallback) renderCallback();
   return true;
 }
@@ -600,6 +718,10 @@ export function moveCharacterBack(characterId: string, renderCallback?: () => vo
     }
     addToCombatLog(`${char.name} moves back (${energyCost} energy)`);
   }
+  const movementHazardDamage = applyLaneHazardsToCharacter(char, 'movement', renderCallback);
+  if (movementHazardDamage > 0 || char.hp <= 0) {
+    checkCombatResolutionAfterHazards();
+  }
   if (renderCallback) renderCallback();
   return true;
 }
@@ -612,7 +734,7 @@ export function moveCharacterBack(characterId: string, renderCallback?: () => vo
  * "Back" for an enemy (isPlayer=false) = +1 slotIndex (away from allies)
  * "Back" for an ally  (isPlayer=true)  = -1 slotIndex (away from enemies)
  */
-export function applyKnockback(target: Character, amount: number): number {
+export function applyKnockback(target: Character, amount: number, renderCallback?: () => void): number {
   const gameState = getGameState();
   const allLiving = gameState.characters.filter(c => c.hp > 0);
   const targetSize = getCharacterSlotSize(target);
@@ -622,14 +744,20 @@ export function applyKnockback(target: Character, amount: number): number {
   const direction = amount >= 0 ? backDirection : -backDirection;
   const steps = Math.abs(amount);
   let slotsMoved = 0;
+  let hazardDamageTotal = 0;
 
   for (let step = 0; step < steps; step++) {
     const nextSlot = target.slotIndex + direction;
     if (!canOccupyRange(nextSlot, targetSize, target.isPlayer, allLiving, target.id)) break;
     target.slotIndex = nextSlot;
     slotsMoved++;
+    hazardDamageTotal += applyLaneHazardsToCharacter(target, 'movement', renderCallback);
+    if (target.hp <= 0) break;
   }
 
+  if (hazardDamageTotal > 0 || target.hp <= 0) {
+    checkCombatResolutionAfterHazards();
+  }
   return slotsMoved;
 }
 
@@ -798,6 +926,39 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
         }
         addToCombatLog(`${target.name} gains ${copies} ${effect.card} in deck`);
       });
+      continue;
+    }
+
+    if (effect.kind === 'lane_hazard') {
+      if (!targetId) continue;
+      const laneHazard = effect as LaneHazardEffect;
+      const slot = resolveTargetSlot(targetId);
+      if (slot === null) continue;
+
+      const damage = Math.max(0, Math.floor(laneHazard.damage));
+      const durationTurns = Math.max(1, Math.floor(laneHazard.duration_turns));
+      const existing = gameState.laneHazards.find(h =>
+        h.slotIndex === slot && h.ownerIsPlayer === currentPlayer.isPlayer
+      );
+
+      if (existing) {
+        existing.damage += damage;
+        existing.remainingTurns += durationTurns;
+        addToCombatLog(`${card.name} intensifies flames on lane ${slot} (+${damage} dmg, +${durationTurns} turns)`);
+      } else {
+        gameState.laneHazards.push({
+          slotIndex: slot,
+          damage,
+          remainingTurns: durationTurns,
+          ownerIsPlayer: currentPlayer.isPlayer,
+          sourceCardId: card.id,
+        });
+        addToCombatLog(`${card.name} ignites lane ${slot} (${damage} fire, ${durationTurns} turns)`);
+      }
+
+      if (renderCallback) {
+        renderCallback();
+      }
       continue;
     }
     
@@ -1104,7 +1265,7 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
         case 'knockback':
           const knockbackTarget = target;
           const slotBefore = knockbackTarget.slotIndex;
-          const slotsMoved = applyKnockback(knockbackTarget, effect.amount);
+          const slotsMoved = applyKnockback(knockbackTarget, effect.amount, renderCallback);
           if (slotsMoved > 0) {
             const knockLabel = effect.amount < 0 ? 'pulled' : 'knocked back';
             addToCombatLog(`${knockbackTarget.name} is ${knockLabel} ${slotsMoved} slot${slotsMoved > 1 ? 's' : ''} (${slotBefore} → ${knockbackTarget.slotIndex})!`);
@@ -1225,6 +1386,29 @@ export function buildTurnQueue(): string[] {
  */
 export function processRoundStart(renderCallback?: () => void): void {
   const gameState = getGameState();
+  let roundEndHazardDamage = 0;
+
+  // Round-end environmental damage (fires tick before the new round starts).
+  for (const character of gameState.characters.filter(c => c.hp > 0)) {
+    roundEndHazardDamage += applyLaneHazardsToCharacter(character, 'round_end', renderCallback);
+  }
+
+  // Hazards lose one turn at each round transition.
+  for (const hazard of gameState.laneHazards) {
+    hazard.remainingTurns--;
+    if (hazard.remainingTurns <= 0) {
+      addToCombatLog(`Flames on lane ${hazard.slotIndex} burn out`);
+    }
+  }
+  gameState.laneHazards = gameState.laneHazards.filter(h => h.remainingTurns > 0);
+  if (roundEndHazardDamage > 0) {
+    checkCombatResolutionAfterHazards();
+  }
+  if (roundEndHazardDamage > 0 && gameState.combatResult !== 'ongoing') {
+    if (renderCallback) renderCallback();
+    return;
+  }
+
   gameState.roundNumber++;
 
   // Build new queue
@@ -1342,6 +1526,21 @@ export function endTurn(renderCallback?: () => void): void {
   }
 
   gameState.currentPlayerId = nextPlayer.id;
+
+  // Start-of-turn environmental damage (standing in hazards).
+  const startHazardDamage = applyLaneHazardsToCharacter(nextPlayer, 'turn_start', renderCallback);
+  if (startHazardDamage > 0 || nextPlayer.hp <= 0) {
+    checkCombatResolutionAfterHazards();
+    if (gameState.combatResult !== 'ongoing') {
+      if (renderCallback) renderCallback();
+      return;
+    }
+    if (nextPlayer.hp <= 0) {
+      // Advance again if this character died before acting.
+      endTurn(renderCallback);
+      return;
+    }
+  }
 
   // Restore energy (resolved through modifier pipeline)
   const resolvedMaxEnergy = getModifierRegistry().resolve('maxEnergy', nextPlayer.maxEnergy, { character: nextPlayer });
@@ -1596,18 +1795,42 @@ export async function processEnemyTurn(enemy: Character, renderCallback?: () => 
     const shuffledCards = [...playableCards].sort(() => Math.random() - 0.5);
     let chosenCardId: string | null = null;
     let chosenTargetId: string | null = null;
+    let movedForBetterAoe = false;
 
     for (const candidateCardId of shuffledCards) {
       const candidateCard = getResolvedCard(candidateCardId);
       if (!candidateCard) continue;
 
       // AOE cards: pick the center slot that maximises opponent damage
-      // while avoiding friendly fire / self-harm
+      // while avoiding friendly fire / self-harm.
+      // If stepping forward first creates a materially better AOE, move then retry.
       if (candidateCard.targeting === 'aoe') {
-        const bestTargetId = pickBestAoeTarget(candidateCard, enemy);
-        if (bestTargetId) {
+        const currentPlan = evaluateBestAoePlan(candidateCard, enemy, enemy.slotIndex);
+        if (currentPlan.targetId) {
+          const aiMoveCost = getMoveCost(enemy);
+          const canSpendMove = aiMoveCost.usesCharge || enemy.energy >= aiMoveCost.energyCost;
+          if (
+            consecutiveMoveAttempts < MAX_MOVE_ATTEMPTS &&
+            canSpendMove &&
+            canMoveForwardForPlanning(enemy)
+          ) {
+            const forwardSlot = enemy.isPlayer ? enemy.slotIndex + 1 : enemy.slotIndex - 1;
+            const forwardPlan = evaluateBestAoePlan(candidateCard, enemy, forwardSlot);
+            const gainsOpponentHit = forwardPlan.opponentHits > currentPlan.opponentHits;
+            const gainsScore = forwardPlan.score > currentPlan.score + 0.75;
+            if (forwardPlan.targetId && (gainsOpponentHit || gainsScore)) {
+              const moved = moveCharacterForward(enemy.id, renderCallback);
+              if (moved) {
+                consecutiveMoveAttempts++;
+                await delay(600);
+                movedForBetterAoe = true;
+                break; // Re-evaluate from the new slot in the outer loop
+              }
+            }
+          }
+
           chosenCardId = candidateCardId;
-          chosenTargetId = bestTargetId;
+          chosenTargetId = currentPlan.targetId;
           break;
         }
         continue; // no good AOE placement — try next card
@@ -1631,6 +1854,10 @@ export async function processEnemyTurn(enemy: Character, renderCallback?: () => 
         chosenTargetId = validTargets[Math.floor(Math.random() * validTargets.length)].id;
         break;
       }
+    }
+
+    if (movedForBetterAoe) {
+      continue;
     }
 
     // No in-range target — try moving forward to close the gap

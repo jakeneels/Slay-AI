@@ -17,13 +17,13 @@ role: utility
 theme: "DoT / Debuffer – wears down enemies over time."
 isPlayer: true
 stats:
-  hp: 100
-  maxHp: 100
+  hp: 90
+  maxHp: 90
   energy: 6
   maxEnergy: 6
   speed: 0
   suppression: 1
-  suppressionResist: 0
+  suppressionResist: 1
 mechanics:
   - "Inflicts Radiation (ignores block, stacks)"
   - "Plus bleed/shock variants that respect block"
@@ -34,3 +34,5 @@ startingDeck:
   - "rad_bio"
   - "rad_wave"
   - "rad_phase"
+  - "rad_cleave"
+  - "rad_defend"

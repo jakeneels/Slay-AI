@@ -29,6 +29,7 @@ let gameState: GameState = {
   waveNumber: 1,
   currentMap: pickRandomMap(undefined, 1),
   playedCardsStack: [],
+  laneHazards: [],
 };
 
 /**
