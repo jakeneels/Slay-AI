@@ -13,7 +13,12 @@ import { MAX_SLOTS, WIDTH, HEIGHT, calculateRangeModifier } from '../core/consta
 import { createEnergyIcon } from './icons/energyIcon.js';
 import { createHealIcon } from './icons/healIcon.js';
 import { getStatusDisplay } from './statusConfig.js';
-import { setHoveredCharacter, setHoveredStatus } from './tooltipState.js';
+import {
+  registerCharacterHoverRegion,
+  registerStatusHoverRegion,
+  setHoveredCharacter,
+  setHoveredStatus,
+} from './tooltipState.js';
 import { getModifierRegistry } from '../core/modifiers.js';
 
 const BATTLE_Y_OFFSET = 265;
@@ -643,6 +648,9 @@ function renderCharacter(
     target.eventMode = 'static';
     target.cursor = 'help';
     target.on('pointerenter', () => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre3',hypothesisId:'N7',location:'renderCharacters.ts:bindCharacterHover:pointerenter',message:'character_hover_pointerenter',data:{characterId:char.id},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       const selectedCardId = getSelectedCardId();
       if (selectedCardId) {
         if (setHoveredCharacter(null, 0, 0)) {
@@ -658,6 +666,9 @@ function renderCharacter(
     // recreated on every render; pointerleave can be missed when a hovered
     // object is replaced during a re-render.
     target.on('pointerout', () => {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre3',hypothesisId:'N7',location:'renderCharacters.ts:bindCharacterHover:pointerout',message:'character_hover_pointerout',data:{characterId:char.id},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       if (setHoveredCharacter(null, 0, 0)) {
         renderCallback();
       }
@@ -746,6 +757,7 @@ function renderCharacter(
     hpHoverZone.x = barStartX;
     hpHoverZone.y = hpBarY;
     hpHoverZone.zIndex = Z_BARS + 3;
+    registerCharacterHoverRegion(char.id, barStartX, hpBarY, totalBarRowW, BAR_HEIGHT);
     bindCharacterHover(hpHoverZone);
     app.stage.addChild(hpHoverZone);
   }
@@ -822,6 +834,7 @@ function renderCharacter(
     energyHoverZone.x = barStartX;
     energyHoverZone.y = energyBarY;
     energyHoverZone.zIndex = Z_BARS + 3;
+    registerCharacterHoverRegion(char.id, barStartX, energyBarY, totalBarRowW, BAR_HEIGHT);
     bindCharacterHover(energyHoverZone);
     app.stage.addChild(energyHoverZone);
   }
@@ -1075,12 +1088,19 @@ function renderStatusBadges(
       const statusId = status.id;
       const stacks = status.stacks;
       if (!isOverflow) {
+        registerStatusHoverRegion(statusId, badgeX, currentRowTopY, badgeW, BADGE_H);
         bg.on('pointerenter', () => {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre3',hypothesisId:'N6',location:'renderCharacters.ts:statusBadge:pointerenter',message:'status_badge_pointerenter',data:{statusId,characterId:char.id},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
           if (setHoveredStatus(statusId, stacks, tooltipX, tooltipY)) {
             renderCallback();
           }
         });
-        bg.on('pointerleave', () => {
+        bg.on('pointerout', () => {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre3',hypothesisId:'N6',location:'renderCharacters.ts:statusBadge:pointerout',message:'status_badge_pointerout',data:{statusId,characterId:char.id},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
           if (setHoveredStatus(null, 0)) {
             renderCallback();
           }

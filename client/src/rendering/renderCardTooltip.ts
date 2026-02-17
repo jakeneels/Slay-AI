@@ -3,7 +3,7 @@
 
 import type { Application } from 'pixi.js';
 import { Graphics, Text } from 'pixi.js';
-import { getHoveredCard } from './tooltipState.js';
+import { getHoveredCard, setHoveredCard } from './tooltipState.js';
 import { getGameState } from '../core/gameState.js';
 import { getCard } from '../core/card.js';
 import { generateTooltipData } from '../utils/cardTooltipText.js';
@@ -20,6 +20,7 @@ import { createExhaustIcon } from './icons/exhaustIcon.js';
 import { createRangeIcon } from './icons/rangeIcon.js';
 import { createKnockbackIcon } from './icons/knockbackIcon.js';
 import { createPullIcon } from './icons/pullIcon.js';
+import { createLaneHazardIcon } from './icons/laneHazardIcon.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -32,7 +33,8 @@ const SUB_LINE_H = 14;
 const SECTION_GAP = 10;
 const BG_COLOR = 0x111827;
 const BG_ALPHA = 0.96;
-const Z_BASE = 5000;
+/** Above modals (pre-fight, victory) which use zIndex 8000 */
+const Z_BASE = 9000;
 
 const HEADER_FONT = 15;
 const BODY_FONT = 12;
@@ -47,6 +49,7 @@ const FLAVOR_FONT = 11;
 function createIconForKey(key: string, size: number): Graphics | null {
   switch (key) {
     case 'damage': return createDamageIcon(size);
+    case 'lane_hazard': return createLaneHazardIcon(size);
     case 'heal': return createHealIcon(size);
     case 'energy': return createEnergyIcon(size);
     case 'speed': return createSpeedIcon(size);
@@ -431,6 +434,9 @@ function measureTooltipHeight(data: TooltipData): number {
 export function renderCardTooltip(app: Application): void {
   const { cardId, x: anchorX, y: anchorY } = getHoveredCard();
   if (!cardId) return;
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre2',hypothesisId:'N3',location:'renderCardTooltip.ts:renderCardTooltip',message:'tooltip_render_attempt',data:{cardId,anchorX,anchorY},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 
   // Resolve the card template (not instance)
   const gameState = getGameState();
@@ -438,7 +444,10 @@ export function renderCardTooltip(app: Application): void {
   if (!card) {
     // Try card instance
     card = getCard(cardId) as any;
-    if (!card) return;
+    if (!card) {
+      setHoveredCard(null);
+      return;
+    }
   }
 
   const data = generateTooltipData(card);

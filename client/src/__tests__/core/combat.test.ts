@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { playCard, endTurn, setApp, processEnemyTurn, calculateAoeTargets, getCharactersByPosition, moveCharacterForward, moveCharacterBack, applyKnockback, canOccupyRange } from '../../core/combat.js';
 import { resetGameState, createMockCharacter, createMockCard, createMockCharacterDefinition, setupGameState } from '../utils/test-helpers.js';
-import { getGameState } from '../../core/gameState.js';
+import { canRollbackTurn, getGameState, rollbackTurn } from '../../core/gameState.js';
 import { createCardInstance } from '../../core/card.js';
 import { SLOTS_PER_SIDE } from '../../core/constants.js';
 import type { Application } from 'pixi.js';
@@ -43,6 +43,52 @@ describe('combat', () => {
   });
 
   describe('playCard', () => {
+    it('should allow rolling back a played card state', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        energy: 3,
+        hp: 100,
+        isPlayer: true
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        hp: 100,
+        isPlayer: false
+      });
+
+      const strikeCard = createMockCard({
+        id: 'strike',
+        name: 'Strike',
+        cost: { energy: 1 },
+        targeting: 'enemy',
+        effects: [{ kind: 'damage', amount: 6 }]
+      });
+
+      setupGameState({
+        characters: [player, enemy],
+        cardLibrary: { strike: strikeCard },
+        currentPlayerId: 'player1'
+      });
+
+      const instanceId = createCardInstance('strike');
+      if (instanceId) {
+        player.hand.push(instanceId);
+      }
+
+      await playCard(instanceId!, 'enemy1');
+      expect(canRollbackTurn()).toBe(true);
+      expect(enemy.hp).toBe(94);
+      expect(player.energy).toBe(2);
+
+      const rolledBack = rollbackTurn();
+      expect(rolledBack).toBe(true);
+      expect(getGameState().characters.find(c => c.id === 'enemy1')?.hp).toBe(100);
+      expect(getGameState().characters.find(c => c.id === 'player1')?.energy).toBe(3);
+      expect(getGameState().characters.find(c => c.id === 'player1')?.hand).toContain(instanceId);
+    });
+
     it('should play a damage card targeting enemy', async () => {
       const player = createMockCharacter({
         id: 'player1',
@@ -2897,6 +2943,78 @@ describe('combat', () => {
   });
 
   describe('endTurn', () => {
+    it('should allow rollback after endTurn advances queue', () => {
+      const player1 = createMockCharacter({
+        id: 'player1',
+        name: 'Player 1',
+        energy: 0,
+        maxEnergy: 3,
+        isPlayer: true
+      });
+      const player2 = createMockCharacter({
+        id: 'player2',
+        name: 'Player 2',
+        energy: 0,
+        maxEnergy: 3,
+        isPlayer: true
+      });
+
+      setupGameState({
+        characters: [player1, player2],
+        currentPlayerId: 'player1',
+        turnQueue: ['player1', 'player2'],
+        turnQueueIndex: 0,
+        roundNumber: 1
+      });
+
+      endTurn();
+      expect(getGameState().currentPlayerId).toBe('player2');
+      expect(canRollbackTurn()).toBe(true);
+
+      const rolledBack = rollbackTurn();
+      expect(rolledBack).toBe(true);
+      expect(getGameState().currentPlayerId).toBe('player1');
+      expect(getGameState().turnQueueIndex).toBe(0);
+    });
+
+    it('should ignore stale scheduled enemy turn after rollback', () => {
+      vi.useFakeTimers();
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        energy: 3,
+        maxEnergy: 3,
+        isPlayer: true
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        energy: 0,
+        maxEnergy: 3,
+        hp: 100,
+        isPlayer: false
+      });
+
+      setupGameState({
+        characters: [player, enemy],
+        currentPlayerId: 'player1',
+        turnQueue: ['player1', 'enemy1'],
+        turnQueueIndex: 0,
+        roundNumber: 1
+      });
+
+      endTurn();
+      expect(getGameState().currentPlayerId).toBe('enemy1');
+      expect(canRollbackTurn()).toBe(true);
+      expect(rollbackTurn()).toBe(true);
+      expect(getGameState().currentPlayerId).toBe('player1');
+
+      vi.advanceTimersByTime(1100);
+      expect(getGameState().isProcessingTurn).toBe(false);
+      expect(getGameState().currentPlayerId).toBe('player1');
+      vi.useRealTimers();
+    });
+
     it('should advance to next character in turn queue', () => {
       const player1 = createMockCharacter({
         id: 'player1',
@@ -3562,6 +3680,25 @@ describe('combat', () => {
   });
 
   describe('moveCharacterForward', () => {
+    it('should allow rollback after movement changes positions', () => {
+      const player = createMockCharacter({ id: 'player1', energy: 3, isPlayer: true, slotIndex: 0 });
+      const enemy = createMockCharacter({ id: 'enemy1', isPlayer: false, slotIndex: 3 });
+      setupGameState({
+        characters: [player, enemy],
+        characterLibrary: { player1: createMockCharacterDefinition({ id: 'player1' }) },
+        currentPlayerId: 'player1'
+      });
+
+      const result = moveCharacterForward('player1');
+      expect(result).toBe(true);
+      expect(player.slotIndex).toBe(1);
+      expect(canRollbackTurn()).toBe(true);
+
+      const rolledBack = rollbackTurn();
+      expect(rolledBack).toBe(true);
+      expect(getGameState().characters.find(c => c.id === 'player1')?.slotIndex).toBe(0);
+    });
+
     it('should move ally forward when target slot is empty', () => {
       const player = createMockCharacter({ id: 'player1', energy: 3, isPlayer: true, slotIndex: 0 });
       const enemy = createMockCharacter({ id: 'enemy1', isPlayer: false, slotIndex: 2 });

@@ -1,5 +1,5 @@
 schemaVersion: 1
-id: kael_tactician
+id: tactician
 name: "Kael"
 sprite: "/assets/game/allies/kael.png"
 visual:
@@ -33,4 +33,3 @@ startingDeck:
   - "shrapnel_grenade"
   - "lob_c4"
   - "sidearm"
-

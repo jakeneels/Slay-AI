@@ -35,8 +35,8 @@ teams:
 # Use character IDs as keys.
 characters: {}
   # Example overrides (uncomment to test):
-  # jacob_techblade:
-  #   maxEnergy: { add: 1 }               # Jacob gets +1 max energy
-  #   suppression_base_cost: { set: 0 }   # Jacob immune to suppression
-  # didi_sharpshooter:
-  #   damage_dealt: { multiply: 1.15 }    # Didi does 15% more damage
+  # techblade:
+  #   maxEnergy: { add: 1 }               # Techblade gets +1 max energy
+  #   suppression_base_cost: { set: 0 }   # Techblade immune to suppression
+  # sharpshooter:
+  #   damage_dealt: { multiply: 1.15 }    # Sharpshooter does 15% more damage

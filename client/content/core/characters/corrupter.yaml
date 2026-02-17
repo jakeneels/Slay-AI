@@ -1,6 +1,6 @@
 schemaVersion: 1
-id: nyx_corrupter
-name: "Nyx"
+id: corrupter
+name: "Didi"
 sprite: "/assets/game/allies/nyx.png"
 visual:
   preset: humanoid

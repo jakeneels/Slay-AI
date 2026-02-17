@@ -111,8 +111,25 @@ export function createMockGameState(overrides?: Partial<GameState>): GameState {
     combatResult: overrides?.combatResult ?? 'ongoing',
     pendingReward: overrides?.pendingReward ?? null,
     waveNumber: overrides?.waveNumber ?? 1,
+    currentMap: overrides?.currentMap ?? 'test_map',
     playedCardsStack: overrides?.playedCardsStack || [],
     laneHazards: overrides?.laneHazards || [],
+    preFight: overrides?.preFight ?? {
+      active: false,
+      page: 'lineup',
+      useDefaultCards: true,
+      candidateAllyIds: [],
+      selectedAllyIds: [],
+      requiredLineupSize: 0,
+      source: 'run_start',
+      pendingThreatScore: null,
+      activeCardEditorAllyId: null,
+      activeCardSlotIndex: null,
+      cardCatalogScroll: 0,
+      cardPoolIds: [],
+      cardsByAlly: {},
+      threatBudget: 0,
+    },
     ...overrides
   };
 }

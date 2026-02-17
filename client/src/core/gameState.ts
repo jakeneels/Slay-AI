@@ -1,6 +1,6 @@
 // Game state management
 
-import type { GameState } from './types.js';
+import type { GameState, RollbackSnapshotReason } from './types.js';
 import { pickRandomMap } from '../rendering/renderBackground.js';
 
 // Game state singleton
@@ -48,6 +48,21 @@ let gameState: GameState = {
   },
 };
 
+const MAX_ROLLBACK_SNAPSHOTS = 40;
+type HistorySnapshot = {
+  reason: RollbackSnapshotReason;
+  state: GameState;
+};
+let rollbackHistory: HistorySnapshot[] = [];
+let rollbackEpoch = 0;
+
+function cloneState(state: GameState): GameState {
+  if (typeof structuredClone === 'function') {
+    return structuredClone(state);
+  }
+  return JSON.parse(JSON.stringify(state)) as GameState;
+}
+
 /**
  * Get the current game state
  */
@@ -60,6 +75,8 @@ export function getGameState(): GameState {
  */
 export function setGameState(state: GameState): void {
   gameState = state;
+  rollbackHistory = [];
+  rollbackEpoch++;
 }
 
 /**
@@ -88,5 +105,39 @@ export function setSelectedCardId(cardId: string | null): void {
  */
 export function getSelectedCardId(): string | null {
   return gameState.selectedCardId;
+}
+
+export function pushHistorySnapshot(reason: RollbackSnapshotReason): void {
+  rollbackHistory.push({
+    reason,
+    state: cloneState(gameState),
+  });
+  if (rollbackHistory.length > MAX_ROLLBACK_SNAPSHOTS) {
+    rollbackHistory = rollbackHistory.slice(-MAX_ROLLBACK_SNAPSHOTS);
+  }
+}
+
+export function canRollbackTurn(): boolean {
+  return !gameState.isProcessingTurn && rollbackHistory.length > 0;
+}
+
+export function rollbackTurn(renderCallback?: () => void): boolean {
+  if (!canRollbackTurn()) return false;
+  const previous = rollbackHistory.pop();
+  if (!previous) return false;
+  gameState = cloneState(previous.state);
+  rollbackEpoch++;
+  if (renderCallback) {
+    renderCallback();
+  }
+  return true;
+}
+
+export function getRollbackHistorySize(): number {
+  return rollbackHistory.length;
+}
+
+export function getRollbackEpoch(): number {
+  return rollbackEpoch;
 }
 

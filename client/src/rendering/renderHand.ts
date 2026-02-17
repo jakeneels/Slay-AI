@@ -2,7 +2,7 @@
 
 import type { Application } from 'pixi.js';
 import { Graphics, Text, Rectangle } from 'pixi.js';
-import type { GameState, Character, Card, CardEffect, BaseCardEffect, StatusEffect, StatusModifyEffect, StatusSpreadEffect } from '../core/types.js';
+import type { GameState, Character, Card, CardEffect, BaseCardEffect, StatusEffect, StatusModifyEffect, StatusSpreadEffect, LaneHazardEffect } from '../core/types.js';
 import { WIDTH } from '../core/constants.js';
 
 /** Max slots shown on card position indicators (largest AOE in the game). */
@@ -20,9 +20,10 @@ import { createRarityIcon } from './icons/rarityIcon.js';
 import { createExhaustIcon } from './icons/exhaustIcon.js';
 import { createShieldIcon } from './icons/shieldIcon.js';
 import { createRangeIcon } from './icons/rangeIcon.js';
-import { calculateRangeModifier } from '../core/constants.js';
-import { setHoveredCard } from './tooltipState.js';
+import { createLaneHazardIcon } from './icons/laneHazardIcon.js';
+import { registerCardHoverRegion, setHoveredCard } from './tooltipState.js';
 import { getStatusDisplay } from './statusConfig.js';
+import { renderCardTile } from './cardTileRenderer.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -144,6 +145,7 @@ function createEffectIcon(kind: string, size: number): Graphics | null {
     case 'energy': return createEnergyIcon(size);
     case 'grant_block_layer': return createShieldIcon(size);
     case 'knockback': return createKnockbackIcon(size);
+    case 'lane_hazard': return createLaneHazardIcon(size);
     default: return null;
   }
 }
@@ -157,6 +159,7 @@ function effectColor(kind: string): number {
     case 'energy':                    return 0x38bdf8;   // blue
     case 'grant_block_layer':         return 0x60a5fa;   // blue
     case 'knockback':                 return 0xef4444;   // red-orange
+    case 'lane_hazard':               return 0xf97316;   // orange (fire)
     default:                          return 0xd1d5db;   // gray fallback
   }
 }
@@ -234,6 +237,26 @@ function renderSingleEffect(
     app.stage.addChild(opText);
     ex += opText.width;
 
+    return ex;
+  }
+
+  // Lane hazard: show damage icon + damage×turns
+  if (effect.kind === 'lane_hazard') {
+    const lh = effect as LaneHazardEffect;
+    const icon = createEffectIcon('lane_hazard', iconSize);
+    let ex = startX;
+    if (icon) {
+      icon.x = ex; icon.y = rowY;
+      app.stage.addChild(icon);
+      ex += iconSize + 1;
+      const text = new Text({
+        text: `${lh.damage}×${lh.duration_turns}t`,
+        style: { fill: effectColor('lane_hazard'), fontSize, fontWeight: 'bold' }
+      });
+      text.x = ex; text.y = rowY; text.eventMode = 'none';
+      app.stage.addChild(text);
+      ex += text.width;
+    }
     return ex;
   }
 
@@ -317,22 +340,19 @@ export function renderHand(app: Application, gameState: GameState): void {
 function renderPlayerHand(app: Application, _gameState: GameState, currentPlayer: Character): void {
   const cards = currentPlayer.hand;
   const cardW = 125;
-  const cardH = 155;
-  const spacing = 8;
+  const baseSpacing = 8;
+  const sideMargin = 14;
+  const minSpacing = -70;
+  let spacing = baseSpacing;
+  if (cards.length > 1) {
+    const maxAvailableW = WIDTH - sideMargin * 2;
+    const fitSpacing = (maxAvailableW - cards.length * cardW) / (cards.length - 1);
+    spacing = Math.max(minSpacing, Math.min(baseSpacing, fitSpacing));
+  }
   const totalW = cards.length * cardW + Math.max(0, cards.length - 1) * spacing;
-  const startX = (WIDTH - totalW) / 2;
+  const unclampedStartX = (WIDTH - totalW) / 2;
+  const startX = Math.max(sideMargin, unclampedStartX);
   const y = 10;
-
-  /** Draw a thin semi-transparent divider across the card. */
-  const drawDivider = (x: number, dy: number) => {
-    const line = new Graphics();
-    line.moveTo(0, 0).lineTo(cardW - 20, 0);
-    line.stroke({ width: 1, color: 0x374151 });
-    line.alpha = 0.5;
-    line.x = x + 10; line.y = dy;
-    line.eventMode = 'none';
-    app.stage.addChild(line);
-  };
 
   cards.forEach((cardId, i) => {
     const card = getCard(cardId);
@@ -344,185 +364,28 @@ function renderPlayerHand(app: Application, _gameState: GameState, currentPlayer
     const suppressionPenalty = getSuppressionCostPenalty(currentPlayer, card);
     const totalCost = card.cost.energy + suppressionPenalty;
     const canAfford = currentPlayer.energy >= totalCost;
-
-    // Card background
-    const bg = new Graphics();
-    bg.roundRect(0, 0, cardW, cardH, 8);
-    bg.fill(0x1f2937);
-    bg.stroke({
-      width: isSelected ? 3 : 1,
-      color: isSelected ? 0x22c55e : 0x374151
-    });
-    if (!canAfford) bg.alpha = 0.5;
-    bg.x = x; bg.y = y;
-    bg.eventMode = 'static'; bg.cursor = 'pointer';
-    bg.hitArea = new Rectangle(0, 0, cardW, cardH);
-    bg.on('pointerdown', async () => {
-      if (isSelected && card.targeting === 'self') {
-        await playCard(cardId, undefined, renderCallback);
-        setSelectedCardId(null);
-      } else {
-        setSelectedCardId(isSelected ? null : cardId);
-        renderCallback();
-      }
-    });
-    app.stage.addChild(bg);
-
-    // ── Header zone (y+8) ──
-    const name = new Text({
-      text: card.name,
-      style: { fill: 0xffffff, fontSize: 14, fontWeight: 'bold' }
-    });
-    name.x = x + 10; name.y = y + 8; name.eventMode = 'none';
-    app.stage.addChild(name);
-
-    // Rarity indicator (top-right) — interactive for tooltip
-    if (card.rarity) {
-      const ri = createRarityIcon(card.rarity, 8);
-      const riX = x + cardW - 15;
-      const riY = y + 8;
-      ri.x = riX; ri.y = riY;
-      ri.eventMode = 'static';
-      ri.cursor = 'help';
-      ri.hitArea = new Rectangle(-8, -8, 24, 24);
-      const templateId = card.id;
-      ri.on('pointerenter', () => {
-        if (setHoveredCard(templateId, riX, riY + 16)) renderCallback();
-      });
-      ri.on('pointerleave', () => {
-        if (setHoveredCard(null)) renderCallback();
-      });
-      app.stage.addChild(ri);
-    }
-
-    // ── Divider (y+26) ──
-    drawDivider(x, y + 26);
-
-    // ── Cost zone (y+30): [energy icon] N ──
-    const energyCost = card.cost.energy;
-    const energyIconSize = 12;
-    let costX = x + 10;
-    {
-      const ei = createEnergyIcon(energyIconSize);
-      ei.x = costX; ei.y = y + 30;
-      app.stage.addChild(ei);
-      costX += energyIconSize + 2;
-
-      if (suppressionPenalty > 0) {
-        const ct = new Text({
-          text: `${totalCost}`,
-          style: { fill: 0xfb923c, fontSize: 12, fontWeight: 'bold' }
-        });
-        ct.x = costX; ct.y = y + 30; ct.eventMode = 'none';
-        app.stage.addChild(ct);
-        costX += ct.width + 3;
-        const origCt = new Text({
-          text: `(${energyCost})`,
-          style: { fill: 0x6b7280, fontSize: 9 }
-        });
-        origCt.x = costX; origCt.y = y + 32; origCt.eventMode = 'none';
-        app.stage.addChild(origCt);
-      } else {
-        const ct = new Text({
-          text: `${energyCost}`,
-          style: { fill: 0x38bdf8, fontSize: 12, fontWeight: 'bold' }
-        });
-        ct.x = costX; ct.y = y + 30; ct.eventMode = 'none';
-        app.stage.addChild(ct);
-      }
-    }
-
-    // ── Divider (y+46) ──
-    drawDivider(x, y + 46);
-
-    // ── Effects zone (y+50): one effect per line, grouped by target ──
-    const groups = groupEffects(card);
-    const effectIconSize = 12;
-    const rowHeight = 17;
-    const groupGap = 6; // extra vertical space between target groups
-    let curY = y + 50;
-    let groupIdx = 0;
-
-    const reachableSlots = card.maxRange ? Math.min(card.maxRange, MAX_INDICATOR_SLOTS) : undefined;
-
-    for (const [key, effects] of groups) {
-      const lbl = labelForKey(key);
-      let indicatorWidth = 0;
-      const renderableEffects = effects.filter(e => e.kind !== 'modifier' && e.kind !== 'deck_inject');
-      if (renderableEffects.length === 0) continue;
-
-      // Divider between target groups (not before the first)
-      if (groupIdx > 0) {
-        const divG = new Graphics();
-        divG.moveTo(0, 0).lineTo(cardW - 20, 0);
-        divG.stroke({ width: 1, color: 0x4b5563 });
-        divG.alpha = 0.35;
-        divG.x = x + 10; divG.y = curY + 1;
-        divG.eventMode = 'none';
-        app.stage.addChild(divG);
-        curY += groupGap;
-      }
-
-      for (let ei = 0; ei < renderableEffects.length; ei++) {
-        let ex = x + 10;
-
-        if (ei === 0 && lbl.usePositionIndicator) {
-          const aoeTargetSide = key.startsWith('aoe_') ? (card.targetSide === 'ally' ? 'ally' : 'enemy') : undefined;
-          const noEmptySlots = key === 'self' || key.startsWith('aoe_');
-          const rangeForIndicator = key !== 'self' ? reachableSlots : undefined;
-          indicatorWidth = renderPositionIndicator(app, ex, curY, lbl.filledCount, lbl.targetType, effectIconSize, aoeTargetSide, noEmptySlots, rangeForIndicator);
-          ex += indicatorWidth + 3;
-        } else if (lbl.usePositionIndicator) {
-          ex += indicatorWidth + 3;
+    renderCardTile(app.stage, card, x, y, {
+      selected: isSelected,
+      dimmed: !canAfford,
+      interactive: true,
+      suppressionPenalty,
+      onClick: async () => {
+        if (isSelected && card.targeting === 'self') {
+          await playCard(cardId, undefined, renderCallback);
+          setSelectedCardId(null);
+        } else {
+          setSelectedCardId(isSelected ? null : cardId);
+          renderCallback();
         }
-
-        renderSingleEffect(app, renderableEffects[ei], ex, curY, effectIconSize, 11);
-        curY += rowHeight;
-      }
-      groupIdx++;
-    }
-
-    // ── Divider before footer (y+cardH-22) ──
-    drawDivider(x, y + cardH - 22);
-
-    // ── Footer zone (y+cardH-18) ──
-
-    // Exhaust flame (bottom-left)
-    if (card.exhaust) {
-      const flame = createExhaustIcon(12);
-      flame.x = x + 8; flame.y = y + cardH - 17;
-      app.stage.addChild(flame);
-    }
-
-    // Range indicator (bottom-right) - crosshair icon + range text
-    if (card.maxRange || card.minRange || card.optimalRange !== undefined) {
-      const rangeIconSize = 11;
-      const rIcon = createRangeIcon(rangeIconSize);
-      rIcon.x = x + cardW - 50; rIcon.y = y + cardH - 17;
-      app.stage.addChild(rIcon);
-
-      let rangeLabel: string;
-      if (card.minRange && card.maxRange) {
-        rangeLabel = `${card.minRange}-${card.maxRange}`;
-      } else if (card.optimalRange !== undefined && card.maxRange) {
-        rangeLabel = `${card.optimalRange}/${card.maxRange}`;
-      } else if (card.maxRange) {
-        rangeLabel = `≤${card.maxRange}`;
-      } else if (card.minRange) {
-        rangeLabel = `≥${card.minRange}`;
-      } else {
-        rangeLabel = `★${card.optimalRange}`;
-      }
-
-      const rangeTxt = new Text({
-        text: rangeLabel,
-        style: { fill: 0x06b6d4, fontSize: 10, fontWeight: 'bold' }
-      });
-      rangeTxt.x = x + cardW - 50 + rangeIconSize + 3;
-      rangeTxt.y = y + cardH - 16;
-      rangeTxt.eventMode = 'none';
-      app.stage.addChild(rangeTxt);
-    }
+      },
+      onRarityHover: (templateId, anchorX, anchorY) => {
+        if (templateId) {
+          if (setHoveredCard(templateId, anchorX ?? 0, anchorY ?? 0)) renderCallback();
+        } else if (setHoveredCard(null)) {
+          renderCallback();
+        }
+      },
+    });
   });
 }
 
@@ -594,10 +457,17 @@ function renderEnemyHand(app: Application, _gameState: GameState, currentPlayer:
       ri.cursor = 'help';
       ri.hitArea = new Rectangle(-6, -6, 20, 20);
       const templateId = card.id;
+      registerCardHoverRegion(templateId, riX - 6, riY - 6, 20, 20, riX, riY + 14);
       ri.on('pointerenter', () => {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre2',hypothesisId:'N1',location:'renderHand.ts:enemyRarity:pointerenter',message:'enemy_rarity_pointerenter',data:{templateId,riX,riY},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         if (setHoveredCard(templateId, riX, riY + 14)) renderCallback();
       });
-      ri.on('pointerleave', () => {
+      ri.on('pointerout', () => {
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre2',hypothesisId:'N1',location:'renderHand.ts:enemyRarity:pointerout',message:'enemy_rarity_pointerout',data:{templateId},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         if (setHoveredCard(null)) renderCallback();
       });
       app.stage.addChild(ri);
@@ -671,13 +541,13 @@ function renderEnemyHand(app: Application, _gameState: GameState, currentPlayer:
           const aoeTargetSide = key.startsWith('aoe_') ? (card.targetSide === 'ally' ? 'ally' : 'enemy') : undefined;
           const noEmptySlots = key === 'self' || key.startsWith('aoe_');
           const rangeForIndicator = key !== 'self' ? reachableSlots : undefined;
-          indicatorWidth = renderPositionIndicator(app, ex, curY, lbl.filledCount, lbl.targetType, effectIconSize, aoeTargetSide, noEmptySlots, rangeForIndicator);
+          indicatorWidth = renderPositionIndicator(app, ex, curY, lbl.filledCount, lbl.targetType, Math.floor(effectIconSize * 0.65), aoeTargetSide, noEmptySlots, rangeForIndicator);
           ex += indicatorWidth + 2;
         } else if (lbl.usePositionIndicator) {
           ex += indicatorWidth + 2;
         }
 
-        renderSingleEffect(app, renderableEffects[ei], ex, curY, effectIconSize, 9);
+        renderSingleEffect(app, renderableEffects[ei], ex, curY, effectIconSize, 10);
         curY += rowHeight;
       }
       groupIdx++;
@@ -695,12 +565,10 @@ function renderEnemyHand(app: Application, _gameState: GameState, currentPlayer:
       app.stage.addChild(flame);
     }
 
-    // Range indicator (bottom-right) - crosshair icon + range
+    // Range indicator (bottom-right) - crosshair icon + range, right-aligned to avoid overflow
     if (card.maxRange || card.minRange || card.optimalRange !== undefined) {
       const rangeIconSize = 8;
-      const rIcon = createRangeIcon(rangeIconSize);
-      rIcon.x = x + cardW - 40; rIcon.y = y + cardH - 14;
-      app.stage.addChild(rIcon);
+      const footerPadding = 8;
 
       let rangeLabel: string;
       if (card.minRange && card.maxRange) {
@@ -717,12 +585,17 @@ function renderEnemyHand(app: Application, _gameState: GameState, currentPlayer:
 
       const rangeTxt = new Text({
         text: rangeLabel,
-        style: { fill: 0x06b6d4, fontSize: 8, fontWeight: 'bold' }
+        style: { fill: 0x06b6d4, fontSize: 10, fontWeight: 'bold' }
       });
-      rangeTxt.x = x + cardW - 40 + rangeIconSize + 2;
+      rangeTxt.x = x + cardW - footerPadding - rangeTxt.width;
       rangeTxt.y = y + cardH - 13;
       rangeTxt.eventMode = 'none';
       app.stage.addChild(rangeTxt);
+
+      const rIcon = createRangeIcon(rangeIconSize);
+      rIcon.x = rangeTxt.x - rangeIconSize - 2;
+      rIcon.y = y + cardH - 14;
+      app.stage.addChild(rIcon);
     }
   });
 }

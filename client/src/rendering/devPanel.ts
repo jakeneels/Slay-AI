@@ -12,10 +12,16 @@ import {
 } from '../core/waveGenerator.js';
 import { WAVE_HEAL_FRACTION } from '../core/waveTransition.js';
 import { getShowLanesSetting, setShowLanesSetting } from './renderLanes.js';
+import {
+  getNoPreFightSetupSetting,
+  getShowRollbackButtonSetting,
+  setNoPreFightSetupSetting,
+  setShowRollbackButtonSetting,
+} from './preFightDisplaySettings.js';
 
 let initialized = false;
-const FORCE_ACTUAL_KYLE_TARGET = 'force_actual_kyle_wave1';
-const FORCE_ACTUAL_KYLE_MOD_ID = `devpanel:global:${FORCE_ACTUAL_KYLE_TARGET}`;
+const ACS_TARGET = 'acs_wave4_boss';
+const ACS_MOD_ID = `devpanel:global:${ACS_TARGET}`;
 
 // Track which sections are collapsed (persists across renders)
 const collapsedSections = new Set<string>();
@@ -139,8 +145,18 @@ export function initDevPanel(): void {
         requestFullRender();
         return;
       }
-      if (toggle === 'force-actual-kyle-wave1') {
-        setForceActualKyleWave1(input.checked);
+      if (toggle === 'no-prefight-setup') {
+        setNoPreFightSetupSetting(input.checked);
+        requestFullRender();
+        return;
+      }
+      if (toggle === 'show-rollback-button') {
+        setShowRollbackButtonSetting(input.checked);
+        requestFullRender();
+        return;
+      }
+      if (toggle === 'acs') {
+        setAcsEnabled(input.checked);
         requestFullRender();
       }
     });
@@ -203,15 +219,25 @@ export function renderDevPanel(gameState: GameState): void {
   // ── Display options section ──
   html += renderCollapsibleSection('display-options', 'Display', () => {
     const checked = getShowLanesSetting() ? 'checked' : '';
-    const forceKyleChecked = isForceActualKyleWave1Enabled() ? 'checked' : '';
+    const noPreFightSetupChecked = getNoPreFightSetupSetting() ? 'checked' : '';
+    const showRollbackButtonChecked = getShowRollbackButtonSetting() ? 'checked' : '';
+    const acsChecked = isAcsEnabled() ? 'checked' : '';
     return `
       <label style="display:flex;align-items:center;gap:6px;color:#d1d5db;font-size:11px;cursor:pointer;">
         <input type="checkbox" data-dev-toggle="show-lanes" ${checked} />
         <span>Show visible lanes</span>
       </label>
       <label style="display:flex;align-items:center;gap:6px;color:#d1d5db;font-size:11px;cursor:pointer;margin-top:6px;">
-        <input type="checkbox" data-dev-toggle="force-actual-kyle-wave1" ${forceKyleChecked} />
-        <span>Force Actual Kyle in wave 1</span>
+        <input type="checkbox" data-dev-toggle="no-prefight-setup" ${noPreFightSetupChecked} />
+        <span>No pre-fight setup</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;color:#d1d5db;font-size:11px;cursor:pointer;margin-top:6px;">
+        <input type="checkbox" data-dev-toggle="show-rollback-button" ${showRollbackButtonChecked} />
+        <span>Show rollback button</span>
+      </label>
+      <label style="display:flex;align-items:center;gap:6px;color:#d1d5db;font-size:11px;cursor:pointer;margin-top:6px;">
+        <input type="checkbox" data-dev-toggle="acs" ${acsChecked} />
+        <span>ACS</span>
       </label>
     `;
   });
@@ -673,23 +699,23 @@ function refreshActiveModifiers(): void {
   // This is lightweight enough to not cause issues
 }
 
-function isForceActualKyleWave1Enabled(): boolean {
-  return getModifierRegistry().resolve(FORCE_ACTUAL_KYLE_TARGET, 0) >= 1;
+function isAcsEnabled(): boolean {
+  return getModifierRegistry().resolve(ACS_TARGET, 0) >= 1;
 }
 
-function setForceActualKyleWave1(enabled: boolean): void {
+function setAcsEnabled(enabled: boolean): void {
   const registry = getModifierRegistry();
   if (enabled) {
     registry.add({
-      id: FORCE_ACTUAL_KYLE_MOD_ID,
-      target: FORCE_ACTUAL_KYLE_TARGET,
+      id: ACS_MOD_ID,
+      target: ACS_TARGET,
       op: 'set',
       value: 1,
       source: 'devpanel',
       scope: { kind: 'global' },
     });
   } else {
-    registry.remove(FORCE_ACTUAL_KYLE_MOD_ID);
+    registry.remove(ACS_MOD_ID);
   }
   persistDevPanelModifiers();
 }

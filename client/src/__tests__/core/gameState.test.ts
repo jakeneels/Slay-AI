@@ -1,5 +1,16 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { getGameState, setGameState, addToCombatLog, getCombatLog, setSelectedCardId, getSelectedCardId } from '../../core/gameState.js';
+import {
+  addToCombatLog,
+  canRollbackTurn,
+  getCombatLog,
+  getGameState,
+  getRollbackHistorySize,
+  rollbackTurn,
+  setGameState,
+  setSelectedCardId,
+  getSelectedCardId,
+  pushHistorySnapshot,
+} from '../../core/gameState.js';
 import { resetGameState } from '../utils/test-helpers.js';
 
 describe('gameState', () => {
@@ -109,6 +120,42 @@ describe('gameState', () => {
       
       addToCombatLog('Log 2');
       expect(getCombatLog()).toHaveLength(2);
+    });
+  });
+
+  describe('rollback history', () => {
+    it('pushes and restores previous state', () => {
+      const state = getGameState();
+      state.currentPlayerId = 'player_a';
+      state.turnIndex = 1;
+      state.combatLog = ['before action'];
+
+      pushHistorySnapshot('end_turn');
+
+      state.currentPlayerId = 'player_b';
+      state.turnIndex = 2;
+      state.combatLog.push('after action');
+
+      expect(canRollbackTurn()).toBe(true);
+      const rolledBack = rollbackTurn();
+
+      expect(rolledBack).toBe(true);
+      expect(getGameState().currentPlayerId).toBe('player_a');
+      expect(getGameState().turnIndex).toBe(1);
+      expect(getGameState().combatLog).toEqual(['before action']);
+      expect(getRollbackHistorySize()).toBe(0);
+    });
+
+    it('blocks rollback while processing turn', () => {
+      const state = getGameState();
+      state.turnIndex = 3;
+      pushHistorySnapshot('play_card');
+      state.turnIndex = 4;
+      state.isProcessingTurn = true;
+
+      expect(canRollbackTurn()).toBe(false);
+      expect(rollbackTurn()).toBe(false);
+      expect(getGameState().turnIndex).toBe(4);
     });
   });
 });

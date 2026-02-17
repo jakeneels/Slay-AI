@@ -1,7 +1,7 @@
 // Templated card tooltip text generation
 // Pure logic — no PIXI dependency. Generates structured tooltip data from a Card object.
 
-import type { Card, CardEffect, BaseCardEffect, BlockEffect, StatusEffect, StatusModifyEffect, StatusSpreadEffect, KnockbackEffect, DeckInjectEffect, ModifierEffect } from '../core/types.js';
+import type { Card, CardEffect, BaseCardEffect, BlockEffect, StatusEffect, StatusModifyEffect, StatusSpreadEffect, KnockbackEffect, DeckInjectEffect, ModifierEffect, LaneHazardEffect } from '../core/types.js';
 import { RANGE_OPTIMAL_BONUS, RANGE_PENALTY_PER_SLOT, RANGE_MODIFIER_MIN } from '../core/constants.js';
 
 // ---------------------------------------------------------------------------
@@ -9,7 +9,7 @@ import { RANGE_OPTIMAL_BONUS, RANGE_PENALTY_PER_SLOT, RANGE_MODIFIER_MIN } from 
 // ---------------------------------------------------------------------------
 
 export interface TooltipEffectLine {
-  /** Icon key matching the icon factory names: 'damage' | 'heal' | 'energy' | 'speed' | 'shield' | 'exhaust' | 'range' */
+  /** Icon key matching the icon factory names: 'damage' | 'heal' | 'energy' | 'speed' | 'shield' | 'exhaust' | 'range' | 'lane_hazard' */
   icon: string | null;
   /** Primary text, e.g. "Deals 8 damage" */
   text: string;
@@ -288,10 +288,21 @@ function describeEffect(effect: CardEffect, card: Card): TooltipEffectLine {
       };
     }
 
+    case 'lane_hazard': {
+      const lh = effect as LaneHazardEffect;
+      return {
+        icon: 'lane_hazard',
+        text: `Ignites lane: ${lh.damage} damage/turn for ${lh.duration_turns} turn${lh.duration_turns !== 1 ? 's' : ''}`,
+        subLines: ['Creates a hazard on the target\'s lane. Enemies in that lane take damage each turn.'],
+        targetLabel,
+      };
+    }
+
     default: {
+      const e = effect as { kind: string };
       return {
         icon: null,
-        text: `${effect.kind}`,
+        text: `${e.kind}`,
         subLines: [],
         targetLabel,
       };

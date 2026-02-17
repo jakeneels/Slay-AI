@@ -2,10 +2,9 @@
 
 import type { Application } from 'pixi.js';
 import type { Character, CardEffect, Card, BaseCardEffect, SpeedEffect, StatusSpreadEffect, LaneHazardEffect } from './types.js';
-import { getGameState } from './gameState.js';
+import { addToCombatLog, getGameState, getRollbackEpoch, pushHistorySnapshot } from './gameState.js';
 import { getCard } from './card.js';
 import { drawCards } from './deck.js';
-import { addToCombatLog } from './gameState.js';
 import {
   logCardHit,
   logAllEnemiesDead,
@@ -31,6 +30,10 @@ import { getModifierRegistry } from './modifiers.js';
 import { computeDifficulty } from './waveGenerator.js';
 
 let app: Application | null = null;
+
+function isRollbackEpochStale(expectedEpoch: number): boolean {
+  return getRollbackEpoch() !== expectedEpoch;
+}
 
 // ── Suppression helpers ───────────────────────────────────────────────
 
@@ -623,6 +626,7 @@ export function moveCharacterForward(characterId: string, renderCallback?: () =>
       singleBlocker.slotIndex === targetSlot &&
       canOccupyRange(char.slotIndex, 1, char.isPlayer, allLiving.filter(c => c.id !== char.id), singleBlocker.id)
     ) {
+      pushHistorySnapshot('move_forward');
       singleBlocker.slotIndex = char.slotIndex;
       char.slotIndex = targetSlot;
     } else {
@@ -632,6 +636,7 @@ export function moveCharacterForward(characterId: string, renderCallback?: () =>
     if (!canOccupyRange(targetSlot, slotSize, char.isPlayer, allLiving, char.id)) {
       return false;
     }
+    pushHistorySnapshot('move_forward');
     char.slotIndex = targetSlot;
   }
 
@@ -694,6 +699,7 @@ export function moveCharacterBack(characterId: string, renderCallback?: () => vo
       singleBlocker.slotIndex === targetSlot &&
       canOccupyRange(char.slotIndex, 1, char.isPlayer, allLiving.filter(c => c.id !== char.id), singleBlocker.id)
     ) {
+      pushHistorySnapshot('move_back');
       singleBlocker.slotIndex = char.slotIndex;
       char.slotIndex = targetSlot;
     } else {
@@ -703,6 +709,7 @@ export function moveCharacterBack(characterId: string, renderCallback?: () => vo
     if (!canOccupyRange(targetSlot, slotSize, char.isPlayer, allLiving, char.id)) {
       return false;
     }
+    pushHistorySnapshot('move_back');
     char.slotIndex = targetSlot;
   }
 
@@ -781,19 +788,45 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
   
   const gameState = getGameState();
   // Block card plays after combat is over
-  if (gameState.combatResult !== 'ongoing') return;
+  if (gameState.combatResult !== 'ongoing') {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H3',location:'combat.ts:playCard:combat-ended',message:'playCard returned early because combat ended',data:{cardId,targetId,currentPlayerId:gameState.currentPlayerId,combatResult:gameState.combatResult},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    return;
+  }
 
   const currentPlayer = gameState.characters.find(c => c.id === gameState.currentPlayerId);
   const card = getResolvedCard(cardId);
+  const handOwners = gameState.characters
+    .filter(c => c.hand.includes(cardId))
+    .map(c => ({ id: c.id, name: c.name, hp: c.hp, isPlayer: c.isPlayer }));
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H1',location:'combat.ts:playCard:entry',message:'playCard validation snapshot',data:{cardId,targetId,currentPlayerId:gameState.currentPlayerId,currentPlayerName:currentPlayer?.name ?? null,currentPlayerIsPlayer:currentPlayer?.isPlayer ?? null,cardFound:Boolean(card),handOwners},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   
-  if (!currentPlayer || !card) return;
+  if (!currentPlayer || !card) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H1',location:'combat.ts:playCard:missing-player-or-card',message:'playCard returned early because player/card missing',data:{cardId,targetId,currentPlayerId:gameState.currentPlayerId,hasCurrentPlayer:Boolean(currentPlayer),hasCard:Boolean(card)},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    return;
+  }
   
   // Calculate suppression energy penalty for ranged cards
   const suppressionPenalty = getSuppressionCostPenalty(currentPlayer, card);
   const totalEnergyCost = card.cost.energy + suppressionPenalty;
 
-  if (currentPlayer.energy < totalEnergyCost) return;
-  if (!currentPlayer.hand.includes(cardId)) return;
+  if (currentPlayer.energy < totalEnergyCost) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H4',location:'combat.ts:playCard:insufficient-energy',message:'playCard returned early due insufficient energy',data:{cardId,currentPlayerId:currentPlayer.id,currentPlayerName:currentPlayer.name,energy:currentPlayer.energy,totalEnergyCost},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    return;
+  }
+  if (!currentPlayer.hand.includes(cardId)) {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H1',location:'combat.ts:playCard:card-not-in-current-hand',message:'playCard returned early because card is not in current player hand',data:{cardId,currentPlayerId:currentPlayer.id,currentPlayerName:currentPlayer.name,currentPlayerHandSize:currentPlayer.hand.length,handOwners},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    return;
+  }
   
   // Determine targets based on targeting mode (relative to caster)
   const targets = resolveCardTargets(card, currentPlayer, targetId);
@@ -827,6 +860,7 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
   }
 
   // Log card hit for observability (X card hit X enemies/allies)
+  pushHistorySnapshot('play_card');
   const targetSide: 'enemy' | 'ally' = targets[0]?.isPlayer ? 'ally' : 'enemy';
   logCardHit(
     card.name,
@@ -1500,6 +1534,7 @@ export function processRoundStart(renderCallback?: () => void): void {
 export function endTurn(renderCallback?: () => void): void {
   const gameState = getGameState();
   if (gameState.combatResult !== 'ongoing') return;
+  pushHistorySnapshot('end_turn');
 
   gameState.turnIndex++;
   gameState.turnQueueIndex++;
@@ -1569,10 +1604,12 @@ export function endTurn(renderCallback?: () => void): void {
 
   // If it's an enemy turn, trigger AI after a delay
   if (!nextPlayer.isPlayer) {
+    const expectedEpoch = getRollbackEpoch();
     // #region agent log
     fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H2',location:'combat.ts:endTurn:enemy-timeout-scheduled',message:'Scheduling enemy turn timeout',data:{nextPlayerId:nextPlayer.id,nextPlayerName:nextPlayer.name,turnIndex:gameState.turnIndex,turnQueueIndex:gameState.turnQueueIndex,isProcessingTurn:gameState.isProcessingTurn},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
     setTimeout(() => {
+      if (isRollbackEpochStale(expectedEpoch)) return;
       // #region agent log
       fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H2',location:'combat.ts:endTurn:enemy-timeout-fired',message:'Enemy turn timeout fired',data:{nextPlayerId:nextPlayer.id,nextPlayerName:nextPlayer.name,turnIndex:gameState.turnIndex,turnQueueIndex:gameState.turnQueueIndex,isProcessingTurn:gameState.isProcessingTurn},timestamp:Date.now()})}).catch(()=>{});
       // #endregion
@@ -1758,10 +1795,13 @@ function tryEnemyOptimalMove(enemy: Character, renderCallback?: () => void): boo
  */
 export async function processEnemyTurn(enemy: Character, renderCallback?: () => void): Promise<void> {
   const gameState = getGameState();
+  const expectedEpoch = getRollbackEpoch();
+  if (isRollbackEpochStale(expectedEpoch)) return;
   // #region agent log
   fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H3',location:'combat.ts:processEnemyTurn:entry',message:'Entered processEnemyTurn',data:{enemyId:enemy.id,enemyName:enemy.name,currentPlayerId:gameState.currentPlayerId,isProcessingTurn:gameState.isProcessingTurn,enemyEnergy:enemy.energy,enemyHandSize:enemy.hand.length},timestamp:Date.now()})}).catch(()=>{});
   // #endregion
   if (gameState.isProcessingTurn) return;
+  pushHistorySnapshot('enemy_turn_start');
   gameState.isProcessingTurn = true;
 
   addToCombatLog(`${enemy.name} is thinking...`);
@@ -1781,6 +1821,7 @@ export async function processEnemyTurn(enemy: Character, renderCallback?: () => 
 
   // Initial thinking delay
   await delay(1000);
+  if (isRollbackEpochStale(expectedEpoch)) return;
 
   let cardsPlayed = 0;
   let consecutiveMoveAttempts = 0;
@@ -1792,7 +1833,7 @@ export async function processEnemyTurn(enemy: Character, renderCallback?: () => 
     aiLoopIteration++;
     if (aiLoopIteration <= 12) {
       // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H4',location:'combat.ts:processEnemyTurn:loop-start',message:'Enemy AI loop iteration',data:{enemyId:enemy.id,iteration:aiLoopIteration,cardsPlayed,enemyEnergy:enemy.energy,enemyHandSize:enemy.hand.length,isProcessingTurn:gameState.isProcessingTurn},timestamp:Date.now()})}).catch(()=>{});
+      fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H4',location:'combat.ts:processEnemyTurn:loop-start',message:'Enemy AI loop iteration',data:{enemyId:enemy.id,enemyName:enemy.name,currentPlayerId:gameState.currentPlayerId,iteration:aiLoopIteration,cardsPlayed,enemyEnergy:enemy.energy,enemyHandSize:enemy.hand.length,isProcessingTurn:gameState.isProcessingTurn},timestamp:Date.now()})}).catch(()=>{});
       // #endregion
     }
     // Re-check living players (a previous card may have killed everyone)
@@ -1844,6 +1885,7 @@ export async function processEnemyTurn(enemy: Character, renderCallback?: () => 
               if (moved) {
                 consecutiveMoveAttempts++;
                 await delay(600);
+          if (isRollbackEpochStale(expectedEpoch)) return;
                 movedForBetterAoe = true;
                 break; // Re-evaluate from the new slot in the outer loop
               }
@@ -1891,6 +1933,7 @@ export async function processEnemyTurn(enemy: Character, renderCallback?: () => 
         if (moved) {
           consecutiveMoveAttempts++;
           await delay(600);
+          if (isRollbackEpochStale(expectedEpoch)) return;
           continue; // retry card selection at new position
         }
       }
@@ -1912,6 +1955,7 @@ export async function processEnemyTurn(enemy: Character, renderCallback?: () => 
     // Delay between successive card plays for readability
     if (cardsPlayed > 0) {
       await delay(1200);
+      if (isRollbackEpochStale(expectedEpoch)) return;
     }
 
     try {
@@ -1935,6 +1979,7 @@ export async function processEnemyTurn(enemy: Character, renderCallback?: () => 
 
     // Short pause after each card resolves
     await delay(800);
+    if (isRollbackEpochStale(expectedEpoch)) return;
   }
 
   // ── Post-card positioning ───────────────────────────────────────────
@@ -1942,11 +1987,13 @@ export async function processEnemyTurn(enemy: Character, renderCallback?: () => 
     const moved = tryEnemyOptimalMove(enemy, renderCallback);
     if (moved) {
       await delay(600);
+      if (isRollbackEpochStale(expectedEpoch)) return;
     }
   }
 
   // ── End turn ────────────────────────────────────────────────────────
   await delay(cardsPlayed > 0 ? 500 : 1500);
+  if (isRollbackEpochStale(expectedEpoch)) return;
   gameState.isProcessingTurn = false;
   endTurn(renderCallback);
 }

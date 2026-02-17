@@ -1,7 +1,7 @@
 schemaVersion: 1
-id: didi_sharpshooter
-name: "Didi"
-title: "Rustborn Sharpshooter"
+id: sharpshooter
+name: "Nyx"
+title: "Nyx"
 description: "Scavenger sniper with jury-rigged optics and weapon mods scavenged from AI ruins."
 role: dps
 theme: "Ranged DPS – excels at ranged damage and containment."
@@ -32,4 +32,3 @@ startingDeck:
   - "blast"
   - "strike"
   - "rad_round"
-

@@ -368,6 +368,14 @@ export interface PreFightState {
   threatBudget: number;
 }
 
+export type RollbackSnapshotReason =
+  | 'play_card'
+  | 'move_forward'
+  | 'move_back'
+  | 'end_turn'
+  | 'enemy_turn_start'
+  | string;
+
 // ── Game state ───────────────────────────────────────────────────────
 
 export interface GameState {

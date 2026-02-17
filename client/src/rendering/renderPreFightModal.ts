@@ -18,15 +18,11 @@ import {
   togglePreFightAllySelection,
 } from '../core/preFight.js';
 import { render } from './renderer.js';
-import { createEnergyIcon } from './icons/energyIcon.js';
+import { registerCardHoverRegion, setHoveredCard } from './tooltipState.js';
+import { renderCardTile } from './cardTileRenderer.js';
 import { createRarityIcon } from './icons/rarityIcon.js';
-import { createDamageIcon } from './icons/damageIcon.js';
-import { createSpeedIcon } from './icons/speedIcon.js';
-import { createHealIcon } from './icons/healIcon.js';
-import { createShieldIcon } from './icons/shieldIcon.js';
-import { createKnockbackIcon } from './icons/knockbackIcon.js';
-import { createRangeIcon } from './icons/rangeIcon.js';
-import { createExhaustIcon } from './icons/exhaustIcon.js';
+
+const loadoutScrollByAlly = new Map<string, number>();
 
 function makeHitRect() {
   return class SimpleRect {
@@ -65,35 +61,6 @@ function getCandidateAllies(gameState: GameState): Character[] {
   return gameState.preFight.candidateAllyIds
     .map(id => allyById.get(id))
     .filter((c): c is Character => !!c);
-}
-
-function summarizeCardEffects(card: NonNullable<GameState['cardLibrary'][string]>): string {
-  const parts: string[] = [];
-  for (const effect of card.effects.slice(0, 2)) {
-    if (effect.kind === 'modifier' || effect.kind === 'deck_inject') continue;
-    const amount = 'amount' in effect ? `${effect.amount}` : '';
-    parts.push(`${effect.kind}${amount ? ` ${amount}` : ''}`);
-  }
-  if (parts.length === 0) return 'No direct effect';
-  return parts.join(' | ');
-}
-
-function createEffectIcon(kind: string, size: number): Graphics | null {
-  switch (kind) {
-    case 'damage':
-    case 'aoe_damage':
-      return createDamageIcon(size);
-    case 'heal':
-      return createHealIcon(size);
-    case 'speed':
-      return createSpeedIcon(size);
-    case 'grant_block_layer':
-      return createShieldIcon(size);
-    case 'knockback':
-      return createKnockbackIcon(size);
-    default:
-      return null;
-  }
 }
 
 export function renderPreFightModal(app: Application, gameState: GameState): void {
@@ -271,9 +238,10 @@ export function renderPreFightModal(app: Application, gameState: GameState): voi
   }
 
   const lineupPanel = new Graphics();
-  const lineupW = 980;
+  const cardsPagePanelW = WIDTH - 80;
+  const lineupW = isCardsPage ? cardsPagePanelW : 980;
   const lineupH = isCardsPage ? 112 : 170;
-  const lineupX = (WIDTH - lineupW) / 2;
+  const lineupX = isCardsPage ? 40 : (WIDTH - lineupW) / 2;
   const lineupY = isCardsPage ? 196 : 430;
   lineupPanel.roundRect(lineupX, lineupY, lineupW, lineupH, 10);
   lineupPanel.fill({ color: 0x111827, alpha: 0.95 });
@@ -286,7 +254,7 @@ export function renderPreFightModal(app: Application, gameState: GameState): voi
     style: { fill: 0xf8fafc, fontSize: 16, fontWeight: 'bold', fontFamily: 'monospace' },
   });
   lineupTitle.anchor.set(0.5, 0);
-  lineupTitle.x = WIDTH / 2;
+  lineupTitle.x = lineupX + lineupW / 2;
   lineupTitle.y = lineupY + 12;
   lineupTitle.zIndex = 2;
   modal.addChild(lineupTitle);
@@ -298,7 +266,7 @@ export function renderPreFightModal(app: Application, gameState: GameState): voi
   const chipH = isCardsPage ? 56 : 84;
   const chipGap = 16;
   const chipsTotalW = selectedAllies.length * chipW + Math.max(0, selectedAllies.length - 1) * chipGap;
-  const chipsStartX = (WIDTH - chipsTotalW) / 2;
+  const chipsStartX = lineupX + Math.max(0, (lineupW - chipsTotalW) / 2);
   const chipsY = lineupY + (isCardsPage ? 40 : 48);
 
   selectedAllies.forEach((ally, i) => {
@@ -439,11 +407,18 @@ export function renderPreFightModal(app: Application, gameState: GameState): voi
   }
 
   if (isCardsPage) {
+    const cardsBodyY = lineupY + lineupH + 14;
+    const cardsBodyH = HEIGHT - cardsBodyY - 90;
+    const loadoutPanelW = 320;
+    const bodyGap = 12;
+    const cardsPanelX = 40 + loadoutPanelW + bodyGap;
+    const cardsPanelW = cardsPagePanelW - loadoutPanelW - bodyGap;
+
     const editorPanel = new Graphics();
-    const editorW = 1120;
-    const editorH = 110;
-    const editorX = (WIDTH - editorW) / 2;
-    const editorY = lineupY + lineupH + 14;
+    const editorW = loadoutPanelW;
+    const editorH = cardsBodyH;
+    const editorX = 40;
+    const editorY = cardsBodyY;
     editorPanel.roundRect(editorX, editorY, editorW, editorH, 10);
     editorPanel.fill({ color: 0x0b1220, alpha: 0.95 });
     editorPanel.stroke({ width: 2, color: 0x334155 });
@@ -453,43 +428,75 @@ export function renderPreFightModal(app: Application, gameState: GameState): voi
     const activeAlly = selectedAllies.find(c => c.id === gameState.preFight.activeCardEditorAllyId) ?? selectedAllies[0];
     if (activeAlly) {
       const editorTitle = new Text({
-        text: `Card Loadout: ${activeAlly.name} (click a slot, then pick a card below)`,
-        style: { fill: 0xe2e8f0, fontSize: 15, fontWeight: 'bold', fontFamily: 'monospace' },
+        text: `Card Loadout: ${activeAlly.name}`,
+        style: { fill: 0xe2e8f0, fontSize: 14, fontWeight: 'bold', fontFamily: 'monospace' },
       });
       editorTitle.anchor.set(0.5, 0);
-      editorTitle.x = WIDTH / 2;
+      editorTitle.x = editorX + editorW / 2;
       editorTitle.y = editorY + 10;
       editorTitle.zIndex = 2;
       modal.addChild(editorTitle);
 
     const selectedDeck = gameState.preFight.cardsByAlly[activeAlly.id] ?? [];
-    const slotW = 128;
-    const slotH = 62;
+    const slotW = editorW - 32; // 8px tighter than before
+    const slotH = 56; // 8px shorter to reduce overflow
     const slotGap = 8;
-    const maxVisibleSlots = Math.min(selectedDeck.length, 8);
-    const totalSlotsW = maxVisibleSlots * slotW + Math.max(0, maxVisibleSlots - 1) * slotGap;
-    const slotsStartX = (WIDTH - totalSlotsW) / 2;
+    const maxVisibleSlots = selectedDeck.length;
+    const slotsStartX = editorX + 12;
     const slotsY = editorY + 38;
+    const slotsViewportW = editorW - 24;
+    const slotsViewportH = editorH - 46;
+    const loadoutContentH = maxVisibleSlots * slotH + Math.max(0, maxVisibleSlots - 1) * slotGap;
+    const maxLoadoutScroll = Math.max(0, loadoutContentH - slotsViewportH);
+    const storedLoadoutScroll = loadoutScrollByAlly.get(activeAlly.id) ?? 0;
+    const loadoutScroll = Math.max(0, Math.min(storedLoadoutScroll, maxLoadoutScroll));
+    if (loadoutScroll !== storedLoadoutScroll) {
+      loadoutScrollByAlly.set(activeAlly.id, loadoutScroll);
+    }
+
+    const loadoutSlots = new Container();
+    loadoutSlots.zIndex = 2;
+    loadoutSlots.eventMode = 'static';
+    loadoutSlots.hitArea = new (makeHitRect())(slotsStartX, slotsY, slotsViewportW, slotsViewportH);
+    loadoutSlots.on('wheel', (event: any) => {
+      const deltaY = Number(event?.deltaY ?? 0);
+      loadoutScrollByAlly.set(
+        activeAlly.id,
+        Math.max(0, Math.min(maxLoadoutScroll, loadoutScroll + deltaY * 0.6)),
+      );
+      render();
+    });
+    modal.addChild(loadoutSlots);
+
+    const loadoutMask = new Graphics();
+    loadoutMask.rect(slotsStartX, slotsY, slotsViewportW, slotsViewportH);
+    loadoutMask.fill({ color: 0x000000, alpha: 1 });
+    loadoutMask.alpha = 0.001;
+    loadoutMask.zIndex = 2;
+    modal.addChild(loadoutMask);
+    loadoutSlots.mask = loadoutMask;
 
       for (let slotIndex = 0; slotIndex < maxVisibleSlots; slotIndex++) {
         const cardId = selectedDeck[slotIndex];
         const card = gameState.cardLibrary[cardId];
-        const x = slotsStartX + slotIndex * (slotW + slotGap);
+        const x = slotsStartX;
+        const y = slotsY + slotIndex * (slotH + slotGap) - loadoutScroll;
+        if (y + slotH < slotsY - 2 || y > slotsY + slotsViewportH + 2) continue;
         const isActiveSlot = gameState.preFight.activeCardSlotIndex === slotIndex;
 
         const slotBg = new Graphics();
-        slotBg.roundRect(x, slotsY, slotW, slotH, 8);
+        slotBg.roundRect(x, y, slotW, slotH, 8);
         slotBg.fill({ color: isActiveSlot ? 0x0f766e : 0x1e293b, alpha: 0.97 });
         slotBg.stroke({ width: 2, color: isActiveSlot ? 0x2dd4bf : 0x475569 });
         slotBg.zIndex = 2;
         slotBg.eventMode = 'static';
         slotBg.cursor = 'pointer';
-        slotBg.hitArea = new (makeHitRect())(x, slotsY, slotW, slotH);
+        slotBg.hitArea = new (makeHitRect())(x, y, slotW, slotH);
         slotBg.on('pointertap', () => {
           setPreFightActiveCardSlot(slotIndex);
           render();
         });
-        modal.addChild(slotBg);
+        loadoutSlots.addChild(slotBg);
 
         const slotLabel = new Text({
           text: `#${slotIndex + 1}`,
@@ -497,33 +504,43 @@ export function renderPreFightModal(app: Application, gameState: GameState): voi
         });
         slotLabel.anchor.set(0.5, 0);
         slotLabel.x = x + slotW / 2;
-        slotLabel.y = slotsY + 6;
+        slotLabel.y = y + 6;
         slotLabel.zIndex = 3;
         slotLabel.eventMode = 'none';
-        modal.addChild(slotLabel);
+        loadoutSlots.addChild(slotLabel);
 
         const cardName = new Text({
           text: card?.name ?? cardId,
-          style: { fill: 0xffffff, fontSize: 11, fontWeight: 'bold', fontFamily: 'monospace', align: 'center', wordWrap: true, wordWrapWidth: slotW - 12 },
+          style: { fill: 0xffffff, fontSize: 10, fontWeight: 'bold', fontFamily: 'monospace', align: 'center', wordWrap: true, wordWrapWidth: slotW - 28 },
         });
         cardName.anchor.set(0.5, 0);
         cardName.x = x + slotW / 2;
-        cardName.y = slotsY + 20;
+        cardName.y = y + 18;
         cardName.zIndex = 3;
         cardName.eventMode = 'none';
-        modal.addChild(cardName);
+        loadoutSlots.addChild(cardName);
 
-        const rarity = (card?.rarity ?? 'common').toUpperCase();
-        const rarityLabel = new Text({
-          text: rarity,
-          style: { fill: 0xfbbf24, fontSize: 10, fontFamily: 'monospace' },
+        const rarityIcon = createRarityIcon(card?.rarity ?? 'common', 8);
+        rarityIcon.x = x + slotW - 14;
+        rarityIcon.y = y + 6;
+        rarityIcon.zIndex = 8000;
+        rarityIcon.eventMode = 'static';
+        rarityIcon.cursor = 'help';
+        registerCardHoverRegion(card?.id ?? cardId, rarityIcon.x - 8, rarityIcon.y - 8, 24, 24, rarityIcon.x, rarityIcon.y + 14);
+        rarityIcon.on('pointerenter', () => {
+          const templateId = card?.id ?? cardId;
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre2',hypothesisId:'N1',location:'renderPreFightModal.ts:loadoutRarity:pointerenter',message:'prefight_loadout_rarity_pointerenter',data:{templateId,x:rarityIcon.x,y:rarityIcon.y},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
+          if (setHoveredCard(templateId, rarityIcon.x, rarityIcon.y + 14)) render();
         });
-        rarityLabel.anchor.set(0.5, 0);
-        rarityLabel.x = x + slotW / 2;
-        rarityLabel.y = slotsY + slotH - 20;
-        rarityLabel.zIndex = 3;
-        rarityLabel.eventMode = 'none';
-        modal.addChild(rarityLabel);
+        rarityIcon.on('pointerout', () => {
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre2',hypothesisId:'N1',location:'renderPreFightModal.ts:loadoutRarity:pointerout',message:'prefight_loadout_rarity_pointerout',data:{templateId:card?.id ?? cardId},timestamp:Date.now()})}).catch(()=>{});
+          // #endregion
+          if (setHoveredCard(null)) render();
+        });
+        loadoutSlots.addChild(rarityIcon);
 
         const chooseLabel = new Text({
           text: isActiveSlot ? 'SELECTING...' : 'CLICK TO SELECT',
@@ -531,17 +548,40 @@ export function renderPreFightModal(app: Application, gameState: GameState): voi
         });
         chooseLabel.anchor.set(0.5);
         chooseLabel.x = x + slotW / 2;
-        chooseLabel.y = slotsY + slotH - 8;
+        chooseLabel.y = y + slotH - 7;
         chooseLabel.zIndex = 4;
         chooseLabel.eventMode = 'none';
-        modal.addChild(chooseLabel);
+        loadoutSlots.addChild(chooseLabel);
       }
 
+      const loadoutRailX = editorX + editorW - 9;
+      const loadoutRail = new Graphics();
+      loadoutRail.roundRect(loadoutRailX, slotsY, 5, slotsViewportH, 3);
+      loadoutRail.fill({ color: 0x1f2937, alpha: 0.95 });
+      loadoutRail.stroke({ width: 1, color: 0x475569 });
+      loadoutRail.zIndex = 3;
+      modal.addChild(loadoutRail);
+
+      const loadoutThumbH = Math.max(18, (slotsViewportH / Math.max(loadoutContentH, 1)) * slotsViewportH);
+      const loadoutThumbY = slotsY + (maxLoadoutScroll > 0 ? (loadoutScroll / maxLoadoutScroll) * (slotsViewportH - loadoutThumbH) : 0);
+      const loadoutThumb = new Graphics();
+      loadoutThumb.roundRect(loadoutRailX + 1, loadoutThumbY, 3, loadoutThumbH, 2);
+      loadoutThumb.fill({ color: 0x22c55e, alpha: 0.95 });
+      loadoutThumb.zIndex = 4;
+      modal.addChild(loadoutThumb);
+
       const galleryPanel = new Graphics();
-      const galleryX = 120;
-      const galleryY = editorY + editorH + 10;
-      const galleryW = WIDTH - 240;
-      const galleryH = 262;
+      // Keep card tiles consistent with the play screen/cardTileRenderer baseline size.
+      const cardSizeW = 125;
+      const cardSizeH = 155;
+      const cardGapX = 8;
+      const cardGapY = 8;
+      const scrollbarW = 24;
+      const viewportPadX = 10;
+      const galleryW = cardsPanelW;
+      const galleryX = cardsPanelX;
+      const galleryY = cardsBodyY;
+      const galleryH = cardsBodyH;
       galleryPanel.roundRect(galleryX, galleryY, galleryW, galleryH, 10);
       galleryPanel.fill({ color: 0x111827, alpha: 0.95 });
       galleryPanel.stroke({ width: 2, color: 0x374151 });
@@ -553,20 +593,18 @@ export function renderPreFightModal(app: Application, gameState: GameState): voi
         style: { fill: 0xe2e8f0, fontSize: 15, fontWeight: 'bold', fontFamily: 'monospace' },
       });
       galleryTitle.anchor.set(0.5, 0);
-      galleryTitle.x = WIDTH / 2;
+      galleryTitle.x = galleryX + galleryW / 2;
       galleryTitle.y = galleryY + 8;
       galleryTitle.zIndex = 2;
       modal.addChild(galleryTitle);
 
-      const viewportX = galleryX + 10;
+      const viewportX = galleryX + viewportPadX;
       const viewportY = galleryY + 30;
-      const viewportW = galleryW - 44;
+      const viewportW = galleryW - viewportPadX * 2 - scrollbarW;
       const viewportH = galleryH - 52;
-      const cardSizeW = 125;
-      const cardSizeH = 155;
-      const cardGapX = 8;
-      const cardGapY = 8;
-      const cols = 8;
+      const cols = Math.max(2, Math.floor((viewportW + cardGapX) / (cardSizeW + cardGapX)));
+      const gridW = cols * cardSizeW + Math.max(0, cols - 1) * cardGapX;
+      const gridStartX = viewportX + Math.max(0, Math.floor((viewportW - gridW) / 2));
 
       const totalRows = Math.max(1, Math.ceil(cardPoolOrdered.length / cols));
       const contentHeight = totalRows * cardSizeH + Math.max(0, totalRows - 1) * cardGapY;
@@ -578,6 +616,13 @@ export function renderPreFightModal(app: Application, gameState: GameState): voi
 
       const galleryCards = new Container();
       galleryCards.zIndex = 2;
+      galleryCards.eventMode = 'static';
+      galleryCards.hitArea = new (makeHitRect())(viewportX, viewportY, viewportW, viewportH);
+      galleryCards.on('wheel', (event: any) => {
+        const deltaY = Number(event?.deltaY ?? 0);
+        setPreFightCardCatalogScroll(Math.max(0, Math.min(maxScroll, scroll + deltaY * 0.6)));
+        render();
+      });
       modal.addChild(galleryCards);
 
       const galleryMask = new Graphics();
@@ -590,11 +635,6 @@ export function renderPreFightModal(app: Application, gameState: GameState): voi
 
       galleryPanel.eventMode = 'static';
       galleryPanel.hitArea = new (makeHitRect())(viewportX, viewportY, viewportW, viewportH);
-      galleryPanel.on('wheel', (event: any) => {
-        const deltaY = Number(event?.deltaY ?? 0);
-        setPreFightCardCatalogScroll(Math.max(0, Math.min(maxScroll, scroll + deltaY * 0.6)));
-        render();
-      });
 
       const rowStart = Math.max(0, Math.floor(scroll / (cardSizeH + cardGapY)));
       const rowEnd = Math.min(totalRows - 1, Math.ceil((scroll + viewportH) / (cardSizeH + cardGapY)));
@@ -607,123 +647,30 @@ export function renderPreFightModal(app: Application, gameState: GameState): voi
         if (!card) continue;
         const col = idx % cols;
         const row = Math.floor(idx / cols);
-        const x = viewportX + 4 + col * (cardSizeW + cardGapX);
+        const x = gridStartX + col * (cardSizeW + cardGapX);
         const y = viewportY + row * (cardSizeH + cardGapY) - scroll;
         const activeSlotIndex = gameState.preFight.activeCardSlotIndex;
         const activeDeck = gameState.preFight.cardsByAlly[activeAlly.id] ?? [];
         const isCurrent = activeSlotIndex !== null && activeDeck[activeSlotIndex] === cardId;
-
-        const bg = new Graphics();
-        bg.roundRect(x, y, cardSizeW, cardSizeH, 8);
-        bg.fill(0x1f2937);
-        bg.stroke({ width: isCurrent ? 3 : 1, color: isCurrent ? 0x22c55e : 0x374151 });
-        bg.zIndex = 1;
-        bg.eventMode = 'static';
-        bg.cursor = 'pointer';
-        bg.hitArea = new (makeHitRect())(x, y, cardSizeW, cardSizeH);
-        bg.on('pointertap', () => {
-          assignPreFightCardToActiveSlot(cardId);
-          render();
+        const cardTile = renderCardTile(galleryCards, card, x, y, {
+          selected: isCurrent,
+          interactive: true,
+          onClick: () => {
+            assignPreFightCardToActiveSlot(cardId);
+            render();
+          },
+          onRarityHover: (templateId, anchorX, anchorY) => {
+            if (templateId) {
+              if (setHoveredCard(templateId, anchorX ?? 0, anchorY ?? 0)) render();
+            } else if (setHoveredCard(null)) {
+              render();
+            }
+          },
         });
-        galleryCards.addChild(bg);
-
-        const name = new Text({
-          text: card.name,
-          style: { fill: 0xffffff, fontSize: 14, fontWeight: 'bold', fontFamily: 'monospace', wordWrap: true, wordWrapWidth: cardSizeW - 20 },
-        });
-        name.x = x + 10;
-        name.y = y + 8;
-        name.zIndex = 2;
-        name.eventMode = 'none';
-        galleryCards.addChild(name);
-
-        const rarityIcon = createRarityIcon(card.rarity ?? 'common', 7);
-        rarityIcon.x = x + cardSizeW - 16;
-        rarityIcon.y = y + 8;
-        rarityIcon.zIndex = 2;
-        rarityIcon.eventMode = 'none';
-        galleryCards.addChild(rarityIcon);
-
-        const energy = createEnergyIcon(11);
-        energy.x = x + 10;
-        energy.y = y + 30;
-        energy.zIndex = 2;
-        energy.eventMode = 'none';
-        galleryCards.addChild(energy);
-
-        const cost = new Text({
-          text: `${card.cost.energy}`,
-          style: { fill: 0x38bdf8, fontSize: 12, fontWeight: 'bold', fontFamily: 'monospace' },
-        });
-        cost.x = x + 23;
-        cost.y = y + 30;
-        cost.zIndex = 2;
-        cost.eventMode = 'none';
-        galleryCards.addChild(cost);
-
-        const divider = new Graphics();
-        divider.moveTo(0, 0).lineTo(cardSizeW - 16, 0);
-        divider.stroke({ width: 1, color: 0x374151 });
-        divider.alpha = 0.5;
-        divider.x = x + 8;
-        divider.y = y + 46;
-        divider.zIndex = 2;
-        divider.eventMode = 'none';
-        galleryCards.addChild(divider);
-
-        const effectText = new Text({
-          text: summarizeCardEffects(card),
-          style: { fill: 0xd1d5db, fontSize: 9, fontFamily: 'monospace', wordWrap: true, wordWrapWidth: cardSizeW - 16 },
-        });
-        effectText.x = x + 8;
-        effectText.y = y + 52;
-        effectText.zIndex = 2;
-        effectText.eventMode = 'none';
-        galleryCards.addChild(effectText);
-
-        const firstEffect = card.effects.find(e => e.kind !== 'modifier' && e.kind !== 'deck_inject');
-        if (firstEffect) {
-          const icon = createEffectIcon(firstEffect.kind, 10);
-          if (icon) {
-            icon.x = x + 8;
-            icon.y = y + cardSizeH - 24;
-            icon.zIndex = 2;
-            icon.eventMode = 'none';
-            galleryCards.addChild(icon);
-          }
-        }
-
-        if (card.maxRange || card.minRange || card.optimalRange !== undefined) {
-          const rangeIcon = createRangeIcon(9);
-          rangeIcon.x = x + cardSizeW - 32;
-          rangeIcon.y = y + cardSizeH - 22;
-          rangeIcon.zIndex = 2;
-          rangeIcon.eventMode = 'none';
-          galleryCards.addChild(rangeIcon);
-        }
-
-        if (card.exhaust) {
-          const exhaustIcon = createExhaustIcon(9);
-          exhaustIcon.x = x + 20;
-          exhaustIcon.y = y + cardSizeH - 22;
-          exhaustIcon.zIndex = 2;
-          exhaustIcon.eventMode = 'none';
-          galleryCards.addChild(exhaustIcon);
-        }
-
-        const rarityText = new Text({
-          text: (card.rarity ?? 'common').toUpperCase(),
-          style: { fill: 0xfbbf24, fontSize: 9, fontFamily: 'monospace' },
-        });
-        rarityText.anchor.set(0.5);
-        rarityText.x = x + cardSizeW / 2;
-        rarityText.y = y + cardSizeH - 10;
-        rarityText.zIndex = 2;
-        rarityText.eventMode = 'none';
-        galleryCards.addChild(rarityText);
+        cardTile.zIndex = 1;
       }
 
-      const railX = galleryX + galleryW - 24;
+      const railX = galleryX + galleryW - scrollbarW;
       const rail = new Graphics();
       rail.roundRect(railX, viewportY, 10, viewportH, 5);
       rail.fill({ color: 0x1f2937, alpha: 0.95 });

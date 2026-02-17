@@ -10,7 +10,7 @@ import { drawCards } from './src/core/deck.js';
 import { shuffleArray } from './src/utils/shuffle.js';
 import { loadContent } from './src/data/contentLoader.js';
 import { render, setApp } from './src/rendering/renderer.js';
-import { clearAllHoverStates } from './src/rendering/tooltipState.js';
+import { clearAllHoverStates, getHoveredCard, getHoveredCharacter, getHoveredStatus } from './src/rendering/tooltipState.js';
 import { setApp as setCombatApp } from './src/core/combat.js';
 import { WIDTH, HEIGHT, ENEMY_SLOT_START, ALLY_SLOT_END, MAX_SLOTS } from './src/core/constants.js';
 import { initDevPanel, restoreDevPanelOverridesFromStorage } from './src/rendering/devPanel.js';
@@ -106,6 +106,43 @@ async function initGame(): Promise<void> {
   const canvas = app.canvas as HTMLCanvasElement;
   canvas.style.pointerEvents = 'auto';
   container.appendChild(canvas);
+  let lastHoverMoveLogAt = 0;
+  let hoverMoveRenderQueued = false;
+  canvas.addEventListener('pointermove', (ev: PointerEvent) => {
+    const hovered = getHoveredCard();
+    const hoveredCharacter = getHoveredCharacter();
+    const hoveredStatus = getHoveredStatus();
+    const anyHoverActive = !!hovered.cardId || !!hoveredCharacter.characterId || !!hoveredStatus.statusId;
+    if (!anyHoverActive) return;
+    const now = Date.now();
+    if (now - lastHoverMoveLogAt < 120) return;
+    lastHoverMoveLogAt = now;
+    const rect = canvas.getBoundingClientRect();
+    const canvasX = ev.clientX - rect.left;
+    const canvasY = ev.clientY - rect.top;
+    if (hovered.cardId) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre2',hypothesisId:'N2',location:'game.ts:canvas:pointermove',message:'pointermove_while_hover_active',data:{hoveredCardId:hovered.cardId,canvasX,canvasY},timestamp:now})}).catch(()=>{});
+      // #endregion
+    } else {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre3',hypothesisId:'N8',location:'game.ts:canvas:pointermove',message:'pointermove_noncard_hover_active',data:{hoveredCharacterId:hoveredCharacter.characterId,hoveredStatusId:hoveredStatus.statusId,canvasX,canvasY},timestamp:now})}).catch(()=>{});
+      // #endregion
+    }
+    if (!hoverMoveRenderQueued) {
+      hoverMoveRenderQueued = true;
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-post3',hypothesisId:'N12',location:'game.ts:canvas:pointermove',message:'queue_render_for_any_hover_reconcile',data:{hoveredCardId:hovered.cardId,hoveredCharacterId:hoveredCharacter.characterId,hoveredStatusId:hoveredStatus.statusId},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      requestAnimationFrame(() => {
+        hoverMoveRenderQueued = false;
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-post3',hypothesisId:'N12',location:'game.ts:requestAnimationFrame',message:'run_render_for_any_hover_reconcile',data:{},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        render();
+      });
+    }
+  });
   // Use 'passive' so the stage passes events to children instead of capturing them
   app.stage.eventMode = 'passive';
   
@@ -131,7 +168,7 @@ async function initGame(): Promise<void> {
   setGameState(gameState);
 
   // Initialize characters from YAML — explicit party roster
-  const partyIds = ['didi_sharpshooter', 'kael_tactician', 'nyx_corrupter', 'ted_techblade'];
+  const partyIds = ['sharpshooter', 'tactician', 'corrupter', 'techblade'];
   const playerCharacters = partyIds
     .map(id => characters[id])
     .filter((c): c is typeof characters[string] => !!c && c.isPlayer);

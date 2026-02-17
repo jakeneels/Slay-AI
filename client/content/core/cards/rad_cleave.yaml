@@ -5,14 +5,14 @@ type: attack
 rarity: rare   # common, rare, epic, legendary, mythic.
 cost: 3
 copies: 2
-tags: [basic, melee, radiation]
+tags: [basic, radiation]
 targeting: aoe
 aoeSlots: 2
 maxRange: 2
 minRange: 1
 exhaust: false
 expires_after_turns: 0
-description: "A swipe from a massive radioactive claw. Deals damage and irradiates exposed targets."
+description: "radioactive melee cleave. Deals damage and irradiates exposed targets."
 effects:
   - kind: damage
     amount: 5

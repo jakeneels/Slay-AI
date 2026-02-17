@@ -5,11 +5,20 @@ import { Graphics, Text, Rectangle } from 'pixi.js';
 import type { GameState } from '../core/types.js';
 import { WIDTH } from '../core/constants.js';
 import { getCard } from '../core/card.js';
-import { getSelectedCardId } from '../core/gameState.js';
-import { endTurn, moveCharacterForward, moveCharacterBack, getMoveCost } from '../core/combat.js';
+import { canRollbackTurn, getSelectedCardId, rollbackTurn } from '../core/gameState.js';
+import { endTurn, moveCharacterForward, moveCharacterBack, getMoveCost, getSuppressionCostPenalty } from '../core/combat.js';
 import { render as renderCallback } from './renderer.js';
 import type { Card, Character } from '../core/types.js';
 import { createEnergyIcon } from './icons/energyIcon.js';
+import { getShowRollbackButtonSetting } from './preFightDisplaySettings.js';
+
+export function getRollbackButtonUiState(): { visible: boolean; enabled: boolean } {
+  const visible = getShowRollbackButtonSetting();
+  return {
+    visible,
+    enabled: visible && canRollbackTurn(),
+  };
+}
 
 /**
  * Render turn information and controls
@@ -18,7 +27,7 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
   const currentPlayer = gameState.characters.find(c => c.id === gameState.currentPlayerId);
 
   // Reserve right side for End Turn button — nothing must overlap
-  const endBtnReserve = 160;
+  const endBtnReserve = 300;
   const rightBound = WIDTH - endBtnReserve;
 
   // Row 1: Stage + round badges + turn text (compact)
@@ -347,9 +356,44 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
   // End turn button
   const endBtnW = 120;
   const endBtnH = 36;
+  const rollbackBtnGap = 10;
+  const rollbackBtnW = 120;
+  const rollbackState = getRollbackButtonUiState();
+  const endBtnX = WIDTH - endBtnW - 20;
+  const rollbackBtnX = endBtnX - rollbackBtnGap - rollbackBtnW;
+
+  if (rollbackState.visible) {
+    const rollbackBtn = new Graphics();
+    const rollbackFill = rollbackState.enabled ? 0x334155 : 0x1f2937;
+    const rollbackStroke = rollbackState.enabled ? 0x94a3b8 : 0x4b5563;
+    rollbackBtn.roundRect(0, 0, rollbackBtnW, endBtnH, 8).fill(rollbackFill).stroke({ width: 1, color: rollbackStroke });
+    rollbackBtn.x = rollbackBtnX;
+    rollbackBtn.y = 20;
+    rollbackBtn.zIndex = 2500;
+    rollbackBtn.eventMode = 'static';
+    rollbackBtn.cursor = rollbackState.enabled ? 'pointer' : 'default';
+    rollbackBtn.hitArea = new Rectangle(0, 0, rollbackBtnW, endBtnH);
+    rollbackBtn.on('pointerdown', () => {
+      if (rollbackState.enabled) {
+        rollbackTurn(renderCallback);
+      }
+    });
+    app.stage.addChild(rollbackBtn);
+
+    const rollbackText = new Text({
+      text: 'Rollback',
+      style: { fill: rollbackState.enabled ? 0xffffff : 0x9ca3af, fontSize: 14, fontWeight: 'bold' }
+    });
+    rollbackText.x = rollbackBtnX + (rollbackBtnW - rollbackText.width) / 2;
+    rollbackText.y = 20 + (endBtnH - rollbackText.height) / 2;
+    rollbackText.eventMode = 'none';
+    rollbackText.zIndex = 2501;
+    app.stage.addChild(rollbackText);
+  }
+
   const btn = new Graphics();
   btn.roundRect(0, 0, endBtnW, endBtnH, 8).fill(0x3b82f6);
-  btn.x = WIDTH - endBtnW - 20;
+  btn.x = endBtnX;
   btn.y = 20;
   btn.zIndex = 2500;
   btn.eventMode = 'static';
@@ -364,7 +408,7 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
     text: 'End Turn',
     style: { fill: 0xffffff, fontSize: 14, fontWeight: 'bold' }
   });
-  btnText.x = WIDTH - endBtnW - 20 + (endBtnW - btnText.width) / 2;
+  btnText.x = endBtnX + (endBtnW - btnText.width) / 2;
   btnText.y = 20 + (endBtnH - btnText.height) / 2;
   btnText.eventMode = 'none';
   btnText.zIndex = 2501;
@@ -375,7 +419,7 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
 // Targeting diagnostics – figure out *why* there are no valid targets
 // ---------------------------------------------------------------------------
 
-function getTargetingWarning(card: Card, caster: Character, gameState: GameState): string | null {
+export function getTargetingWarning(card: Card, caster: Character, gameState: GameState): string | null {
   // Self-targeting cards always have a target (the caster)
   if (card.targeting === 'self') return null;
 
@@ -399,9 +443,13 @@ function getTargetingWarning(card: Card, caster: Character, gameState: GameState
     return `No ${sideLabel} remaining!`;
   }
 
-  // Not enough energy
-  if (caster.energy < card.cost.energy) {
-    return `Not enough energy! (need ${card.cost.energy}, have ${caster.energy})`;
+  // Not enough energy (include suppression penalty for ranged cards)
+  const suppressionPenalty = getSuppressionCostPenalty(caster, card);
+  const totalCost = card.cost.energy + suppressionPenalty;
+  if (caster.energy < totalCost) {
+    return suppressionPenalty > 0
+      ? `Not enough energy! (need ${totalCost} (${card.cost.energy} + ${suppressionPenalty} suppressed), have ${caster.energy})`
+      : `Not enough energy! (need ${totalCost}, have ${caster.energy})`;
   }
 
   // Range check – only matters if the card has a maxRange or minRange

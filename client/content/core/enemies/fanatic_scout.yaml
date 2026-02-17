@@ -28,4 +28,5 @@ mechanics:
 tags: ["goblin", "scout", "raider", "enemy"]
 startingDeck:
   - "strike"
-  - "strike" 
+  - "blast" 
+  - ""

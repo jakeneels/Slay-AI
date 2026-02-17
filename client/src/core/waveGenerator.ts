@@ -10,13 +10,13 @@ import { getModifierRegistry } from './modifiers.js';
 // ── Default tuning constants (overridable via modifier registry / dev panel) ──
 
 /** Difficulty budget for wave 1. */
-export const WAVE_BASE_BUDGET = 100;
+export const WAVE_BASE_BUDGET = 200;
 
 /** Extra budget added per wave after the first. */
-export const WAVE_BUDGET_INCREMENT = 20;
+export const WAVE_BUDGET_INCREMENT = 40;
 
-/** +/- jitter applied to the budget (fraction, e.g. 0.15 = 15%). */
-export const WAVE_BUDGET_JITTER = 0.15;
+/** +/- jitter applied to the budget (fraction, e.g. 0.20 = 20%). */
+export const WAVE_BUDGET_JITTER = 0.2;
 
 /** Hard limits on enemies per wave. */
 export const WAVE_MIN_ENEMIES = 2;
@@ -94,6 +94,13 @@ export function generateWave(
   if (enemyPool.length === 0) return [];
 
   const reg = getModifierRegistry();
+  const acsEnabled = reg.resolve('acs_wave4_boss', 0) >= 1;
+  const spawnKyleBossThisWave = acsEnabled && waveNumber === 4;
+  // Keep secret enemies out of standard play unless ACS is active on wave 4.
+  const availablePool = spawnKyleBossThisWave
+    ? enemyPool
+    : enemyPool.filter(def => def.id !== 'actual_kyle');
+  if (availablePool.length === 0) return [];
 
   // Resolve tuning constants through the modifier pipeline (dev panel overrides)
   const baseBudget = reg.resolve('wave_base_budget', WAVE_BASE_BUDGET);
@@ -107,16 +114,15 @@ export function generateWave(
   const jitter = 1 + (Math.random() * 2 - 1) * jitterFrac;
   const budget = Math.round(rawBudget * jitter);
 
-  let picked = pickEnemies(enemyPool, budget, minEnemies, maxEnemies, cardLibrary);
+  let picked = pickEnemies(availablePool, budget, minEnemies, maxEnemies, cardLibrary);
 
   // Re-roll once if we got the exact same composition as last wave
-  if (previousIds && isSameComposition(picked, previousIds) && enemyPool.length > 1) {
-    picked = pickEnemies(enemyPool, budget, minEnemies, maxEnemies, cardLibrary);
+  if (previousIds && isSameComposition(picked, previousIds) && availablePool.length > 1) {
+    picked = pickEnemies(availablePool, budget, minEnemies, maxEnemies, cardLibrary);
   }
 
-  // Dev option: force Actual Kyle into the first enemy lineup.
-  const forceActualKyle = waveNumber === 1 && reg.resolve('force_actual_kyle_wave1', 0) >= 1;
-  if (forceActualKyle) {
+  // ACS option: force Actual Kyle into wave 4 as a boss.
+  if (spawnKyleBossThisWave) {
     picked = ensureEnemyInWave(picked, enemyPool, 'actual_kyle', maxEnemies);
   }
 
