@@ -28,7 +28,9 @@ mechanics:
   - "Sets traps that punish enemy slot movement"
 tags: ["tactician", "support", "drones", "traps"]
 startingDeck:
-  - "defend"
-  - "strike"
-  - "overclock"
-  - "defend"
+  - "suppressing_fire"
+  - "incendiary_drone"
+  - "shrapnel_grenade"
+  - "lob_c4"
+  - "sidearm"
+

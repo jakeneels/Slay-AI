@@ -200,6 +200,9 @@ function describeEffect(effect: CardEffect, card: Card): TooltipEffectLine {
         case 'fortify':
           subLines.push('Reduces Block decay by 10% per stack');
           break;
+        case 'regeneration':
+          subLines.push(`${stacks} healing/turn, stacks decay per status config`);
+          break;
         case 'disrupt':
           subLines.push('Disrupts the target');
           break;

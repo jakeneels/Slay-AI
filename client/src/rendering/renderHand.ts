@@ -3,7 +3,10 @@
 import type { Application } from 'pixi.js';
 import { Graphics, Text, Rectangle } from 'pixi.js';
 import type { GameState, Character, Card, CardEffect, BaseCardEffect, StatusEffect, StatusModifyEffect, StatusSpreadEffect } from '../core/types.js';
-import { WIDTH, SLOTS_PER_SIDE } from '../core/constants.js';
+import { WIDTH } from '../core/constants.js';
+
+/** Max slots shown on card position indicators (largest AOE in the game). */
+const MAX_INDICATOR_SLOTS = 4;
 import { getCard } from '../core/card.js';
 import { getSelectedCardId, setSelectedCardId } from '../core/gameState.js';
 import { render as renderCallback } from './renderer.js';
@@ -54,10 +57,10 @@ function labelForKey(key: string): { usePositionIndicator: boolean; targetType: 
   if (key === 'self') return { usePositionIndicator: true, targetType: 'self', filledCount: 1 };
   if (key === 'ally') return { usePositionIndicator: true, targetType: 'ally', filledCount: 1 };
   if (key === 'enemy') return { usePositionIndicator: true, targetType: 'enemy', filledCount: 1 };
-  if (key === 'allEnemies') return { usePositionIndicator: true, targetType: 'enemy', filledCount: SLOTS_PER_SIDE };
-  if (key === 'allAllies') return { usePositionIndicator: true, targetType: 'ally', filledCount: SLOTS_PER_SIDE };
+  if (key === 'allEnemies') return { usePositionIndicator: true, targetType: 'enemy', filledCount: MAX_INDICATOR_SLOTS };
+  if (key === 'allAllies') return { usePositionIndicator: true, targetType: 'ally', filledCount: MAX_INDICATOR_SLOTS };
   if (key.startsWith('aoe_')) {
-    const slots = Math.min(SLOTS_PER_SIDE, Math.max(1, parseInt(key.split('_')[1], 10) || 3));
+    const slots = Math.min(MAX_INDICATOR_SLOTS, Math.max(1, parseInt(key.split('_')[1], 10) || 3));
     return { usePositionIndicator: true, targetType: 'enemy', filledCount: slots };
   }
   return { usePositionIndicator: false, targetType: 'enemy', filledCount: 0 };
@@ -77,7 +80,7 @@ function renderPositionIndicator(
   aoeTargetSide?: 'enemy' | 'ally',
   /** When true, only draw filled circles (no empties). Use for self and AOE/adjacent. */
   noEmptySlots?: boolean,
-  /** How many slots from frontline are in range (1-SLOTS_PER_SIDE). Undefined = all in range. */
+  /** How many slots from frontline are in range (1-MAX_INDICATOR_SLOTS). Undefined = all in range. */
   reachableSlots?: number
 ): number {
   const effectiveType: TargetType = aoeTargetSide ?? targetType;
@@ -85,10 +88,10 @@ function renderPositionIndicator(
   const strokeColor = effectiveType === 'enemy' ? 0xb91c1c : effectiveType === 'ally' ? 0x166534 : 0x1d4ed8;
   const gap = 2;
 
-  // If range is limited, always show all side slots so the range restriction is visible
-  const hasRangeLimit = reachableSlots !== undefined && reachableSlots < SLOTS_PER_SIDE;
-  const totalSlots = (noEmptySlots && !hasRangeLimit) ? filledCount : SLOTS_PER_SIDE;
-  const maxReachable = reachableSlots ?? totalSlots;
+  // If range is limited, always show all indicator slots so the range restriction is visible
+  const hasRangeLimit = reachableSlots !== undefined && reachableSlots < MAX_INDICATOR_SLOTS;
+  const totalSlots = (noEmptySlots && !hasRangeLimit) ? filledCount : MAX_INDICATOR_SLOTS;
+  const maxReachable = Math.min(reachableSlots ?? totalSlots, MAX_INDICATOR_SLOTS);
 
   const totalW = totalSlots * circleSize + Math.max(0, totalSlots - 1) * gap;
   const g = new Graphics();
@@ -440,7 +443,7 @@ function renderPlayerHand(app: Application, _gameState: GameState, currentPlayer
     let curY = y + 50;
     let groupIdx = 0;
 
-    const reachableSlots = card.maxRange ? Math.min(card.maxRange, SLOTS_PER_SIDE) : undefined;
+    const reachableSlots = card.maxRange ? Math.min(card.maxRange, MAX_INDICATOR_SLOTS) : undefined;
 
     for (const [key, effects] of groups) {
       const lbl = labelForKey(key);
@@ -641,7 +644,7 @@ function renderEnemyHand(app: Application, _gameState: GameState, currentPlayer:
     let curY = y + 40;
     let groupIdx = 0;
 
-    const reachableSlots = card.maxRange ? Math.min(card.maxRange, SLOTS_PER_SIDE) : undefined;
+    const reachableSlots = card.maxRange ? Math.min(card.maxRange, MAX_INDICATOR_SLOTS) : undefined;
 
     for (const [key, effects] of groups) {
       const lbl = labelForKey(key);

@@ -28,6 +28,7 @@ mechanics:
   - "Tech-based attacks"
 tags: ["ai", "drone", "tech", "enemy", "support"]
 startingDeck:
-  - "defend"
+  - "incendiary_drone"
   - "blast"
-  - "overclock"
+  - "rad_round"
+  - "rad_grenade"

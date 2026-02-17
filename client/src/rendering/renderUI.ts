@@ -16,15 +16,108 @@ import { createEnergyIcon } from './icons/energyIcon.js';
  */
 export function renderTurnInfo(app: Application, gameState: GameState): void {
   const currentPlayer = gameState.characters.find(c => c.id === gameState.currentPlayerId);
-  const turnText = new Text({
-    text: `Turn ${gameState.turnIndex + 1} - ${currentPlayer?.name}'s turn`,
-    style: { fill: 0xffffff, fontSize: 18, fontWeight: 'bold' }
+
+  // Reserve right side for End Turn button — nothing must overlap
+  const endBtnReserve = 160;
+  const rightBound = WIDTH - endBtnReserve;
+
+  // Row 1: Round badge + turn text (compact)
+  const headerY = 12;
+  const roundBadgeW = 68;
+  const roundBadgeH = 26;
+  const roundBg = new Graphics();
+  roundBg.roundRect(0, 0, roundBadgeW, roundBadgeH, 6)
+    .fill(0x1e3a5f)
+    .stroke({ width: 1, color: 0x3b82f6 });
+  roundBg.x = 20;
+  roundBg.y = headerY;
+  roundBg.zIndex = 2000;
+  roundBg.eventMode = 'none';
+  app.stage.addChild(roundBg);
+
+  const roundText = new Text({
+    text: `Rd ${gameState.roundNumber}`,
+    style: { fill: 0x93c5fd, fontSize: 14, fontWeight: 'bold' }
   });
-  turnText.x = 20;
-  turnText.y = 20;
+  roundText.x = 20 + (roundBadgeW - roundText.width) / 2;
+  roundText.y = headerY + (roundBadgeH - roundText.height) / 2;
+  roundText.zIndex = 2001;
+  roundText.eventMode = 'none';
+  app.stage.addChild(roundText);
+
+  const turnText = new Text({
+    text: `${currentPlayer?.name ?? '—'}'s turn`,
+    style: { fill: 0xffffff, fontSize: 16, fontWeight: 'bold' }
+  });
+  turnText.x = 20 + roundBadgeW + 12;
+  turnText.y = headerY + (roundBadgeH - turnText.height) / 2;
   turnText.eventMode = 'none';
   turnText.zIndex = 2000;
   app.stage.addChild(turnText);
+
+  // Row 2: Turn queue — 4 per row, then newline; back up below header
+  if (gameState.turnQueue.length > 0) {
+    const chipsPerRow = 4;
+    const queueStartY = 44;
+    const chipH = 15;
+    const chipW = 77; // fits 11 chars at 11px font
+    const chipGap = 6;
+    const rowGap = 6;
+    let cursorX = 20;
+    let cursorY = queueStartY;
+    let chipsInRow = 0;
+
+    for (let i = gameState.turnQueueIndex; i < gameState.turnQueue.length; i++) {
+      const charId = gameState.turnQueue[i];
+      const char = gameState.characters.find(c => c.id === charId);
+      if (!char || char.hp <= 0) continue;
+
+      // Newline after 4 chips
+      if (chipsInRow >= chipsPerRow) {
+        chipsInRow = 0;
+        cursorX = 20;
+        cursorY += chipH + rowGap;
+      }
+
+      const isActive = i === gameState.turnQueueIndex;
+      const isAlly = char.isPlayer;
+
+      const displayName = char.name.length > 11 ? char.name.slice(0, 10) + '…' : char.name;
+
+      const chipBg = new Graphics();
+      chipBg.roundRect(0, 0, chipW, chipH, 4).fill(isActive ? 0x3b82f6 : isAlly ? 0x1f2937 : 0x3b1111)
+        .stroke({ width: 1, color: isActive ? 0x60a5fa : isAlly ? 0x4b5563 : 0x7f1d1d });
+      chipBg.x = cursorX;
+      chipBg.y = cursorY;
+      chipBg.zIndex = 2000;
+      chipBg.eventMode = 'none';
+      app.stage.addChild(chipBg);
+
+      const label = new Text({
+        text: displayName,
+        style: { fill: isActive ? 0xffffff : 0xd1d5db, fontSize: 11, fontWeight: isActive ? 'bold' : 'normal' }
+      });
+      label.x = cursorX + (chipW - label.width) / 2;
+      label.y = cursorY + (chipH - label.height) / 2;
+      label.zIndex = 2001;
+      label.eventMode = 'none';
+      app.stage.addChild(label);
+
+      cursorX += chipW + chipGap;
+
+      if (i < gameState.turnQueue.length - 1 && chipsInRow < chipsPerRow - 1) {
+        const arrow = new Text({ text: '›', style: { fill: 0x6b7280, fontSize: 12 } });
+        arrow.x = cursorX;
+        arrow.y = cursorY + (chipH - arrow.height) / 2;
+        arrow.zIndex = 2000;
+        arrow.eventMode = 'none';
+        app.stage.addChild(arrow);
+        cursorX += arrow.width + chipGap;
+      }
+
+      chipsInRow++;
+    }
+  }
   
   const selectedCardId = getSelectedCardId();
   if (selectedCardId) {
@@ -51,8 +144,9 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
         text: `Selected: ${card.name} - ${instructionText}`,
         style: { fill: 0x22c55e, fontSize: 14 }
       });
-      selectedText.x = 20;
-      selectedText.y = 50;
+      // Keep card targeting instructions clear of the top HUD by centering and moving lower.
+      selectedText.x = (WIDTH - selectedText.width) / 2;
+      selectedText.y = 102;
       selectedText.eventMode = 'none';
       selectedText.zIndex = 2000;
       app.stage.addChild(selectedText);
@@ -215,7 +309,7 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
   btn.roundRect(0, 0, endBtnW, endBtnH, 8).fill(0x3b82f6);
   btn.x = WIDTH - endBtnW - 20;
   btn.y = 20;
-  btn.zIndex = 1500;
+  btn.zIndex = 2500;
   btn.eventMode = 'static';
   btn.cursor = 'pointer';
   btn.hitArea = new Rectangle(0, 0, endBtnW, endBtnH);
@@ -231,7 +325,7 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
   btnText.x = WIDTH - endBtnW - 20 + (endBtnW - btnText.width) / 2;
   btnText.y = 20 + (endBtnH - btnText.height) / 2;
   btnText.eventMode = 'none';
-  btnText.zIndex = 1501;
+  btnText.zIndex = 2501;
   app.stage.addChild(btnText);
 }
 

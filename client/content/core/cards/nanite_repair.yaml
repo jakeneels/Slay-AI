@@ -1,0 +1,22 @@
+schemaVersion: 1
+id: nanite_repair
+name: "Nanite Repair"
+type: skill
+rarity: rare
+cost: 2
+copies: 2
+tags: [heal, regeneration, support]
+targeting: ally
+exhaust: false
+expires_after_turns: 0
+description: "Deploy restorative nanites that knit damaged systems over time."
+effects:
+  - kind: status
+    status: regeneration
+    stacks: 4
+    duration: 4
+    effectTarget: target
+animation:
+  heal:
+    particleColor: 0x22c55e
+    glowIntensity: 0.35

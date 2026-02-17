@@ -8,21 +8,21 @@ import type { StatusDefinition } from '../../core/types.js';
 
 const BLEED_DEF: StatusDefinition = {
   id: 'bleed', name: 'Bleed', description: '',
-  cadence: 'turn_end',
+  cadence: 'round_start',
   dot: { damage_per_stack: 1, ignores_block: false },
   decay: { mode: 'none' },
 };
 
 const SHOCK_DEF: StatusDefinition = {
   id: 'shock', name: 'Shock', description: '',
-  cadence: 'turn_end',
+  cadence: 'round_start',
   dot: { damage_per_stack: 1, ignores_block: false },
   decay: { mode: 'none' },
 };
 
 const RADIATION_DEF: StatusDefinition = {
   id: 'radiation', name: 'Radiation', description: '',
-  cadence: 'side_end',
+  cadence: 'round_start',
   dot: { damage_per_stack: 1, ignores_block: true },
   decay: { mode: 'half_life', round: 'ceil', min_remove: 1 },
   apply: { requires_zero_block: true },
@@ -30,9 +30,26 @@ const RADIATION_DEF: StatusDefinition = {
 
 const FORTIFY_DEF: StatusDefinition = {
   id: 'fortify', name: 'Fortify', description: '',
-  cadence: 'turn_end',
+  cadence: 'round_start',
   dot: null,
   decay: { mode: 'none' },
+};
+
+const REGENERATION_DEF: StatusDefinition = {
+  id: 'regeneration', name: 'Regeneration', description: '',
+  cadence: 'round_start',
+  dot: null,
+  hot: { heal_per_stack: 1 },
+  duration: 3,
+  decay: { mode: 'none' },
+};
+
+const REGENERATION_DECAY_DEF: StatusDefinition = {
+  id: 'regeneration_decay', name: 'Regeneration Decay', description: '',
+  cadence: 'round_start',
+  dot: null,
+  hot: { heal_per_stack: 1 },
+  decay: { mode: 'half_life', round: 'ceil', min_remove: 1 },
 };
 
 const ALL_STATUS_DEFS: Record<string, StatusDefinition> = {
@@ -40,6 +57,8 @@ const ALL_STATUS_DEFS: Record<string, StatusDefinition> = {
   shock: SHOCK_DEF,
   radiation: RADIATION_DEF,
   fortify: FORTIFY_DEF,
+  regeneration: REGENERATION_DEF,
+  regeneration_decay: REGENERATION_DECAY_DEF,
 };
 
 /** Set up game state with all status definitions loaded. */
@@ -135,6 +154,15 @@ describe('status', () => {
       expect(hasStatus(character, 'radiation')).toBe(true);
       expect(getStatusStacks(character, 'radiation')).toBe(3);
     });
+
+    it('should use default status duration from definition when not provided', () => {
+      const character = createMockCharacter({ statuses: [] });
+
+      applyStatus(character, 'regeneration', 2);
+
+      expect(character.statuses).toHaveLength(1);
+      expect(character.statuses[0].duration).toBe(3);
+    });
   });
 
   describe('removeStatusStacks', () => {
@@ -210,7 +238,7 @@ describe('status', () => {
     });
   });
 
-  describe('processStatusEffects — turn_end', () => {
+  describe('processStatusEffects — round_start', () => {
     it('should apply bleed damage reduced by block', () => {
       const character = createMockCharacter({
         hp: 100,
@@ -218,7 +246,7 @@ describe('status', () => {
         statuses: [{ id: 'bleed', stacks: 3 }]
       });
       
-      processStatusEffects(character, 'turn_end');
+      processStatusEffects(character, 'round_start');
       
       expect(character.hp).toBe(100);
       expect(getTotalBlock(character)).toBe(2);
@@ -231,7 +259,7 @@ describe('status', () => {
         statuses: [{ id: 'bleed', stacks: 5 }]
       });
       
-      processStatusEffects(character, 'turn_end');
+      processStatusEffects(character, 'round_start');
       
       expect(character.hp).toBe(97);
       expect(getTotalBlock(character)).toBe(0);
@@ -244,48 +272,20 @@ describe('status', () => {
         statuses: [{ id: 'shock', stacks: 6 }]
       });
       
-      processStatusEffects(character, 'turn_end');
+      processStatusEffects(character, 'round_start');
       
       expect(character.hp).toBe(98);
       expect(getTotalBlock(character)).toBe(0);
     });
 
-    it('should NOT tick radiation on turn_end (radiation is side_end)', () => {
-      const character = createMockCharacter({
-        hp: 100,
-        blockLayers: [],
-        statuses: [{ id: 'radiation', stacks: 5 }]
-      });
-      
-      processStatusEffects(character, 'turn_end');
-      
-      // Radiation should NOT have ticked
-      expect(character.hp).toBe(100);
-      expect(getStatusStacks(character, 'radiation')).toBe(5);
-    });
-
-    it('should not reduce HP below 0', () => {
-      const character = createMockCharacter({
-        hp: 3,
-        blockLayers: [],
-        statuses: [{ id: 'bleed', stacks: 10 }]
-      });
-      
-      processStatusEffects(character, 'turn_end');
-      
-      expect(character.hp).toBe(0);
-    });
-  });
-
-  describe('processStatusEffects — side_end', () => {
-    it('should tick radiation on side_end, ignoring block', () => {
+    it('should tick radiation on round_start, ignoring block', () => {
       const character = createMockCharacter({
         hp: 100,
         blockLayers: [{ amount: 10, decay_percent: 20 }],
         statuses: [{ id: 'radiation', stacks: 5 }]
       });
       
-      processStatusEffects(character, 'side_end');
+      processStatusEffects(character, 'round_start');
       
       expect(character.hp).toBe(95);
       expect(getTotalBlock(character)).toBe(10);
@@ -300,7 +300,7 @@ describe('status', () => {
         statuses: [{ id: 'radiation', stacks: 8 }]
       });
       
-      processStatusEffects(character, 'side_end');
+      processStatusEffects(character, 'round_start');
       
       expect(character.hp).toBe(92);
       expect(getStatusStacks(character, 'radiation')).toBe(4);
@@ -313,7 +313,7 @@ describe('status', () => {
         statuses: [{ id: 'radiation', stacks: 3 }]
       });
       
-      processStatusEffects(character, 'side_end');
+      processStatusEffects(character, 'round_start');
       
       expect(character.hp).toBe(97);
       expect(getStatusStacks(character, 'radiation')).toBe(2);
@@ -326,28 +326,64 @@ describe('status', () => {
         statuses: [{ id: 'radiation', stacks: 1 }]
       });
       
-      processStatusEffects(character, 'side_end');
+      processStatusEffects(character, 'round_start');
       
       expect(character.hp).toBe(99);
       expect(hasStatus(character, 'radiation')).toBe(false);
     });
 
-    it('should NOT tick bleed on side_end (bleed is turn_end)', () => {
+    it('should not reduce HP below 0', () => {
       const character = createMockCharacter({
-        hp: 100,
+        hp: 3,
         blockLayers: [],
-        statuses: [{ id: 'bleed', stacks: 5 }]
+        statuses: [{ id: 'bleed', stacks: 10 }]
       });
       
-      processStatusEffects(character, 'side_end');
+      processStatusEffects(character, 'round_start');
       
+      expect(character.hp).toBe(0);
+    });
+
+    it('should apply regeneration healing by stacks', () => {
+      const character = createMockCharacter({
+        hp: 90,
+        maxHp: 100,
+        statuses: [{ id: 'regeneration', stacks: 4 }]
+      });
+
+      processStatusEffects(character, 'round_start');
+
+      expect(character.hp).toBe(94);
+    });
+
+    it('should clamp regeneration healing to max HP', () => {
+      const character = createMockCharacter({
+        hp: 98,
+        maxHp: 100,
+        statuses: [{ id: 'regeneration', stacks: 5 }]
+      });
+
+      processStatusEffects(character, 'round_start');
+
       expect(character.hp).toBe(100);
-      expect(getStatusStacks(character, 'bleed')).toBe(5);
+    });
+
+    it('should decay regeneration stacks using half_life config', () => {
+      const character = createMockCharacter({
+        hp: 90,
+        maxHp: 100,
+        statuses: [{ id: 'regeneration_decay', stacks: 5 }]
+      });
+
+      processStatusEffects(character, 'round_start');
+
+      expect(character.hp).toBe(95);
+      expect(getStatusStacks(character, 'regeneration_decay')).toBe(3);
     });
   });
 
-  describe('processStatusEffects — mixed statuses', () => {
-    it('should only process statuses matching the cadence', () => {
+  describe('processStatusEffects — all statuses tick on round_start', () => {
+    it('should process all statuses in a single round_start call', () => {
       const character = createMockCharacter({
         hp: 100,
         blockLayers: [{ amount: 10, decay_percent: 20 }],
@@ -358,17 +394,13 @@ describe('status', () => {
         ]
       });
       
-      // turn_end: only bleed + shock tick
-      processStatusEffects(character, 'turn_end');
+      // round_start: ALL statuses tick
+      processStatusEffects(character, 'round_start');
       
-      // 3+2=5 reduced by 10 block = 0 damage, radiation untouched
-      expect(character.hp).toBe(100);
-      expect(getStatusStacks(character, 'radiation')).toBe(4);
-      
-      // side_end: only radiation ticks
-      processStatusEffects(character, 'side_end');
-      
-      expect(character.hp).toBe(96); // 4 radiation damage
+      // bleed 3 + shock 2 = 5, absorbed by 10 block → 5 block left
+      // radiation 4 ignores block → 4 HP damage
+      expect(character.hp).toBe(96);
+      expect(getTotalBlock(character)).toBe(5);
       expect(getStatusStacks(character, 'radiation')).toBe(2); // ceil(4/2) = 2
     });
   });

@@ -24,8 +24,10 @@ export function applyStatus(
   duration?: number,
   metadata?: Record<string, any>
 ): void {
-  // Check data-driven application conditions
   const def = getStatusDef(statusId);
+  const resolvedDuration = duration ?? def?.duration;
+
+  // Check data-driven application conditions
   if (def?.apply?.requires_zero_block) {
     const totalBlock = getTotalBlock(character);
     if (totalBlock > 0) {
@@ -40,8 +42,8 @@ export function applyStatus(
     // Stack additively
     existingStatus.stacks += stacks;
     // Refresh duration if provided
-    if (duration !== undefined) {
-      existingStatus.duration = duration;
+    if (resolvedDuration !== undefined) {
+      existingStatus.duration = resolvedDuration;
     }
     if (metadata) {
       existingStatus.metadata = { ...existingStatus.metadata, ...metadata };
@@ -52,7 +54,7 @@ export function applyStatus(
     character.statuses.push({
       id: statusId,
       stacks,
-      duration,
+      duration: resolvedDuration,
       metadata
     });
     addToCombatLog(`${character.name} gains ${stacks} ${statusId}`);
@@ -176,6 +178,27 @@ function applyDot(character: Character, statusId: string, stacks: number, def: S
 }
 
 /**
+ * Apply HoT healing for a single status based on its definition.
+ * Returns the actual HP restored (after maxHp clamp).
+ */
+function applyHot(character: Character, stacks: number, def: StatusDefinition): number {
+  if (!def.hot) return 0;
+
+  const totalHeal = stacks * def.hot.heal_per_stack;
+  if (totalHeal <= 0) return 0;
+
+  const hpBefore = character.hp;
+  character.hp = Math.min(character.maxHp, character.hp + totalHeal);
+  const actualHeal = character.hp - hpBefore;
+
+  if (actualHeal > 0) {
+    addToCombatLog(`${character.name} heals ${actualHeal} HP from ${def.name}`);
+  }
+
+  return actualHeal;
+}
+
+/**
  * Apply stack decay for a single status based on its definition.
  * Mutates the character's statuses array (may remove the status).
  */
@@ -217,7 +240,7 @@ function applyDecay(character: Character, statusId: string, currentStacks: numbe
 /**
  * Process all status effects on a character for a given cadence.
  * Only ticks statuses whose definition matches the cadence.
- * Statuses without a definition default to 'turn_end' cadence with no DoT.
+ * Statuses without a definition default to 'round_start' cadence with no DoT.
  */
 export function processStatusEffects(character: Character, cadence: StatusCadence): void {
   // Snapshot status ids to avoid mutation issues during iteration
@@ -229,13 +252,18 @@ export function processStatusEffects(character: Character, cadence: StatusCadenc
 
     const def = getStatusDef(status.id);
 
-    // Default cadence is 'turn_end' for unknown statuses
-    const statusCadence = def?.cadence ?? 'turn_end';
+    // Default cadence is 'round_start' for unknown statuses
+    const statusCadence = def?.cadence ?? 'round_start';
     if (statusCadence !== cadence) continue;
 
     // Apply DoT damage if defined
     if (def?.dot) {
       applyDot(character, status.id, status.stacks, def);
+    }
+
+    // Apply HoT healing if defined
+    if (def?.hot) {
+      applyHot(character, status.stacks, def);
     }
 
     // Apply decay if defined
@@ -246,11 +274,11 @@ export function processStatusEffects(character: Character, cadence: StatusCadenc
 }
 
 /**
- * Legacy wrapper — processes all turn_end DoTs.
- * @deprecated Use processStatusEffects(character, cadence) instead.
+ * Legacy wrapper — processes all round_start DoTs.
+ * @deprecated Use processStatusEffects(character, 'round_start') instead.
  */
 export function processDoTs(character: Character): void {
-  processStatusEffects(character, 'turn_end');
+  processStatusEffects(character, 'round_start');
 }
 
 // ── Duration decay ───────────────────────────────────────────────────

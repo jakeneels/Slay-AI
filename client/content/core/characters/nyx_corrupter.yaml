@@ -19,8 +19,8 @@ isPlayer: true
 stats:
   hp: 100
   maxHp: 100
-  energy: 4
-  maxEnergy: 4
+  energy: 6
+  maxEnergy: 6
   speed: 0
   suppression: 1
   suppressionResist: 0
@@ -30,4 +30,7 @@ mechanics:
   - "Can spread contamination across enemy slots"
 tags: ["mutant", "radiation", "dot", "debuffer"]
 startingDeck:
-  - "heal"
+  - "heal" 
+  - "rad_bio"
+  - "rad_wave"
+  - "rad_phase"

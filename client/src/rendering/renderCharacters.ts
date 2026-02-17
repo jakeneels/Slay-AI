@@ -56,6 +56,15 @@ const Z_ARROW = 280;
 
 // Map to store character sprites for AOE highlighting
 const characterSpriteMap = new Map<string, SpriteImpl>();
+const TARGETING_FEEDBACK_DURATION_MS = 1400;
+
+type TargetingFeedback = {
+  message: string;
+  expiresAt: number;
+};
+
+let activeTargetingFeedback: TargetingFeedback | null = null;
+let targetingFeedbackTimeout: ReturnType<typeof setTimeout> | null = null;
 
 export type ResolvedVisualProfile = {
   scale: number;
@@ -64,6 +73,65 @@ export type ResolvedVisualProfile = {
   offsetX: number;
   offsetY: number;
 };
+
+function showTargetingFeedback(message: string): void {
+  activeTargetingFeedback = {
+    message,
+    expiresAt: Date.now() + TARGETING_FEEDBACK_DURATION_MS,
+  };
+  if (targetingFeedbackTimeout) {
+    clearTimeout(targetingFeedbackTimeout);
+  }
+  targetingFeedbackTimeout = setTimeout(() => {
+    activeTargetingFeedback = null;
+    renderCallback();
+  }, TARGETING_FEEDBACK_DURATION_MS);
+}
+
+function getRangeError(card: { minRange?: number; maxRange?: number }, distance: number): string | null {
+  if (card.maxRange && distance > card.maxRange) {
+    return `Out of range! (${distance} slots, max ${card.maxRange})`;
+  }
+  if (card.minRange && distance < card.minRange) {
+    return `Too close! (${distance} slots, min ${card.minRange})`;
+  }
+  return null;
+}
+
+function renderTargetingFeedback(app: Application): void {
+  if (!activeTargetingFeedback) return;
+  if (Date.now() > activeTargetingFeedback.expiresAt) {
+    activeTargetingFeedback = null;
+    return;
+  }
+
+  const padX = 14;
+  const padY = 7;
+  const text = new Text({
+    text: activeTargetingFeedback.message,
+    style: { fill: 0xfbbf24, fontSize: 14, fontWeight: 'bold' },
+  });
+  const bubbleW = text.width + padX * 2;
+  const bubbleH = text.height + padY * 2;
+  const bubbleX = (WIDTH - bubbleW) / 2;
+  const bubbleY = 320;
+
+  const bubble = new Graphics();
+  bubble.roundRect(0, 0, bubbleW, bubbleH, 8)
+    .fill({ color: 0x1c1917, alpha: 0.92 })
+    .stroke({ width: 2, color: 0xb45309, alpha: 0.85 });
+  bubble.x = bubbleX;
+  bubble.y = bubbleY;
+  bubble.eventMode = 'none';
+  bubble.zIndex = 3001;
+  app.stage.addChild(bubble);
+
+  text.x = bubbleX + padX;
+  text.y = bubbleY + padY;
+  text.eventMode = 'none';
+  text.zIndex = 3002;
+  app.stage.addChild(text);
+}
 
 function clamp01(value: number, fallback: number): number {
   if (!Number.isFinite(value)) return fallback;
@@ -319,6 +387,9 @@ export function renderCharacters(app: Application, gameState: GameState): void {
       }
     }
   }
+
+  // Keep warning above character layer, but below tooltips/modals.
+  renderTargetingFeedback(app);
 }
 
 /**
@@ -384,28 +455,25 @@ function renderCharacter(
         
         if (card) {
           const isAoe = card.targeting === 'aoe';
-          let canTarget = 
+          const matchesTargetType =
             (card.targeting === 'enemy' && !char.isPlayer) ||
             (card.targeting === 'ally' && char.isPlayer) ||
             (card.targeting === 'self' && char.id === gameStateForCard.currentPlayerId) ||
             (card.targeting === 'single' && !char.isPlayer) || // Default single target = enemy for backwards compat
             isAoe; // AOE can be centered on any character — blast hits everyone in radius
-          
-          // Range check: if card has maxRange/minRange, verify target is within range of caster
-          if (canTarget && (card.maxRange || card.minRange) && card.targeting !== 'self') {
+          let rangeError: string | null = null;
+          if (matchesTargetType && (card.maxRange || card.minRange) && card.targeting !== 'self') {
             const caster = gameStateForCard.characters.find(c => c.id === gameStateForCard.currentPlayerId);
             if (caster) {
               const distance = Math.abs(caster.slotIndex - char.slotIndex);
-              if (card.maxRange && distance > card.maxRange) {
-                canTarget = false;
-              }
-              if (card.minRange && distance < card.minRange) {
-                canTarget = false;
-              }
+              rangeError = getRangeError(card, distance);
             }
           }
+          const canTarget = matchesTargetType && !rangeError;
           
           if (canTarget) {
+            // Targetable sprites must be interactive; passive mode prevents pointer events.
+            sprite.eventMode = 'static';
             sprite.cursor = 'pointer';
             
             // Determine highlight color based on targeting type
@@ -538,6 +606,13 @@ function renderCharacter(
             sprite.on('pointerdown', async () => {
               // For self-targeting, don't need targetId (will be ignored)
               await playCard(selectedCardId, char.id, renderCallback);
+            });
+          } else if (matchesTargetType && rangeError) {
+            sprite.eventMode = 'static';
+            sprite.cursor = 'not-allowed';
+            sprite.on('pointerdown', () => {
+              showTargetingFeedback(rangeError!);
+              renderCallback();
             });
           }
         }

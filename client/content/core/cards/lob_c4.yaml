@@ -1,6 +1,6 @@
 schemaVersion: 1
-id: shockwave
-name: "Shockwave"
+id: lob_c4
+name: "Lob C4"
 type: skill
 rarity: epic
 cost: 3
@@ -9,12 +9,12 @@ targeting: aoe
 aoeSlots: 2
 maxRange: 3
 # optimalRange: 1
-exhaust: false
+exhaust: true
 expires_after_turns: 0
-description: "Close-range shockwave ripples outward, damaging and pushing enemies back."
+description: "Lob a C4 bomb for explosive area damage."
 effects:
   - kind: damage
-    amount: 5
+    amount: 15
   - kind: knockback
-    amount: 1
+    amount: 2
 

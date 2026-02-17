@@ -1,6 +1,6 @@
 schemaVersion: 1
-id: hipshot
-name: "Hipshot"
+id: sidearm
+name: "Sidearm"
 type: attack
 rarity: common
 cost: 2

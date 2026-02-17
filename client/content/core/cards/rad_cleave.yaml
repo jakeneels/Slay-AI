@@ -3,18 +3,23 @@ id: rad_round
 name: "Rad Round"
 type: attack
 rarity: rare   # common, rare, epic, legendary, mythic.
-cost: 2
-copies: 3
-tags: [radiation, ranged]
-targeting: enemy
-maxRange: 7
+cost: 3
+copies: 2
+tags: [basic, melee, radiation]
+targeting: aoe
+aoeSlots: 2
+maxRange: 2
+minRange: 1
 exhaust: false
 expires_after_turns: 0
-description: "A slug laced with radioactive material. Deals light damage and irradiates exposed targets."
+description: "A swipe from a massive radioactive claw. Deals damage and irradiates exposed targets."
 effects:
   - kind: damage
     amount: 5
   - kind: status
     status: radiation
     stacks: 5
+    effectTarget: target
+  - kind: knockback
+    amount: 1
     effectTarget: target

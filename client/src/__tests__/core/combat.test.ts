@@ -968,6 +968,47 @@ describe('combat', () => {
       expect(enemy.statuses[0].stacks).toBe(2);
     });
 
+    it('should apply status duration from card effect yaml field', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        energy: 3,
+        isPlayer: true
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        hp: 100,
+        isPlayer: false
+      });
+
+      const statusCard = createMockCard({
+        id: 'status_duration',
+        name: 'Status Duration Card',
+        cost: { energy: 1 },
+        targeting: 'enemy',
+        effects: [{ kind: 'status', status: 'disrupt', stacks: 2, duration: 2 }]
+      });
+
+      setupGameState({
+        characters: [player, enemy],
+        cardLibrary: { status_duration: statusCard },
+        currentPlayerId: 'player1'
+      });
+
+      const instanceId = createCardInstance('status_duration');
+      if (instanceId) {
+        player.hand.push(instanceId);
+      }
+
+      await playCard(instanceId!, 'enemy1');
+
+      expect(enemy.statuses).toHaveLength(1);
+      expect(enemy.statuses[0].id).toBe('disrupt');
+      expect(enemy.statuses[0].stacks).toBe(2);
+      expect(enemy.statuses[0].duration).toBe(2);
+    });
+
     it('should handle modifier effect with condition met', async () => {
       const player = createMockCharacter({
         id: 'player1',
@@ -2855,7 +2896,7 @@ describe('combat', () => {
   });
 
   describe('endTurn', () => {
-    it('should advance to next character', () => {
+    it('should advance to next character in turn queue', () => {
       const player1 = createMockCharacter({
         id: 'player1',
         name: 'Player 1',
@@ -2873,7 +2914,10 @@ describe('combat', () => {
 
       setupGameState({
         characters: [player1, player2],
-        currentPlayerId: 'player1'
+        currentPlayerId: 'player1',
+        turnQueue: ['player1', 'player2'],
+        turnQueueIndex: 0,
+        roundNumber: 1
       });
 
       endTurn();
@@ -2901,7 +2945,10 @@ describe('combat', () => {
 
       setupGameState({
         characters: [player1, player2],
-        currentPlayerId: 'player1'
+        currentPlayerId: 'player1',
+        turnQueue: ['player1', 'player2'],
+        turnQueueIndex: 0,
+        roundNumber: 1
       });
 
       endTurn();
@@ -2909,7 +2956,7 @@ describe('combat', () => {
       expect(player2.energy).toBe(5); // Restored to max
     });
 
-    it('should decay block layers at end of turn', () => {
+    it('should decay block layers at round start', () => {
       const player = createMockCharacter({
         id: 'player1',
         name: 'Player',
@@ -2918,9 +2965,13 @@ describe('combat', () => {
         isPlayer: true
       });
 
+      // Queue is exhausted so endTurn triggers a new round (processRoundStart)
       setupGameState({
         characters: [player],
-        currentPlayerId: 'player1'
+        currentPlayerId: 'player1',
+        turnQueue: ['player1'],
+        turnQueueIndex: 0,
+        roundNumber: 1
       });
 
       endTurn();
@@ -2929,7 +2980,7 @@ describe('combat', () => {
       expect(player.blockLayers[0].amount).toBe(80);
     });
 
-    it('should process DoT statuses at end of turn', () => {
+    it('should process DoT statuses at round start', () => {
       const player = createMockCharacter({
         id: 'player1',
         name: 'Player',
@@ -2940,18 +2991,31 @@ describe('combat', () => {
         isPlayer: true
       });
 
+      // Provide bleed definition so the DoT ticks
       setupGameState({
         characters: [player],
-        currentPlayerId: 'player1'
+        currentPlayerId: 'player1',
+        turnQueue: ['player1'],
+        turnQueueIndex: 0,
+        roundNumber: 1,
+        statusLibrary: {
+          bleed: {
+            id: 'bleed', name: 'Bleed', description: '',
+            cadence: 'round_start',
+            dot: { damage_per_stack: 1, ignores_block: false },
+            decay: { mode: 'none' },
+          }
+        }
       });
 
+      // Queue exhausted → processRoundStart fires, which processes DoTs
       endTurn();
 
       // 3 bleed damage
       expect(player.hp).toBe(97);
     });
 
-    it('should cycle through all characters', () => {
+    it('should cycle through turn queue and start new round', () => {
       const player1 = createMockCharacter({
         id: 'player1',
         name: 'Player 1',
@@ -2973,7 +3037,10 @@ describe('combat', () => {
 
       setupGameState({
         characters: [player1, player2, player3],
-        currentPlayerId: 'player1'
+        currentPlayerId: 'player1',
+        turnQueue: ['player1', 'player2', 'player3'],
+        turnQueueIndex: 0,
+        roundNumber: 1
       });
 
       endTurn();
@@ -2982,8 +3049,15 @@ describe('combat', () => {
       endTurn();
       expect(getGameState().currentPlayerId).toBe('player3');
 
+      // Queue exhausted: new round starts with random queue
+      // All 3 players should be in the new queue
       endTurn();
-      expect(getGameState().currentPlayerId).toBe('player1'); // Cycles back
+      const state = getGameState();
+      expect(state.roundNumber).toBe(2);
+      expect(state.turnQueue.length).toBe(3);
+      expect(state.turnQueue).toContain('player1');
+      expect(state.turnQueue).toContain('player2');
+      expect(state.turnQueue).toContain('player3');
     });
 
     it('should handle no living characters', () => {
@@ -2997,17 +3071,19 @@ describe('combat', () => {
 
       setupGameState({
         characters: [deadPlayer],
-        currentPlayerId: 'player1'
+        currentPlayerId: 'player1',
+        turnQueue: [],
+        turnQueueIndex: -1,
+        roundNumber: 0
       });
 
-      const stateBefore = getGameState();
       endTurn();
 
       // Should not crash, state should remain unchanged
       expect(getGameState().currentPlayerId).toBe('player1');
     });
 
-    it('should handle current player being dead', () => {
+    it('should skip dead characters in the queue', () => {
       const deadPlayer = createMockCharacter({
         id: 'player1',
         name: 'Player 1',
@@ -3025,16 +3101,20 @@ describe('combat', () => {
 
       setupGameState({
         characters: [deadPlayer, alivePlayer],
-        currentPlayerId: 'player1'
+        currentPlayerId: 'player1',
+        turnQueue: ['player1', 'player2'],
+        turnQueueIndex: -1,
+        roundNumber: 1
       });
 
       endTurn();
 
+      // Should skip dead player1 and land on player2
       expect(getGameState().currentPlayerId).toBe('player2');
       expect(alivePlayer.energy).toBe(3);
     });
 
-    it('should handle card expiration', () => {
+    it('should handle card expiration at round start', () => {
       const player = createMockCharacter({
         id: 'player1',
         name: 'Player',
@@ -3045,11 +3125,13 @@ describe('combat', () => {
 
       setupGameState({
         characters: [player],
-        currentPlayerId: 'player1'
+        currentPlayerId: 'player1',
+        turnQueue: ['player1'],
+        turnQueueIndex: 0,
+        roundNumber: 1
       });
 
       const state = getGameState();
-      // Create an expiring card instance
       const expiringCardId = 'expiring_card_1';
       state.cardInstances[expiringCardId] = {
         id: expiringCardId,
@@ -3059,9 +3141,9 @@ describe('combat', () => {
       };
       player.hand.push(expiringCardId);
 
+      // Queue exhausted → new round → card expiration processed
       endTurn();
 
-      // Card should be removed from hand
       expect(player.hand).not.toContain(expiringCardId);
       expect(state.cardInstances[expiringCardId]).toBeUndefined();
     });
@@ -3077,11 +3159,13 @@ describe('combat', () => {
 
       setupGameState({
         characters: [player],
-        currentPlayerId: 'player1'
+        currentPlayerId: 'player1',
+        turnQueue: ['player1'],
+        turnQueueIndex: 0,
+        roundNumber: 1
       });
 
       const state = getGameState();
-      // Create a card with 2 turns left
       const expiringCardId = 'expiring_card_1';
       state.cardInstances[expiringCardId] = {
         id: expiringCardId,
@@ -3091,9 +3175,9 @@ describe('combat', () => {
       };
       player.hand.push(expiringCardId);
 
+      // Queue exhausted → new round → card expiration decremented
       endTurn();
 
-      // Card should still be in hand, but turns decremented
       expect(player.hand).toContain(expiringCardId);
       expect(state.cardInstances[expiringCardId]?.turnsUntilExpiry).toBe(1);
     });
@@ -3109,7 +3193,10 @@ describe('combat', () => {
 
       setupGameState({
         characters: [player],
-        currentPlayerId: 'player1'
+        currentPlayerId: 'player1',
+        turnQueue: ['player1'],
+        turnQueueIndex: 0,
+        roundNumber: 1
       });
 
       const renderCallback = vi.fn();
@@ -3119,7 +3206,7 @@ describe('combat', () => {
       expect(renderCallback).toHaveBeenCalled();
     });
 
-    it('should trigger enemy turn when next player is enemy', () => {
+    it('should trigger enemy turn when next in queue is enemy', () => {
       vi.useFakeTimers();
       const player = createMockCharacter({
         id: 'player1',
@@ -3139,7 +3226,10 @@ describe('combat', () => {
 
       setupGameState({
         characters: [player, enemy],
-        currentPlayerId: 'player1'
+        currentPlayerId: 'player1',
+        turnQueue: ['player1', 'enemy1'],
+        turnQueueIndex: 0,
+        roundNumber: 1
       });
 
       const renderCallback = vi.fn();
@@ -3168,7 +3258,10 @@ describe('combat', () => {
 
       setupGameState({
         characters: [enemy],
-        currentPlayerId: 'enemy1'
+        currentPlayerId: 'enemy1',
+        turnQueue: ['enemy1'],
+        turnQueueIndex: 0,
+        roundNumber: 1
       });
 
       const renderCallback = vi.fn();
@@ -3211,7 +3304,10 @@ describe('combat', () => {
       setupGameState({
         characters: [player, enemy],
         cardLibrary: { expensive: expensiveCard },
-        currentPlayerId: 'enemy1'
+        currentPlayerId: 'enemy1',
+        turnQueue: ['enemy1', 'player1'],
+        turnQueueIndex: 0,
+        roundNumber: 1
       });
 
       const state = getGameState();

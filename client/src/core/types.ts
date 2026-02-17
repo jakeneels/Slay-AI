@@ -60,6 +60,7 @@ export interface StatusEffect extends BaseCardEffect {
   kind: 'status';
   status: string; // Status ID (e.g., 'disrupt', 'bleed', 'shock', 'radiation')
   stacks?: number; // Number of stacks (default 1)
+  duration?: number; // Optional duration in rounds (overrides status default)
 }
 
 export type StatusModifyOp = 'set' | 'add' | 'multiply';
@@ -162,7 +163,7 @@ export interface CharacterStats {
   maxHp: number;
   energy: number;
   maxEnergy: number;
-  speed?: number;              // Speed stat: determines slots per energy spent on movement (default 0 = 1:1 baseline)
+  speed?: number;              // Speed stat: determines movement efficiency AND turn order priority (default 0)
   suppression?: number;        // How much ranged-attack penalty this character projects to nearby enemies (default 0)
   suppressionResist?: number;  // How much suppression penalty this character can ignore (default 0)
 }
@@ -200,7 +201,7 @@ export interface Character {
   isPlayer: boolean;
   slotIndex: number; // Position on battlefield (0 = leftmost ally / rightmost enemy)
   slotSize?: number;          // Number of contiguous slots occupied from slotIndex (front-anchored, default 1)
-  speed: number;              // Speed stat: determines slots per energy spent on movement (0 = baseline 1:1)
+  speed: number;              // Speed stat: determines movement efficiency AND turn order priority (0 = baseline)
   moveCharges: number;        // Remaining free move charges this turn (resets to 0 each turn)
   suppression: number;        // How much ranged-attack penalty this character projects to nearby enemies
   suppressionResist: number;  // How much suppression penalty this character can ignore
@@ -295,6 +296,44 @@ export interface GearDefinition {
   }>;
 }
 
+// ── Status definition types ──────────────────────────────────────────
+
+export type StatusCadence = 'round_start';
+
+export type DecayMode = 'none' | 'linear' | 'half_life';
+
+export interface StatusDefinition {
+  id: string;
+  name: string;
+  description: string;
+  cadence: StatusCadence;
+  dot: { damage_per_stack: number; ignores_block: boolean } | null;
+  hot?: { heal_per_stack: number } | null;
+  duration?: number;
+  decay: {
+    mode: DecayMode;
+    round?: 'floor' | 'ceil';
+    min_remove?: number;
+  };
+  apply?: {
+    requires_zero_block?: boolean;
+  };
+  display?: {
+    iconColor?: number;
+    bgColor?: number;
+    borderColor?: number;
+    icon?: string;
+  };
+}
+
+// ── Played card stack entry ──────────────────────────────────────────
+
+export interface PlayedCardEntry {
+  templateId: string;
+  playerName: string;
+  isPlayer: boolean;
+}
+
 // ── Game state ───────────────────────────────────────────────────────
 
 export interface GameState {
@@ -302,17 +341,23 @@ export interface GameState {
   cardLibrary: Record<string, Card>;
   characterLibrary: Record<string, CharacterDefinition>;
   gearLibrary: Record<string, GearDefinition>;
+  statusLibrary: Record<string, StatusDefinition>;
   cardInstances: Record<string, CardInstance>;
   selectedCardId: string | null;
   currentPlayerId: string;
   turnIndex: number;
+  turnQueue: string[];         // Ordered character IDs for current round
+  turnQueueIndex: number;      // Current position in queue
+  roundNumber: number;         // Full round counter
   combatLog: string[];
   isProcessingTurn: boolean;
   nextCardInstanceId: number;
   stats: GameStats;
   combatResult: 'ongoing' | 'victory' | 'defeat';
   pendingReward: GearDefinition | null;
+  waveNumber: number;
   currentMap: string;
+  playedCardsStack: PlayedCardEntry[];
 }
 
 export interface LoadedContent {

@@ -1,0 +1,23 @@
+schemaVersion: 1
+id: regeneration
+name: "Regeneration"
+description: "Heals HP equal to stacks at start of each round. Stacks decay based on the status decay config."
+
+cadence: round_start
+
+dot: null
+hot:
+  heal_per_stack: 1
+duration: 3
+
+decay:
+  mode: linear
+
+apply:
+  requires_zero_block: false
+
+display:
+  iconColor: 0x22c55e
+  bgColor: 0x0f2f1e
+  borderColor: 0x15803d
+  icon: regeneration

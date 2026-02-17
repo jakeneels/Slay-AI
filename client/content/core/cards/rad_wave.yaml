@@ -1,0 +1,24 @@
+schemaVersion: 1
+id: rad_wave
+name: "Rad Wave"
+type: attack
+rarity: rare
+cost: 2
+copies: 1
+tags: [radiation, ranged, aoe]
+targeting: enemy
+maxRange: 7
+exhaust: true
+expires_after_turns: 0
+description: "A radioactive gust that spreads radiation to adjacent enemies."
+effects:
+  - kind: damage
+    amount: 4
+  - kind: status_spread
+    status: radiation
+    fraction: 0.70
+    round: floor
+    spreadRange: 1
+    spreadSide: same
+    amount: 0
+    effectTarget: target

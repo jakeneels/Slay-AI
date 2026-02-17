@@ -10,10 +10,13 @@ let gameState: GameState = {
   characterLibrary: {},
   gearLibrary: {},
   statusLibrary: {},
-  cardInstances: {}, // Store unique card instances
+  cardInstances: {},
   selectedCardId: null,
   currentPlayerId: '',
   turnIndex: 0,
+  turnQueue: [],
+  turnQueueIndex: -1,
+  roundNumber: 0,
   combatLog: [],
   isProcessingTurn: false,
   nextCardInstanceId: 1,
@@ -25,6 +28,7 @@ let gameState: GameState = {
   pendingReward: null,
   waveNumber: 1,
   currentMap: pickRandomMap(undefined, 1),
+  playedCardsStack: [],
 };
 
 /**

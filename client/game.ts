@@ -5,17 +5,17 @@ import { Application } from 'pixi.js';
 
 // Core game modules
 import type { Character } from './src/core/types.js';
-import { getGameState, setGameState } from './src/core/gameState.js';
+import { getGameState, setGameState, addToCombatLog } from './src/core/gameState.js';
 import { drawCards } from './src/core/deck.js';
 import { shuffleArray } from './src/utils/shuffle.js';
 import { loadContent } from './src/data/contentLoader.js';
 import { render, setApp } from './src/rendering/renderer.js';
 import { clearAllHoverStates } from './src/rendering/tooltipState.js';
-import { setApp as setCombatApp } from './src/core/combat.js';
+import { setApp as setCombatApp, buildTurnQueue, processEnemyTurn } from './src/core/combat.js';
 import { WIDTH, HEIGHT, ENEMY_SLOT_START, ALLY_SLOT_END, MAX_SLOTS } from './src/core/constants.js';
 import { initDevPanel } from './src/rendering/devPanel.js';
 import { getModifierRegistry } from './src/core/modifiers.js';
-import { generateWave } from './src/core/waveGenerator.js';
+import { generateWave, computeDifficulty } from './src/core/waveGenerator.js';
 
 let currentApp: Application | null = null;
 let initPromise: Promise<void> | null = null;
@@ -128,14 +128,14 @@ async function initGame(): Promise<void> {
   setGameState(gameState);
 
   // Initialize characters from YAML — explicit party roster
-  const partyIds = ['didi_sharpshooter', 'jacob_techblade', 'kael_tactician', 'nyx_corrupter'];
+  const partyIds = ['didi_sharpshooter', 'ted_techblade', 'kael_tactician', 'nyx_corrupter'];
   const playerCharacters = partyIds
     .map(id => characters[id])
     .filter((c): c is typeof characters[string] => !!c && c.isPlayer);
 
   // Generate first wave of enemies via difficulty budget
   const enemyPool = Object.values(characters).filter(c => !c.isPlayer);
-  const enemyCharacters = generateWave(1, enemyPool);
+  const enemyCharacters = generateWave(1, enemyPool, undefined, gameState.cardLibrary);
 
   gameState.characters = [];
 
@@ -250,10 +250,23 @@ async function initGame(): Promise<void> {
     drawCards(character, character.drawCount);
 
     gameState.characters.push(character);
+
+    const enemyThreat = computeDifficulty(charDef, gameState.cardLibrary);
+    addToCombatLog(`${character.name} appears! (Threat: ${Math.round(enemyThreat)})`);
   });
   
+  // Build initial speed-based turn queue
   if (gameState.characters.length > 0) {
-    gameState.currentPlayerId = gameState.characters.find(c => c.isPlayer)?.id || gameState.characters[0].id;
+    gameState.turnQueue = buildTurnQueue();
+    gameState.turnQueueIndex = 0;
+    gameState.roundNumber = 1;
+    gameState.currentPlayerId = gameState.turnQueue[0] || gameState.characters[0].id;
+    const threatScore = enemyCharacters.reduce(
+      (sum, def) => sum + computeDifficulty(def, gameState.cardLibrary),
+      0,
+    );
+    addToCombatLog(`--- Wave 1 --- (Threat: ${Math.round(threatScore)})`);
+    addToCombatLog(`── Round 1 ── (Threat: ${Math.round(threatScore)})`);
   }
   
   setGameState(gameState);
@@ -274,6 +287,14 @@ async function initGame(): Promise<void> {
 
   // Initial render
   render();
+
+  // If the first character in the queue is an enemy, trigger their AI
+  if (gameState.characters.length > 0) {
+    const firstChar = gameState.characters.find(c => c.id === gameState.currentPlayerId);
+    if (firstChar && !firstChar.isPlayer) {
+      setTimeout(() => processEnemyTurn(firstChar, render), 1000);
+    }
+  }
     } finally {
       initPromise = null;
     }

@@ -98,6 +98,18 @@ function drawFortifyIcon(g: Graphics, size: number): void {
     .stroke({ width: 1, color: 0x3b82f6, alignment: 1 });
 }
 
+/** Regeneration — medical plus */
+function drawRegenerationIcon(g: Graphics, size: number): void {
+  const s = size / 14;
+  g.roundRect(1.5 * s, 1.5 * s, 11 * s, 11 * s, 2.5 * s)
+    .fill({ color: 0x14532d, alpha: 0.9 })
+    .stroke({ width: 1, color: 0x22c55e, alignment: 1 });
+  g.moveTo(7 * s, 3.5 * s).lineTo(7 * s, 10.5 * s)
+    .stroke({ width: 1.8 * s, color: 0x86efac });
+  g.moveTo(3.5 * s, 7 * s).lineTo(10.5 * s, 7 * s)
+    .stroke({ width: 1.8 * s, color: 0x86efac });
+}
+
 /** Disrupt — broken circle / static */
 function drawDisruptIcon(g: Graphics, size: number): void {
   const s = size / 14;
@@ -277,6 +289,14 @@ export const STATUS_DISPLAY: Record<string, StatusDisplayConfig> = {
     borderColor: 0x1e3a5f,
     drawIcons: [drawFortifyIcon],
   },
+  regeneration: {
+    label: 'Regeneration',
+    description: 'Heals HP equal to stacks each tick.',
+    iconColor: 0x22c55e,
+    bgColor: 0x0f2f1e,
+    borderColor: 0x15803d,
+    drawIcons: [drawRegenerationIcon],
+  },
   disrupt: {
     label: 'Disrupt',
     description: 'Interferes with abilities. May increase costs or reduce effectiveness.',
@@ -334,6 +354,7 @@ const ICON_DRAW_REGISTRY: Record<string, IconDrawFn[]> = {
   shock: [drawShockIcon],
   radiation: [drawRadiationIcon],
   fortify: [drawFortifyIcon],
+  regeneration: [drawRegenerationIcon],
   disrupt: [drawDisruptIcon],
   suppressed: [drawSuppressedIcon, drawEnergySmallIcon],
   speed_up: [drawSpeedUpIcon],

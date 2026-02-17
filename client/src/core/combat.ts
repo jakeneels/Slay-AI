@@ -20,6 +20,7 @@ import {
   animateDamageFlash,
   animateEnhancedScreenShake,
   animateParticles,
+  animateCardPlayShowcase,
   type AnimationConfig,
   type PlayDamageAnimationOptions 
 } from '../../animations.js';
@@ -27,6 +28,7 @@ import { applyDamageWithBlock, grantBlockLayer, decayBlockLayers } from './block
 import { applyStatus, modifyStatusStacks, processStatusEffects, decayStatusDurations, getStatusStacks } from './status.js';
 import { MAX_SLOTS, SLOTS_PER_SIDE, calculateRangeModifier, getSuppressionDistance, getSuppressionRangedThreshold, getSuppressionStackCost } from './constants.js';
 import { getModifierRegistry } from './modifiers.js';
+import { computeDifficulty } from './waveGenerator.js';
 
 let app: Application | null = null;
 
@@ -713,7 +715,17 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
     ? ` [${Math.round(rangeModifier * 100)}% range]`
     : '';
   addToCombatLog(`${currentPlayer.name} plays ${card.name}${exhaustText}${rangeText}`);
-  
+
+  // Remove card from hand immediately so it vanishes on the next render
+  const cardTemplateId = 'templateId' in card ? (card as any).templateId : card.id;
+  currentPlayer.hand = currentPlayer.hand.filter(id => id !== cardId);
+  if (card.exhaust) {
+    addToCombatLog(`${card.name} is exhausted`);
+  } else {
+    currentPlayer.discardPile.push(cardTemplateId);
+  }
+  gameState.selectedCardId = null;
+
   // Render immediately after state changes to show updated energy/card state.
   // Skip if card has damage effects and attacker/target has sprite sheet animation - that render
   // would clear the stage and remove sprites we're about to animate (see damage case below).
@@ -726,6 +738,20 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
   );
   if (renderCallback && !hasSpriteSheetAnim) {
     renderCallback();
+  }
+
+  // Fire the card showcase animation AFTER render so it layers on top
+  // (render clears the stage, so anything added before render gets destroyed).
+  // Runs concurrently with effect animations and is awaited at the end.
+  let cardShowcasePromise: Promise<void> | null = null;
+  if (app) {
+    cardShowcasePromise = animateCardPlayShowcase(
+      app,
+      card.name,
+      card.cost.energy,
+      currentPlayer.name,
+      currentPlayer.isPlayer,
+    );
   }
   
   // Animation will be handled per-effect in the effect processing loop below
@@ -988,7 +1014,7 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
             statusTarget,
             statusId,
             effect.stacks || 1,
-            undefined, // duration from status definition if needed
+            effect.duration,
             undefined // metadata if needed
           );
           sparkType = 'buff';
@@ -1143,143 +1169,205 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
     addToCombatLog('Defeat! All allies have fallen.');
   }
 
-  // Energy was already consumed above, before effects were processed
-  // Remove card instance from hand
-  currentPlayer.hand = currentPlayer.hand.filter(id => id !== cardId);
-  
-  // Handle exhaust vs discard
-  if (card.exhaust) {
-    // Exhausted cards are permanently removed (not added to discard pile)
-    addToCombatLog(`${card.name} is exhausted`);
-  } else {
-    // Move card template to discard pile (for reshuffle)
-    const cardTemplateId = 'templateId' in card ? card.templateId : card.id;
-    currentPlayer.discardPile.push(cardTemplateId);
+  // Push to the played-cards stack
+  gameState.playedCardsStack.push({
+    templateId: cardTemplateId,
+    playerName: currentPlayer.name,
+    isPlayer: currentPlayer.isPlayer,
+  });
+
+  // Wait for the card showcase animation that was started before effects
+  if (cardShowcasePromise) {
+    await cardShowcasePromise;
   }
-  
-  // Clear selection
-  gameState.selectedCardId = null;
-  
-  // Final render after card is removed from hand (this is redundant but ensures consistency)
+
+  // Final render to update the played-cards stack
   if (renderCallback) {
     renderCallback();
   }
 }
 
+// ── Speed-based turn queue ────────────────────────────────────────────
+
 /**
- * End turn and advance to next character
+ * Variance added to speed when building the turn queue.
+ * With speeds 0-3 and variance 3:
+ *   speed 3 → scores 3.0-6.0  (almost always first)
+ *   speed 2 → scores 2.0-5.0
+ *   speed 1 → scores 1.0-4.0
+ *   speed 0 → scores 0.0-3.0  (almost always last)
  */
-export function endTurn(renderCallback?: () => void): void {
+const SPEED_VARIANCE = 3;
+
+/**
+ * Build a randomised turn queue for the current round.
+ * Characters are sorted by speed + random variance (descending).
+ */
+export function buildTurnQueue(): string[] {
   const gameState = getGameState();
-  // Block turn advancement after combat is over
-  if (gameState.combatResult !== 'ongoing') return;
+  const living = gameState.characters.filter(c => c.hp > 0);
+  const scored = living.map(c => ({
+    id: c.id,
+    score: c.speed + Math.random() * SPEED_VARIANCE,
+  }));
+  scored.sort((a, b) => b.score - a.score);
+  return scored.map(s => s.id);
+}
 
-  gameState.turnIndex++;
-  
-  // Filter to only living characters
-  const livingCharacters = gameState.characters.filter(c => c.hp > 0);
-  
-  if (livingCharacters.length === 0) return;
-  
-  // Find next living player
-  const currentIndex = livingCharacters.findIndex(c => c.id === gameState.currentPlayerId);
-  let nextIndex = (currentIndex + 1) % livingCharacters.length;
-  
-  // If current player is dead, start from beginning of living characters
-  if (currentIndex === -1) {
-    nextIndex = 0;
-  }
-  
-  // Detect side change (ally->enemy or enemy->ally) before updating currentPlayerId.
-  // Block decay is per-side, not per-character — only decay when the active side changes.
-  // Also treat a full wrap-around (last char -> first char) as a side boundary.
-  const previousPlayer = currentIndex !== -1 ? livingCharacters[currentIndex] : null;
-  const nextPlayer = livingCharacters[nextIndex];
-  const wrapped = currentIndex !== -1 && nextIndex <= currentIndex;
-  const sideChanged = !previousPlayer || previousPlayer.isPlayer !== nextPlayer.isPlayer || wrapped;
+/**
+ * Process round-start effects for ALL living characters:
+ *   1. Build a new turn queue
+ *   2. Decay block layers
+ *   3. Tick all statuses (replaces turn_end / side_end / round_end)
+ *   4. Decay status durations
+ *   5. Handle card expiration
+ *   6. Check for deaths from DoTs
+ */
+export function processRoundStart(renderCallback?: () => void): void {
+  const gameState = getGameState();
+  gameState.roundNumber++;
 
-  gameState.currentPlayerId = livingCharacters[nextIndex].id;
+  // Build new queue
+  gameState.turnQueue = buildTurnQueue();
+  gameState.turnQueueIndex = -1;
 
-  // Restore energy (resolved through modifier pipeline for per-character overrides)
-  const resolvedMaxEnergy = getModifierRegistry().resolve('maxEnergy', nextPlayer.maxEnergy, { character: nextPlayer });
-  nextPlayer.energy = resolvedMaxEnergy;
+  const enemies = gameState.characters.filter(c => !c.isPlayer && c.hp > 0);
+  const threatScore = enemies.reduce((sum, char) => {
+    const def = gameState.characterLibrary[char.id];
+    return def ? sum + computeDifficulty(def, gameState.cardLibrary) : sum;
+  }, 0);
+  addToCombatLog(
+    `── Round ${gameState.roundNumber} ──${threatScore > 0 ? ` (Threat: ${Math.round(threatScore)})` : ''}`,
+  );
 
-  // Reset move charges for the new turn (speed-based charges are generated on first energy spend)
-  nextPlayer.moveCharges = 0;
+  for (const character of gameState.characters.filter(c => c.hp > 0)) {
+    // Block decay for all living characters
+    decayBlockLayers(character);
 
-  logTurnAdvance(nextPlayer.name, nextPlayer.id, nextPlayer.isPlayer, gameState.turnIndex);
-  
-  // End of turn processing for all characters
-  for (const character of gameState.characters) {
-    // Block decays at the START of your side's round, not during the enemy phase.
-    // Only decay block for characters on the side that is about to act.
-    if (sideChanged && character.isPlayer === nextPlayer.isPlayer) {
-      decayBlockLayers(character);
-    }
-    
-    // Process turn_end statuses (e.g. bleed, shock) — tick every character turn
-    processStatusEffects(character, 'turn_end');
+    // Process all ticking statuses (single unified cadence)
+    processStatusEffects(character, 'round_start');
 
-    // Process side_end statuses (e.g. radiation) — tick when a side finishes
-    if (sideChanged && character.isPlayer !== nextPlayer.isPlayer) {
-      // The finishing side is the PREVIOUS side (opposite of nextPlayer)
-      processStatusEffects(character, 'side_end');
-    }
-
-    // Process round_end statuses — tick once per full round (both sides acted)
-    if (wrapped) {
-      processStatusEffects(character, 'round_end');
-    }
-    
     // Decay status durations
     decayStatusDurations(character);
   }
-  
-  // Handle card expiration before drawing new cards
-  // Check all characters for expired cards
+
+  // Handle card expiration for all characters
   for (const character of gameState.characters) {
     const expiredCards: string[] = [];
-    
+
     for (const cardInstanceId of character.hand) {
       const cardInstance = gameState.cardInstances[cardInstanceId];
       if (cardInstance && cardInstance.turnsUntilExpiry !== undefined) {
-        // Decrement expiration counter
         cardInstance.turnsUntilExpiry--;
-        
-        // If expired (reached 0), mark for removal
         if (cardInstance.turnsUntilExpiry <= 0) {
           expiredCards.push(cardInstanceId);
           addToCombatLog(`${character.name}'s ${cardInstance.name} expires!`);
         }
       }
     }
-    
-    // Remove expired cards from hand (don't add to discard)
+
     if (expiredCards.length > 0) {
       character.hand = character.hand.filter(id => !expiredCards.includes(id));
-      // Clean up expired card instances
       expiredCards.forEach(id => {
         delete gameState.cardInstances[id];
       });
     }
   }
-  
-  // Draw cards for new turn (resolved through modifier pipeline)
+
+  // Check for deaths from round-start DoTs
+  const livingEnemies = gameState.characters.filter(c => !c.isPlayer && c.hp > 0);
+  const livingAllies = gameState.characters.filter(c => c.isPlayer && c.hp > 0);
+  if (livingEnemies.length === 0 && gameState.combatResult === 'ongoing') {
+    logAllEnemiesDead();
+    gameState.combatResult = 'victory';
+    const gearIds = Object.keys(gameState.gearLibrary);
+    if (gearIds.length > 0) {
+      const randomId = gearIds[Math.floor(Math.random() * gearIds.length)];
+      gameState.pendingReward = gameState.gearLibrary[randomId];
+    }
+    gameState.isProcessingTurn = true;
+    addToCombatLog('Victory! All enemies defeated.');
+  }
+  if (livingAllies.length === 0 && gameState.combatResult === 'ongoing') {
+    logAllAlliesDead();
+    gameState.combatResult = 'defeat';
+    addToCombatLog('Defeat! All allies have fallen.');
+  }
+
+  // Rebuild queue after deaths (some characters may have died from DoTs)
+  if (gameState.combatResult === 'ongoing') {
+    gameState.turnQueue = buildTurnQueue();
+  }
+
+  if (renderCallback) {
+    renderCallback();
+  }
+}
+
+/**
+ * End turn and advance to next character in the speed-based queue.
+ * When the queue is exhausted, starts a new round (processRoundStart).
+ */
+export function endTurn(renderCallback?: () => void): void {
+  const gameState = getGameState();
+  if (gameState.combatResult !== 'ongoing') return;
+
+  gameState.turnIndex++;
+  gameState.turnQueueIndex++;
+
+  // Queue exhausted or not yet built → start a new round
+  if (gameState.turnQueueIndex >= gameState.turnQueue.length || gameState.turnQueue.length === 0) {
+    processRoundStart(renderCallback);
+    if (gameState.combatResult !== 'ongoing') return;
+    gameState.turnQueueIndex = 0;
+  }
+
+  // Find next living character in the queue (skip dead ones killed by DoTs or mid-round)
+  let nextPlayer: Character | undefined;
+  while (gameState.turnQueueIndex < gameState.turnQueue.length) {
+    const candidateId = gameState.turnQueue[gameState.turnQueueIndex];
+    const candidate = gameState.characters.find(c => c.id === candidateId);
+    if (candidate && candidate.hp > 0) {
+      nextPlayer = candidate;
+      break;
+    }
+    gameState.turnQueueIndex++;
+  }
+
+  // If we ran out of living characters in the queue, the round is over
+  if (!nextPlayer) {
+    // All remaining queue entries are dead — start fresh next call
+    gameState.turnQueue = [];
+    return;
+  }
+
+  gameState.currentPlayerId = nextPlayer.id;
+
+  // Restore energy (resolved through modifier pipeline)
+  const resolvedMaxEnergy = getModifierRegistry().resolve('maxEnergy', nextPlayer.maxEnergy, { character: nextPlayer });
+  nextPlayer.energy = resolvedMaxEnergy;
+
+  // Reset move charges for the new turn
+  nextPlayer.moveCharges = 0;
+
+  logTurnAdvance(nextPlayer.name, nextPlayer.id, nextPlayer.isPlayer, gameState.turnIndex);
+
+  // Draw cards for new turn
   const resolvedDrawCount = getModifierRegistry().resolve('drawCount', nextPlayer.drawCount, { character: nextPlayer });
   drawCards(nextPlayer, resolvedDrawCount);
 
   // Clear selection
   gameState.selectedCardId = null;
-  
+
   if (renderCallback) {
     renderCallback();
   }
-  
+
   // If it's an enemy turn, trigger AI after a delay
   if (!nextPlayer.isPlayer) {
     setTimeout(() => {
-      processEnemyTurn(nextPlayer, renderCallback);
-    }, 1000); // 1 second delay to show enemy hand
+      processEnemyTurn(nextPlayer!, renderCallback);
+    }, 1000);
   }
 }
 

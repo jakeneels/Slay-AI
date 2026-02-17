@@ -3,7 +3,7 @@
 // Difficulty is computed JIT from CharacterDefinition stats so any YAML
 // tweaks are immediately reflected in wave composition.
 
-import type { CharacterDefinition } from './types.js';
+import type { Card, CharacterDefinition } from './types.js';
 import { shuffleArray } from '../utils/shuffle.js';
 import { getModifierRegistry } from './modifiers.js';
 
@@ -22,23 +22,57 @@ export const WAVE_BUDGET_JITTER = 0.15;
 export const WAVE_MIN_ENEMIES = 2;
 export const WAVE_MAX_ENEMIES = 4;
 
+/** Rarity contribution to difficulty (higher = stronger cards). Unknown rarities default to 0. */
+export const RARITY_WEIGHTS: Record<string, number> = {
+  common: 0,
+  rare: 0.3,
+  epic: 0.6,
+  legendary: 1,
+  mythic: 1.3,
+};
+
 // ── Public API ───────────────────────────────────────────────────────
 
 /**
  * Compute a numeric difficulty score for an enemy definition.
  * Higher = harder.  The formula weights HP heavily (survival time),
- * energy (action economy), speed (mobility), and deck breadth.
+ * energy (action economy), speed (mobility), deck breadth, and card rarity.
  */
-export function computeDifficulty(def: CharacterDefinition): number {
+export function computeDifficulty(
+  def: CharacterDefinition,
+  cardLibrary?: Record<string, Card>,
+): number {
   const s = def.stats;
-  return (
+  let base =
     s.maxHp * 0.5 +
     s.maxEnergy * 5 +
     (s.speed ?? 0) * 3 +
     (s.suppression ?? 0) * 2 +
     (s.suppressionResist ?? 0) * 1 +
-    (def.startingDeck?.length ?? 2) * 2
-  );
+    (def.startingDeck?.length ?? 2) * 2;
+
+  const rarityScore = computeRarityScore(def, cardLibrary);
+  return base + rarityScore;
+}
+
+/**
+ * Sum of rarity weights for all cards in the character's deck (including copies).
+ * Uses RARITY_WEIGHTS; unknown rarities default to 0.
+ */
+function computeRarityScore(
+  def: CharacterDefinition,
+  cardLibrary?: Record<string, Card>,
+): number {
+  if (!cardLibrary || !def.startingDeck?.length) return 0;
+  let total = 0;
+  for (const cardId of def.startingDeck) {
+    const card = cardLibrary[cardId];
+    if (!card) continue;
+    const copies = card.copies ?? 1;
+    const weight = RARITY_WEIGHTS[(card.rarity ?? 'common').toLowerCase()] ?? 0;
+    total += weight * copies;
+  }
+  return total;
 }
 
 /**
@@ -48,12 +82,14 @@ export function computeDifficulty(def: CharacterDefinition): number {
  * @param enemyPool   All enemy CharacterDefinitions from the library.
  * @param previousIds Optional set of enemy IDs from the last wave (used to
  *                    avoid identical compositions back-to-back).
+ * @param cardLibrary Optional card library for rarity-based difficulty (if omitted, rarity is ignored).
  * @returns Array of CharacterDefinitions to spawn (2-4 enemies).
  */
 export function generateWave(
   waveNumber: number,
   enemyPool: CharacterDefinition[],
   previousIds?: string[],
+  cardLibrary?: Record<string, Card>,
 ): CharacterDefinition[] {
   if (enemyPool.length === 0) return [];
 
@@ -71,11 +107,11 @@ export function generateWave(
   const jitter = 1 + (Math.random() * 2 - 1) * jitterFrac;
   const budget = Math.round(rawBudget * jitter);
 
-  let picked = pickEnemies(enemyPool, budget, minEnemies, maxEnemies);
+  let picked = pickEnemies(enemyPool, budget, minEnemies, maxEnemies, cardLibrary);
 
   // Re-roll once if we got the exact same composition as last wave
   if (previousIds && isSameComposition(picked, previousIds) && enemyPool.length > 1) {
-    picked = pickEnemies(enemyPool, budget, minEnemies, maxEnemies);
+    picked = pickEnemies(enemyPool, budget, minEnemies, maxEnemies, cardLibrary);
   }
 
   return picked;
@@ -93,9 +129,13 @@ function pickEnemies(
   budget: number,
   minEnemies: number,
   maxEnemies: number,
+  cardLibrary?: Record<string, Card>,
 ): CharacterDefinition[] {
-  // Pre-compute difficulties
-  const scored = pool.map(def => ({ def, diff: computeDifficulty(def) }));
+  // Pre-compute difficulties (with rarity if cardLibrary provided)
+  const scored = pool.map(def => ({
+    def,
+    diff: computeDifficulty(def, cardLibrary),
+  }));
 
   // Sort ascending so we can always try to squeeze in one more
   scored.sort((a, b) => a.diff - b.diff);

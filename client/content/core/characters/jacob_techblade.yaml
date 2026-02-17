@@ -1,6 +1,6 @@
 schemaVersion: 1
-id: jacob_techblade
-name: "Jacob"
+id: ted_techblade
+name: "Ted"
 visual:
   preset: humanoid
   scale: 1.22
@@ -17,7 +17,7 @@ sprite: "/assets/game/allies/jacob.png"
 stats:
   hp: 90
   maxHp: 120
-  energy: 6
+  energy: 7
   maxEnergy: 7
   speed: 1
   suppression: 2

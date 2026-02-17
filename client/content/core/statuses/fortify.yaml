@@ -3,7 +3,7 @@ id: fortify
 name: "Fortify"
 description: "Block decays slower. Each stack reduces block decay rate by 10%."
 
-cadence: turn_end
+cadence: round_start
 
 dot: null
 

@@ -6,8 +6,8 @@ rarity: rare
 cost: 2
 copies: 2
 targeting: enemy
-maxRange: 7
-minRange: 5
+maxRange: 12
+minRange: 8
 # optimalRange: 4
 exhaust: false
 expires_after_turns: 0

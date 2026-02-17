@@ -1,9 +1,9 @@
 schemaVersion: 1
 id: radiation
 name: "Radiation"
-description: "Deals damage equal to stacks when side ends. Ignores block. Stacks halve each tick. Cannot be applied if target has block."
+description: "Deals damage equal to stacks at start of each round. Ignores block. Stacks halve each tick. Cannot be applied if target has block."
 
-cadence: side_end
+cadence: round_start
 
 dot:
   damage_per_stack: 1

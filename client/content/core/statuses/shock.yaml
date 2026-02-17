@@ -1,9 +1,9 @@
 schemaVersion: 1
 id: shock
 name: "Shock"
-description: "Takes damage equal to stacks at end of each turn. Reduced by block."
+description: "Takes damage equal to stacks at start of each round. Reduced by block."
 
-cadence: turn_end
+cadence: round_start
 
 dot:
   damage_per_stack: 1

@@ -7,14 +7,14 @@ cost: 3
 copies: 2
 targeting: aoe
 aoeSlots: 3
-maxRange: 6
+maxRange: 12
 # optimalRange: 3
 exhaust: false
 expires_after_turns: 0
 description: "Lob a rigged drone for explosive fire area damage."
 effects:
   - kind: damage
-    amount: 8
+    amount: 16
 animation:
   damage:
     projectileColor: 0xff4400  # Bright fire orange-red

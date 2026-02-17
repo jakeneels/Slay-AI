@@ -2,14 +2,14 @@
  * Combat animations for attack effects
  */
 
-import type { Application, Sprite, Container } from 'pixi.js';
+import type { Application, Sprite } from 'pixi.js';
 import { Graphics, Text, Assets, Texture, Rectangle, Sprite as SpriteImpl } from 'pixi.js';
 
 // Store character sprites for animation access
 const characterSprites = new Map<string, Sprite>();
+// Active card showcase graphics that must survive stage re-renders.
+const activeCardShowcases = new Set<Graphics>();
 
-// Store card containers for animation (cardId -> Container)
-const cardContainers = new Map<string, any>();
 
 // Animation configuration interface
 export interface AnimationConfig {
@@ -955,115 +955,161 @@ export async function playAttackAnimation(attackerId: string, _targetId: string,
 }
 
 /**
- * Register a card container for animation access
+ * Played cards stack position (right side of screen).
+ * Shared with renderPlayedCards.ts so the animation target aligns.
  */
-export function registerCardContainer(cardId: string, container: Container): void {
-  cardContainers.set(cardId, container);
+export const PLAYED_STACK_X = 1340;
+export const PLAYED_STACK_Y = 120;
+
+/**
+ * Re-attach any in-flight card showcase animations after a render pass.
+ * Renderer clears stage children each frame, so active showcase graphics
+ * need to be re-added to remain visible while their RAF animation runs.
+ */
+export function renderActiveCardShowcases(app: Application): void {
+  for (const showcase of activeCardShowcases) {
+    if (!showcase.parent) {
+      showcase.zIndex = 7000;
+      showcase.eventMode = 'none';
+      app.stage.addChild(showcase);
+    }
+  }
 }
 
 /**
- * Animate card flying from hand to target, then to discard
+ * Animate a played card: drift from hand to center screen, hold, then slide
+ * to the played-cards stack on the right. Creates a temporary card visual that
+ * lives on app.stage and is removed once the animation completes.
  */
-export async function animateCardPlay(
-  cardId: string,
-  fromX: number,
-  fromY: number,
-  targetX: number,
-  targetY: number,
-  discardX: number,
-  discardY: number,
+export async function animateCardPlayShowcase(
   app: Application,
-  isExhaust: boolean = false
+  cardName: string,
+  energyCost: number,
+  playerName: string,
+  isPlayer: boolean,
 ): Promise<void> {
-  const cardContainer = cardContainers.get(cardId);
-  if (!cardContainer) {
-    // If card container not found, create a temporary visual
-    return Promise.resolve();
-  }
-  
-  const originalX = cardContainer.x;
-  const originalY = cardContainer.y;
-  const originalScale = cardContainer.scale?.x || 1;
-  
-  return new Promise((resolve) => {
-    const startTime = performance.now();
-    const flyDuration = 400; // Time to fly to target
-    const pauseDuration = 200; // Pause at target
-    const discardDuration = 300; // Time to fly to discard
-    
-    // Phase 1: Fly to target
-    function animateToTarget() {
-      const elapsed = performance.now() - startTime;
-      const progress = Math.min(elapsed / flyDuration, 1);
-      
-      if (progress >= 1) {
-        // Start pause at target
-        setTimeout(() => {
-          animateToDiscard();
-        }, pauseDuration);
-        return;
-      }
-      
-      // Ease out curve
-      const easeOut = 1 - Math.pow(1 - progress, 3);
-      
-      // Interpolate position
-      cardContainer.x = fromX + (targetX - fromX) * easeOut;
-      cardContainer.y = fromY + (targetY - fromY) * easeOut;
-      
-      // Scale up during flight, slight rotation
-      const scale = 1 + easeOut * 0.3;
-      cardContainer.scale?.set(scale);
-      cardContainer.rotation = easeOut * Math.PI * 0.3;
-      cardContainer.alpha = 1;
-      
-      requestAnimationFrame(animateToTarget);
-    }
-    
-    // Phase 2: Fly to discard/exhaust
-    function animateToDiscard() {
-      const discardStartTime = performance.now();
-      
-      function animate() {
-        const elapsed = performance.now() - discardStartTime;
-        const progress = Math.min(elapsed / discardDuration, 1);
-        
-        if (progress >= 1) {
-          // Restore original position (card will be removed from hand in render)
-          cardContainer.x = originalX;
-          cardContainer.y = originalY;
-          cardContainer.scale?.set(originalScale);
-          cardContainer.rotation = 0;
-          cardContainer.alpha = 1;
-          
-          if (isExhaust) {
-            // Fade out for exhaust
-            cardContainer.alpha = 0;
-          }
-          
-          resolve();
-          return;
-        }
-        
-        const easeIn = Math.pow(progress, 2);
-        
-        // Interpolate to discard position
-        cardContainer.x = targetX + (discardX - targetX) * easeIn;
-        cardContainer.y = targetY + (discardY - targetY) * easeIn;
-        
-        // Scale down and fade
-        cardContainer.scale?.set(1 - easeIn * 0.5);
-        cardContainer.alpha = 1 - easeIn;
-        cardContainer.rotation = Math.PI * 0.3 * (1 - easeIn);
-        
-        requestAnimationFrame(animate);
-      }
-      
-      requestAnimationFrame(animate);
-    }
-    
-    animateToTarget();
+  const cardW = 140;
+  const cardH = 80;
+
+  // Build a small card visual
+  const container = new Graphics();
+  container.roundRect(0, 0, cardW, cardH, 8);
+  container.fill(0x1f2937);
+  container.stroke({ width: 2, color: isPlayer ? 0x22c55e : 0xef4444 });
+
+  const nameLabel = new Text({
+    text: cardName,
+    style: { fill: 0xffffff, fontSize: 15, fontWeight: 'bold' },
   });
+  nameLabel.x = 10;
+  nameLabel.y = 10;
+  container.addChild(nameLabel);
+
+  const costLabel = new Text({
+    text: `${energyCost} energy`,
+    style: { fill: 0x38bdf8, fontSize: 11 },
+  });
+  costLabel.x = 10;
+  costLabel.y = 34;
+  container.addChild(costLabel);
+
+  const byLabel = new Text({
+    text: playerName,
+    style: { fill: isPlayer ? 0x4ade80 : 0xff6b6b, fontSize: 10 },
+  });
+  byLabel.x = 10;
+  byLabel.y = 54;
+  container.addChild(byLabel);
+
+  // Starting position: top center (where hand is)
+  const startX = 720 - cardW / 2;
+  const startY = -cardH;
+  // Center screen destination
+  const centerX = 720 - cardW / 2;
+  const centerY = 360 - cardH / 2;
+  // Stack destination (right side)
+  const stackX = PLAYED_STACK_X;
+  const stackY = PLAYED_STACK_Y;
+
+  container.x = startX;
+  container.y = startY;
+  container.alpha = 0;
+  container.zIndex = 7000;
+  container.eventMode = 'none';
+  activeCardShowcases.add(container);
+  app.stage.addChild(container);
+
+  // Phase 1: Drift to center (400ms)
+  await new Promise<void>((resolve) => {
+    const start = performance.now();
+    const duration = 400;
+
+    function tick() {
+      const p = Math.min((performance.now() - start) / duration, 1);
+      const ease = 1 - Math.pow(1 - p, 3); // ease-out cubic
+      container.x = startX + (centerX - startX) * ease;
+      container.y = startY + (centerY - startY) * ease;
+      container.alpha = Math.min(p * 2, 1);
+      const s = 1 + ease * 0.3;
+      container.scale.set(s);
+      if (p < 1) {
+        requestAnimationFrame(tick);
+      } else {
+        resolve();
+      }
+    }
+    requestAnimationFrame(tick);
+  });
+
+  // Phase 2: Hold at center with subtle pulse (1500ms)
+  await new Promise<void>((resolve) => {
+    const start = performance.now();
+    const duration = 1500;
+
+    function tick() {
+      const p = Math.min((performance.now() - start) / duration, 1);
+      const pulse = 1.3 + Math.sin(p * Math.PI * 4) * 0.05;
+      container.scale.set(pulse);
+      container.alpha = 1;
+      if (p < 1) {
+        requestAnimationFrame(tick);
+      } else {
+        resolve();
+      }
+    }
+    requestAnimationFrame(tick);
+  });
+
+  // Phase 3: Shrink and slide to stack (400ms)
+  const phase3StartX = container.x;
+  const phase3StartY = container.y;
+  await new Promise<void>((resolve) => {
+    const start = performance.now();
+    const duration = 400;
+
+    function tick() {
+      const p = Math.min((performance.now() - start) / duration, 1);
+      const ease = p * p; // ease-in quadratic
+      container.x = phase3StartX + (stackX - phase3StartX) * ease;
+      container.y = phase3StartY + (stackY - phase3StartY) * ease;
+      const s = 1.3 - ease * 0.6;
+      container.scale.set(Math.max(s, 0.7));
+      container.alpha = 1 - ease * 0.3;
+      if (p < 1) {
+        requestAnimationFrame(tick);
+      } else {
+        resolve();
+      }
+    }
+    requestAnimationFrame(tick);
+  });
+
+  // Clean up
+  if (container.parent) {
+    container.parent.removeChild(container);
+  }
+  activeCardShowcases.delete(container);
+  container.destroy({ children: true });
 }
 
 /**

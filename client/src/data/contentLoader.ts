@@ -262,11 +262,15 @@ export async function loadContent(): Promise<LoadedContent> {
           id: d.id,
           name: d.name || d.id,
           description: d.description || '',
-          cadence: (d.cadence || 'turn_end') as StatusCadence,
+          cadence: (d.cadence || 'round_start') as StatusCadence,
           dot: d.dot === null || d.dot === undefined ? null : {
             damage_per_stack: d.dot.damage_per_stack ?? 1,
             ignores_block: d.dot.ignores_block ?? false,
           },
+          hot: d.hot === null || d.hot === undefined ? null : {
+            heal_per_stack: d.hot.heal_per_stack ?? 1,
+          },
+          duration: d.duration === undefined ? undefined : Math.max(1, Math.floor(d.duration)),
           decay: {
             mode: (d.decay?.mode || 'none') as DecayMode,
             round: d.decay?.round || 'ceil',

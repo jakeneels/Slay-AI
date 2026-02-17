@@ -12,6 +12,8 @@ import { renderStatusTooltip } from './renderStatusTooltip.js';
 import { renderCharacterTooltip } from './renderCharacterTooltip.js';
 import { renderDevPanel } from './devPanel.js';
 import { renderVictoryModal } from './renderVictoryModal.js';
+import { renderPlayedCardsStack } from './renderPlayedCards.js';
+import { renderActiveCardShowcases } from '../../animations.js';
 
 let app: Application | null = null;
 
@@ -39,12 +41,20 @@ export function render(): void {
   app.stage.removeChildren();
   app.stage.sortableChildren = true;
 
-  // Check if current player is dead and advance turn if needed
+  // Check if current player is dead — fallback to next living character in the queue
   const currentPlayer = gameState.characters.find(c => c.id === gameState.currentPlayerId);
   if (!currentPlayer || currentPlayer.hp <= 0) {
-    const livingCharacters = gameState.characters.filter(c => c.hp > 0);
-    if (livingCharacters.length > 0) {
-      gameState.currentPlayerId = livingCharacters[0].id;
+    const nextInQueue = gameState.turnQueue
+      .slice(gameState.turnQueueIndex)
+      .map(id => gameState.characters.find(c => c.id === id))
+      .find(c => c && c.hp > 0);
+    if (nextInQueue) {
+      gameState.currentPlayerId = nextInQueue.id;
+    } else {
+      const anyLiving = gameState.characters.find(c => c.hp > 0);
+      if (anyLiving) {
+        gameState.currentPlayerId = anyLiving.id;
+      }
     }
   }
   
@@ -52,7 +62,9 @@ export function render(): void {
   renderLanes(app);
   renderCharacters(app, gameState);
   renderHand(app, gameState);
+  renderPlayedCardsStack(app, gameState);
   renderTurnInfo(app, gameState);
+  renderActiveCardShowcases(app);
   renderCardTooltip(app);
   renderCharacterTooltip(app);
   renderStatusTooltip(app);

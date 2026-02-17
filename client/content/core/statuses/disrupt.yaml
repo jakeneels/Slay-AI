@@ -3,7 +3,7 @@ id: disrupt
 name: "Disrupt"
 description: "Interferes with abilities. May increase costs or reduce effectiveness."
 
-cadence: turn_end
+cadence: round_start
 
 dot: null
 

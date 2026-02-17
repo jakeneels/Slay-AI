@@ -12,7 +12,7 @@ expires_after_turns: 0
 description: "Channel restorative energy to mend an ally's wounds."
 effects:
   - kind: heal
-    amount: 8
+    amount: 10
 animation:
   heal:
     particleColor: 0x22c55e  # Bright green healing particles

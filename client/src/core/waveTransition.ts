@@ -7,11 +7,12 @@ import type { Character, CharacterDefinition } from './types.js';
 import { getGameState, addToCombatLog } from './gameState.js';
 import { drawCards } from './deck.js';
 import { shuffleArray } from '../utils/shuffle.js';
-import { generateWave } from './waveGenerator.js';
+import { generateWave, computeDifficulty } from './waveGenerator.js';
 import { getModifierRegistry } from './modifiers.js';
 import { render } from '../rendering/renderer.js';
 import { pickRandomMap } from '../rendering/renderBackground.js';
 import { ENEMY_SLOT_START, ALLY_SLOT_END, MAX_SLOTS } from './constants.js';
+import { buildTurnQueue, processEnemyTurn } from './combat.js';
 
 // ── Default tuning (overridable via modifier registry / dev panel) ───
 
@@ -92,7 +93,6 @@ export function startNextWave(): void {
   // ── 1. Increment wave number & rotate map ─────────────────────────
   gameState.waveNumber++;
   gameState.currentMap = pickRandomMap(gameState.currentMap, gameState.waveNumber);
-  addToCombatLog(`--- Wave ${gameState.waveNumber} ---`);
 
   // ── 2–4. Reset living allies ───────────────────────────────────────
   const livingAllies = gameState.characters.filter(c => c.isPlayer && c.hp > 0);
@@ -165,7 +165,17 @@ export function startNextWave(): void {
     c => !c.isPlayer,
   );
   const previousEnemyIds = enemies.map(e => e.id);
-  const waveDefs = generateWave(gameState.waveNumber, enemyPool, previousEnemyIds);
+  const waveDefs = generateWave(
+    gameState.waveNumber,
+    enemyPool,
+    previousEnemyIds,
+    gameState.cardLibrary,
+  );
+  const threatScore = waveDefs.reduce(
+    (sum, def) => sum + computeDifficulty(def, gameState.cardLibrary),
+    0,
+  );
+  addToCombatLog(`--- Wave ${gameState.waveNumber} --- (Threat: ${Math.round(threatScore)})`);
 
   const usedEnemyIds = new Set<string>();
   waveDefs.forEach((charDef, i) => {
@@ -216,7 +226,8 @@ export function startNextWave(): void {
     drawCards(character, character.drawCount);
     gameState.characters.push(character);
 
-    addToCombatLog(`${character.name} appears!`);
+    const enemyThreat = computeDifficulty(charDef, gameState.cardLibrary);
+    addToCombatLog(`${character.name} appears! (Threat: ${Math.round(enemyThreat)})`);
   });
 
   // ── 7. Reset combat state ──────────────────────────────────────────
@@ -225,18 +236,33 @@ export function startNextWave(): void {
   gameState.isProcessingTurn = false;
   gameState.selectedCardId = null;
   gameState.turnIndex = 0;
+  gameState.roundNumber = 0;
+  gameState.playedCardsStack = [];
 
   // Draw initial hands for allies
   for (const ally of livingAllies) {
     drawCards(ally, ally.drawCount);
   }
 
-  // Set first living player as current
-  const firstPlayer = gameState.characters.find(c => c.isPlayer && c.hp > 0);
-  if (firstPlayer) {
-    gameState.currentPlayerId = firstPlayer.id;
+  // Build initial speed-based turn queue
+  gameState.turnQueue = buildTurnQueue();
+  gameState.turnQueueIndex = 0;
+  gameState.roundNumber = 1;
+  addToCombatLog(`── Round 1 ── (Threat: ${Math.round(threatScore)})`);
+
+  // Set first character in queue as current player
+  if (gameState.turnQueue.length > 0) {
+    gameState.currentPlayerId = gameState.turnQueue[0];
   }
 
   // ── 8. Re-render ───────────────────────────────────────────────────
   render();
+
+  // If the first character in the queue is an enemy, trigger their AI
+  if (gameState.turnQueue.length > 0) {
+    const firstChar = gameState.characters.find(c => c.id === gameState.turnQueue[0]);
+    if (firstChar && !firstChar.isPlayer) {
+      setTimeout(() => processEnemyTurn(firstChar, render), 1000);
+    }
+  }
 }

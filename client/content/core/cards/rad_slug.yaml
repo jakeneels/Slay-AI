@@ -1,13 +1,13 @@
 schemaVersion: 1
-id: rad_round
-name: "Rad Round"
+id: rad_slug
+name: "Rad Slug"
 type: attack
 rarity: rare   # common, rare, epic, legendary, mythic.
 cost: 2
 copies: 3
 tags: [radiation, ranged]
 targeting: enemy
-maxRange: 7
+maxRange: 12
 exhaust: false
 expires_after_turns: 0
 description: "A slug laced with radioactive material. Deals light damage and irradiates exposed targets."
@@ -16,5 +16,5 @@ effects:
     amount: 5
   - kind: status
     status: radiation
-    stacks: 5
+    stacks: 8
     effectTarget: target

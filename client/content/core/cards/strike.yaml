@@ -4,7 +4,7 @@ name: "Strike"
 type: attack
 rarity: common
 cost: 1
-copies: 3
+copies: 2
 tags: [basic]
 targeting: enemy
 maxRange: 2

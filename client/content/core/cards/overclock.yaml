@@ -13,17 +13,14 @@ expires_after_turns: 0
 description: "Mid-range tech burst — damage is minor but the self-buff is the real value."
 effects:
   - kind: damage
-    amount: 2
+    amount: 8
     effectTarget: target   # hits the clicked enemy
   - kind: knockback
     amount: 1 
     effectTarget: target   # hits the clicked enemy
   - kind: speed
-    amount: 2
+    amount: 3
     effectTarget: self     # applies to caster
-  - kind: energy 
-    amount: 1
-    effectTarget: self     # refunded to caster
 animation:
   damage:
     projectileColor: 0x00ffff  # Cyan tech energy projectile
