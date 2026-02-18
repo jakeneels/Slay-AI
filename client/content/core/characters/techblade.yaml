@@ -22,8 +22,8 @@ spriteSheetOffsetX: 20
 stats:
   hp: 100
   maxHp: 100
-  energy: 15
-  maxEnergy: 15
+  energy: 7
+  maxEnergy: 7
   speed: 1
   suppression: 2
   suppressionResist: 1
