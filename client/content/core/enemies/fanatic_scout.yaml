@@ -17,8 +17,8 @@ isPlayer: false
 stats:
   hp: 25
   maxHp: 25
-  energy: 2
-  maxEnergy: 2
+  energy: 4
+  maxEnergy: 4
   speed: 2
   suppression: 0
   suppressionResist: 0
@@ -27,6 +27,5 @@ mechanics:
   - "Low health but high speed"
 tags: ["goblin", "scout", "raider", "enemy"]
 startingDeck:
-  - "strike"
   - "blast" 
-  - ""
+  - "sidearm"

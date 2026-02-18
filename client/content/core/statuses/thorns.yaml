@@ -1,0 +1,20 @@
+schemaVersion: 1
+id: thorns
+name: "Thorns"
+description: "When hit by unblocked attack damage, retaliates against the attacker."
+
+cadence: round_start
+
+dot: null
+
+decay:
+  mode: none
+
+apply:
+  requires_zero_block: false
+
+display:
+  iconColor: 0xf59e0b
+  bgColor: 0x3b250f
+  borderColor: 0xb45309
+  icon: thorns

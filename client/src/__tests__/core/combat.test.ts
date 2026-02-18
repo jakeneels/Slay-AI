@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { playCard, endTurn, setApp, processEnemyTurn, calculateAoeTargets, getCharactersByPosition, moveCharacterForward, moveCharacterBack, applyKnockback, canOccupyRange } from '../../core/combat.js';
+import { playCard, endTurn, setApp, processEnemyTurn, calculateAoeTargets, getCharactersByPosition, moveCharacterForward, moveCharacterBack, applyKnockback, applyJump, canOccupyRange, canSwapCurrentTurnWithNextAlly, getValidJumpSlots, swapCurrentTurnWithNextAlly } from '../../core/combat.js';
 import { resetGameState, createMockCharacter, createMockCard, createMockCharacterDefinition, setupGameState } from '../utils/test-helpers.js';
 import { canRollbackTurn, getGameState, rollbackTurn } from '../../core/gameState.js';
 import { createCardInstance } from '../../core/card.js';
@@ -29,6 +29,8 @@ vi.mock('../../../animations.js', () => ({
   animateEnhancedScreenShake: vi.fn().mockResolvedValue(undefined),
   animateCameraZoom: vi.fn().mockResolvedValue(undefined),
   animateParticles: vi.fn().mockResolvedValue(undefined),
+  animateJumpMovement: vi.fn().mockResolvedValue(undefined),
+  setCharacterFacing: vi.fn(),
   animateCardPlayShowcase: vi.fn().mockResolvedValue(undefined),
   registerCharacterSprite: vi.fn(),
 }));
@@ -1054,6 +1056,225 @@ describe('combat', () => {
       expect(enemy.statuses[0].id).toBe('disrupt');
       expect(enemy.statuses[0].stacks).toBe(2);
       expect(enemy.statuses[0].duration).toBe(2);
+    });
+
+    it('should trigger thorns on unblocked single-target damage', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        hp: 100,
+        energy: 3,
+        isPlayer: true
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        hp: 100,
+        isPlayer: false,
+        statuses: [{
+          id: 'thorns',
+          stacks: 2,
+          metadata: {
+            reflectDamage: 3,
+            reflectPerStack: true,
+            debuffStatus: 'bleed',
+            debuffStacks: 2
+          }
+        }]
+      });
+
+      const strikeCard = createMockCard({
+        id: 'strike',
+        name: 'Strike',
+        cost: { energy: 1 },
+        targeting: 'enemy',
+        effects: [{ kind: 'damage', amount: 10 }]
+      });
+
+      setupGameState({
+        characters: [player, enemy],
+        cardLibrary: { strike: strikeCard },
+        currentPlayerId: 'player1'
+      });
+
+      const instanceId = createCardInstance('strike');
+      if (instanceId) {
+        player.hand.push(instanceId);
+      }
+
+      await playCard(instanceId!, 'enemy1');
+
+      expect(enemy.hp).toBe(90);
+      expect(player.hp).toBe(94);
+      const bleed = player.statuses.find(s => s.id === 'bleed');
+      expect(bleed?.stacks).toBe(2);
+    });
+
+    it('should not trigger thorns when incoming damage is fully blocked', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        hp: 100,
+        energy: 3,
+        isPlayer: true
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        hp: 100,
+        isPlayer: false,
+        blockLayers: [{ amount: 20, baseAmount: 20, decay_percent: 50 }],
+        statuses: [{
+          id: 'thorns',
+          stacks: 2,
+          metadata: {
+            reflectDamage: 3,
+            reflectPerStack: true,
+            debuffStatus: 'bleed',
+            debuffStacks: 2
+          }
+        }]
+      });
+
+      const strikeCard = createMockCard({
+        id: 'strike',
+        name: 'Strike',
+        cost: { energy: 1 },
+        targeting: 'enemy',
+        effects: [{ kind: 'damage', amount: 10 }]
+      });
+
+      setupGameState({
+        characters: [player, enemy],
+        cardLibrary: { strike: strikeCard },
+        currentPlayerId: 'player1'
+      });
+
+      const instanceId = createCardInstance('strike');
+      if (instanceId) {
+        player.hand.push(instanceId);
+      }
+
+      await playCard(instanceId!, 'enemy1');
+
+      expect(enemy.hp).toBe(100);
+      expect(player.hp).toBe(100);
+      expect(player.statuses.find(s => s.id === 'bleed')).toBeUndefined();
+    });
+
+    it('should trigger thorns from aoe_damage hits', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        hp: 100,
+        energy: 3,
+        isPlayer: true,
+        slotIndex: 0
+      });
+      const enemy1 = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy 1',
+        hp: 100,
+        isPlayer: false,
+        slotIndex: 5,
+        statuses: [{
+          id: 'thorns',
+          stacks: 1,
+          metadata: {
+            reflectDamage: 4,
+            reflectPerStack: false,
+            debuffStatus: 'disrupt',
+            debuffStacks: 1,
+            debuffDuration: 2
+          }
+        }]
+      });
+      const enemy2 = createMockCharacter({
+        id: 'enemy2',
+        name: 'Enemy 2',
+        hp: 100,
+        isPlayer: false,
+        slotIndex: 6
+      });
+
+      const aoeCard = createMockCard({
+        id: 'aoe',
+        name: 'AOE',
+        cost: { energy: 1 },
+        targeting: 'allEnemies',
+        effects: [{ kind: 'aoe_damage', amount: 10 }]
+      });
+
+      setupGameState({
+        characters: [player, enemy1, enemy2],
+        cardLibrary: { aoe: aoeCard },
+        currentPlayerId: 'player1'
+      });
+
+      const instanceId = createCardInstance('aoe');
+      if (instanceId) {
+        player.hand.push(instanceId);
+      }
+
+      await playCard(instanceId!);
+
+      expect(enemy1.hp).toBe(90);
+      expect(enemy2.hp).toBe(90);
+      expect(player.hp).toBe(96);
+      const disrupt = player.statuses.find(s => s.id === 'disrupt');
+      expect(disrupt?.stacks).toBe(1);
+      expect(disrupt?.duration).toBe(2);
+    });
+
+    it('should apply thorns status from thorns card effect metadata', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        hp: 100,
+        energy: 3,
+        isPlayer: true
+      });
+
+      const thornmail = createMockCard({
+        id: 'thornmail',
+        name: 'Thornmail',
+        cost: { energy: 1 },
+        targeting: 'self',
+        effects: [{
+          kind: 'thorns',
+          stacks: 2,
+          duration: 2,
+          reflectDamage: 2,
+          reflectPerStack: true,
+          debuffStatus: 'bleed',
+          debuffStacks: 1,
+          debuffDuration: 3
+        }]
+      });
+
+      setupGameState({
+        characters: [player],
+        cardLibrary: { thornmail },
+        currentPlayerId: 'player1'
+      });
+
+      const instanceId = createCardInstance('thornmail');
+      if (instanceId) {
+        player.hand.push(instanceId);
+      }
+
+      await playCard(instanceId!);
+
+      const thorns = player.statuses.find(s => s.id === 'thorns');
+      expect(thorns?.stacks).toBe(2);
+      expect(thorns?.duration).toBe(2);
+      expect(thorns?.metadata).toMatchObject({
+        reflectDamage: 2,
+        reflectPerStack: true,
+        debuffStatus: 'bleed',
+        debuffStacks: 1,
+        debuffDuration: 3
+      });
     });
 
     it('should handle modifier effect with condition met', async () => {
@@ -3677,6 +3898,234 @@ describe('combat', () => {
 
       vi.useRealTimers();
     });
+
+    it('should apply cleave knockback to all enemies in the hit set', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        energy: 3,
+        isPlayer: true,
+        slotIndex: 0
+      });
+      const enemyLeft = createMockCharacter({
+        id: 'enemy_left',
+        name: 'Enemy Left',
+        hp: 30,
+        isPlayer: false,
+        slotIndex: 6
+      });
+      const enemyMid = createMockCharacter({
+        id: 'enemy_mid',
+        name: 'Enemy Mid',
+        hp: 30,
+        isPlayer: false,
+        slotIndex: 7
+      });
+      const enemyRight = createMockCharacter({
+        id: 'enemy_right',
+        name: 'Enemy Right',
+        hp: 30,
+        isPlayer: false,
+        slotIndex: 8
+      });
+
+      const cleaveCard = createMockCard({
+        id: 'cleave_knockback',
+        name: 'Cleave Knockback',
+        cost: { energy: 1 },
+        targeting: 'enemy',
+        effects: [
+          { kind: 'damage', amount: 1, effectTarget: 'aoe', aoeSlots: 3 },
+          { kind: 'knockback', amount: 1 }
+        ]
+      });
+
+      setupGameState({
+        characters: [player, enemyLeft, enemyMid, enemyRight],
+        cardLibrary: { cleave_knockback: cleaveCard },
+        currentPlayerId: 'player1'
+      });
+
+      const instanceId = createCardInstance('cleave_knockback');
+      if (instanceId) player.hand.push(instanceId);
+
+      await playCard(instanceId!, 'enemy_mid');
+
+      expect(enemyLeft.slotIndex).toBe(7);
+      expect(enemyMid.slotIndex).toBe(8);
+      expect(enemyRight.slotIndex).toBe(9);
+    });
+
+    it('should chain grouped enemy knockback when one rear slot is open', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        energy: 3,
+        isPlayer: true,
+        slotIndex: 0
+      });
+      const enemyFront = createMockCharacter({
+        id: 'enemy_front',
+        name: 'Enemy Front',
+        hp: 30,
+        isPlayer: false,
+        slotIndex: 6
+      });
+      const enemyMid = createMockCharacter({
+        id: 'enemy_mid',
+        name: 'Enemy Mid',
+        hp: 30,
+        isPlayer: false,
+        slotIndex: 7
+      });
+      const enemyRear = createMockCharacter({
+        id: 'enemy_rear',
+        name: 'Enemy Rear',
+        hp: 30,
+        isPlayer: false,
+        slotIndex: 8
+      });
+
+      const cleaveCard = createMockCard({
+        id: 'chain_cleave_knockback',
+        name: 'Chain Cleave Knockback',
+        cost: { energy: 1 },
+        targeting: 'enemy',
+        effects: [
+          { kind: 'damage', amount: 1, effectTarget: 'aoe', aoeSlots: 3 },
+          { kind: 'knockback', amount: 1 }
+        ]
+      });
+
+      setupGameState({
+        characters: [player, enemyFront, enemyMid, enemyRear],
+        cardLibrary: { chain_cleave_knockback: cleaveCard },
+        currentPlayerId: 'player1'
+      });
+
+      const instanceId = createCardInstance('chain_cleave_knockback');
+      if (instanceId) player.hand.push(instanceId);
+
+      await playCard(instanceId!, 'enemy_mid');
+
+      expect(enemyFront.slotIndex).toBe(7);
+      expect(enemyMid.slotIndex).toBe(8);
+      expect(enemyRear.slotIndex).toBe(9);
+    });
+
+    it('should not illegally displace grouped enemies when no rear space exists', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        energy: 3,
+        isPlayer: true,
+        slotIndex: 0
+      });
+      const enemyFront = createMockCharacter({
+        id: 'enemy_front',
+        name: 'Enemy Front',
+        hp: 30,
+        isPlayer: false,
+        slotIndex: 7
+      });
+      const enemyMid = createMockCharacter({
+        id: 'enemy_mid',
+        name: 'Enemy Mid',
+        hp: 30,
+        isPlayer: false,
+        slotIndex: 8
+      });
+      const enemyRear = createMockCharacter({
+        id: 'enemy_rear',
+        name: 'Enemy Rear',
+        hp: 30,
+        isPlayer: false,
+        slotIndex: 9
+      });
+      const rearBlocker = createMockCharacter({
+        id: 'rear_blocker',
+        name: 'Rear Blocker',
+        hp: 30,
+        isPlayer: false,
+        slotIndex: 10
+      });
+
+      const cleaveCard = createMockCard({
+        id: 'blocked_cleave_knockback',
+        name: 'Blocked Cleave Knockback',
+        cost: { energy: 1 },
+        targeting: 'enemy',
+        effects: [
+          { kind: 'damage', amount: 1, effectTarget: 'aoe', aoeSlots: 3 },
+          { kind: 'knockback', amount: 1 }
+        ]
+      });
+
+      setupGameState({
+        characters: [player, enemyFront, enemyMid, enemyRear, rearBlocker],
+        cardLibrary: { blocked_cleave_knockback: cleaveCard },
+        currentPlayerId: 'player1'
+      });
+
+      const instanceId = createCardInstance('blocked_cleave_knockback');
+      if (instanceId) player.hand.push(instanceId);
+
+      await playCard(instanceId!, 'enemy_mid');
+
+      expect(enemyFront.slotIndex).toBe(7);
+      expect(enemyMid.slotIndex).toBe(8);
+      expect(enemyRear.slotIndex).toBe(9);
+      expect(rearBlocker.slotIndex).toBe(10);
+    });
+
+    it('should keep single-target knockback behavior unchanged', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        energy: 3,
+        isPlayer: true,
+        slotIndex: 0
+      });
+      const primaryEnemy = createMockCharacter({
+        id: 'enemy_primary',
+        name: 'Primary Enemy',
+        hp: 30,
+        isPlayer: false,
+        slotIndex: 6
+      });
+      const adjacentEnemy = createMockCharacter({
+        id: 'enemy_adjacent',
+        name: 'Adjacent Enemy',
+        hp: 30,
+        isPlayer: false,
+        slotIndex: 8
+      });
+
+      const singleTargetCard = createMockCard({
+        id: 'single_target_knockback',
+        name: 'Single Target Knockback',
+        cost: { energy: 1 },
+        targeting: 'enemy',
+        effects: [
+          { kind: 'damage', amount: 1 },
+          { kind: 'knockback', amount: 1 }
+        ]
+      });
+
+      setupGameState({
+        characters: [player, primaryEnemy, adjacentEnemy],
+        cardLibrary: { single_target_knockback: singleTargetCard },
+        currentPlayerId: 'player1'
+      });
+
+      const instanceId = createCardInstance('single_target_knockback');
+      if (instanceId) player.hand.push(instanceId);
+
+      await playCard(instanceId!, 'enemy_primary');
+
+      expect(primaryEnemy.slotIndex).toBe(7);
+      expect(adjacentEnemy.slotIndex).toBe(8);
+    });
   });
 
   describe('moveCharacterForward', () => {
@@ -4035,6 +4484,284 @@ describe('combat', () => {
       // Proposed range [4,5] is clear and on ally side.
       const clear = canOccupyRange(4, 2, true);
       expect(clear).toBe(true);
+    });
+
+    it('should compute knockback direction relative to caster position', () => {
+      const caster = createMockCharacter({
+        id: 'caster',
+        isPlayer: false,
+        slotIndex: 5
+      });
+      const target = createMockCharacter({
+        id: 'target',
+        isPlayer: false,
+        slotIndex: 2
+      });
+      setupGameState({
+        characters: [caster, target],
+        currentPlayerId: 'caster'
+      });
+
+      const moved = applyKnockback(target, 1, undefined, caster);
+      // Caster is to the right, so "away" is leftward (toward lower slot indices).
+      expect(moved).toBe(1);
+      expect(target.slotIndex).toBe(1);
+    });
+  });
+
+  describe('jump mechanics', () => {
+    it('should list legal jump destinations for single-slot character', () => {
+      const jumper = createMockCharacter({
+        id: 'jumper',
+        isPlayer: true,
+        slotIndex: 1,
+      });
+      const allyBlocker = createMockCharacter({
+        id: 'ally_blocker',
+        isPlayer: true,
+        slotIndex: 3,
+      });
+      const enemyBlocker = createMockCharacter({
+        id: 'enemy_blocker',
+        isPlayer: false,
+        slotIndex: 8,
+      });
+      setupGameState({ characters: [jumper, allyBlocker, enemyBlocker] });
+
+      const valid = getValidJumpSlots(jumper, 3);
+      expect(valid).toContain(0);
+      expect(valid).toContain(2);
+      expect(valid).not.toContain(3);
+      expect(valid).not.toContain(5); // out of range from slot 1 with rangeLimit 3
+    });
+
+    it('should move character to destination slot with applyJump', () => {
+      const jumper = createMockCharacter({
+        id: 'jumper',
+        isPlayer: true,
+        slotIndex: 1,
+      });
+      setupGameState({ characters: [jumper] });
+
+      const moved = applyJump(jumper, 6);
+      expect(moved).toBe(true);
+      expect(jumper.slotIndex).toBe(6);
+    });
+
+    it('should resolve a jump card to an empty slot and charge occupied path cost', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Jumper',
+        energy: 5,
+        isPlayer: true,
+        slotIndex: 1,
+      });
+      const occupiedMidA = createMockCharacter({
+        id: 'occupied_a',
+        isPlayer: true,
+        slotIndex: 2,
+      });
+      const occupiedMidB = createMockCharacter({
+        id: 'occupied_b',
+        isPlayer: false,
+        slotIndex: 4,
+      });
+      const destinationBlocker = createMockCharacter({
+        id: 'destination_blocker',
+        isPlayer: false,
+        slotIndex: 7,
+      });
+
+      const jumpCard = createMockCard({
+        id: 'misty_step',
+        name: 'Misty Step',
+        cost: { energy: 1 },
+        targeting: 'slot',
+        effects: [{ kind: 'jump', amount: 0, rangeLimit: 12, energyPerOccupiedSlot: 1 }]
+      });
+
+      setupGameState({
+        characters: [player, occupiedMidA, occupiedMidB, destinationBlocker],
+        cardLibrary: { misty_step: jumpCard },
+        currentPlayerId: 'player1'
+      });
+
+      const instanceId = createCardInstance('misty_step');
+      if (instanceId) player.hand.push(instanceId);
+
+      await playCard(instanceId!, 'slot:6');
+
+      expect(player.slotIndex).toBe(6);
+      // Base 1 + crossed occupied slots at 2 and 4 => +2 surcharge
+      expect(player.energy).toBe(2);
+    });
+
+    it('should reject jump card when destination slot is occupied', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Jumper',
+        energy: 4,
+        isPlayer: true,
+        slotIndex: 1,
+      });
+      const occupiedDestination = createMockCharacter({
+        id: 'occupied_destination',
+        isPlayer: false,
+        slotIndex: 5,
+      });
+
+      const jumpCard = createMockCard({
+        id: 'misty_step',
+        name: 'Misty Step',
+        cost: { energy: 1 },
+        targeting: 'slot',
+        effects: [{ kind: 'jump', amount: 0, rangeLimit: 12, energyPerOccupiedSlot: 1 }]
+      });
+
+      setupGameState({
+        characters: [player, occupiedDestination],
+        cardLibrary: { misty_step: jumpCard },
+        currentPlayerId: 'player1'
+      });
+
+      const instanceId = createCardInstance('misty_step');
+      if (instanceId) player.hand.push(instanceId);
+
+      await playCard(instanceId!, 'slot:5');
+
+      expect(player.slotIndex).toBe(1);
+      expect(player.energy).toBe(4);
+    });
+
+    it('should charge movement cost plus only enemies crossed (not allies)', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Jumper',
+        energy: 5,
+        isPlayer: true,
+        slotIndex: 1,
+      });
+      const allyCrossed = createMockCharacter({
+        id: 'ally_crossed',
+        isPlayer: true,
+        slotIndex: 2,
+      });
+      const jumpCard = createMockCard({
+        id: 'misty_step',
+        name: 'Misty Step',
+        cost: { energy: 1 },
+        targeting: 'slot',
+        effects: [{ kind: 'jump', amount: 0, rangeLimit: 12, energyPerEnemyJumped: 2 }]
+      });
+
+      setupGameState({
+        characters: [player, allyCrossed],
+        cardLibrary: { misty_step: jumpCard },
+        currentPlayerId: 'player1'
+      });
+
+      const instanceId = createCardInstance('misty_step');
+      if (instanceId) player.hand.push(instanceId);
+
+      await playCard(instanceId!, 'slot:4');
+
+      // Cost = card(1) + standard move(1) + enemies crossed(0 * 2)
+      expect(player.energy).toBe(3);
+      expect(player.slotIndex).toBe(4);
+    });
+
+    it('should consume move charge for jump when movement is free', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Jumper',
+        energy: 3,
+        isPlayer: true,
+        slotIndex: 1,
+        moveCharges: 1,
+      });
+      const jumpCard = createMockCard({
+        id: 'misty_step',
+        name: 'Misty Step',
+        cost: { energy: 1 },
+        targeting: 'slot',
+        effects: [{ kind: 'jump', amount: 0, rangeLimit: 12, energyPerEnemyJumped: 1 }]
+      });
+
+      setupGameState({
+        characters: [player],
+        cardLibrary: { misty_step: jumpCard },
+        currentPlayerId: 'player1'
+      });
+
+      const instanceId = createCardInstance('misty_step');
+      if (instanceId) player.hand.push(instanceId);
+
+      await playCard(instanceId!, 'slot:4');
+
+      // Cost = card(1) + movement(0 due to free charge) + enemies crossed(0)
+      expect(player.energy).toBe(2);
+      expect(player.moveCharges).toBe(0);
+      expect(player.slotIndex).toBe(4);
+    });
+  });
+
+  describe('facing direction', () => {
+    it('updates facing toward attack target and persists after attack', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        isPlayer: true,
+        energy: 3,
+        slotIndex: 4,
+        facing: 'right',
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        isPlayer: false,
+        hp: 20,
+        slotIndex: 2,
+      });
+      const strikeCard = createMockCard({
+        id: 'strike',
+        name: 'Strike',
+        cost: { energy: 1 },
+        targeting: 'enemy',
+        effects: [{ kind: 'damage', amount: 5 }],
+      });
+      setupGameState({
+        characters: [player, enemy],
+        cardLibrary: { strike: strikeCard },
+        currentPlayerId: 'player1',
+      });
+      const instanceId = createCardInstance('strike');
+      if (instanceId) player.hand.push(instanceId);
+
+      await playCard(instanceId!, 'enemy1');
+      expect(player.facing).toBe('left');
+    });
+
+    it('updates facing when moving in opposite direction', () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        isPlayer: true,
+        slotIndex: 2,
+        energy: 3,
+        facing: 'right',
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        isPlayer: false,
+        slotIndex: 5,
+      });
+      setupGameState({
+        characters: [player, enemy],
+        currentPlayerId: 'player1',
+      });
+
+      const moved = moveCharacterBack('player1');
+      expect(moved).toBe(true);
+      expect(player.facing).toBe('left');
     });
   });
 
@@ -4760,6 +5487,161 @@ describe('combat', () => {
       expect(player.hp).toBe(45);
       expect(state.laneHazards).toHaveLength(0);
       expect(state.roundNumber).toBe(2);
+    });
+  });
+
+  describe('connected ally turn swaps', () => {
+    it('swaps current ally with next connected ally turn', () => {
+      const didi = createMockCharacter({
+        id: 'didi',
+        name: 'Didi',
+        isPlayer: true,
+        hp: 50,
+      });
+      const kyle = createMockCharacter({
+        id: 'kyle',
+        name: 'Kyle',
+        isPlayer: true,
+        hp: 50,
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        isPlayer: false,
+        hp: 50,
+      });
+
+      setupGameState({
+        characters: [didi, kyle, enemy],
+        currentPlayerId: 'didi',
+        turnQueue: ['didi', 'kyle', 'enemy1'],
+        turnQueueIndex: 0,
+      });
+
+      expect(canSwapCurrentTurnWithNextAlly()).toBe(true);
+      const swapped = swapCurrentTurnWithNextAlly();
+
+      expect(swapped).toBe(true);
+      const state = getGameState();
+      expect(state.turnQueue).toEqual(['kyle', 'didi', 'enemy1']);
+      expect(state.currentPlayerId).toBe('kyle');
+      expect(state.combatLog[state.combatLog.length - 1]).toContain('Kyle takes point before Didi');
+    });
+
+    it('does not swap when next connected turn is not an ally', () => {
+      const didi = createMockCharacter({
+        id: 'didi',
+        name: 'Didi',
+        isPlayer: true,
+        hp: 50,
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        isPlayer: false,
+        hp: 50,
+      });
+
+      setupGameState({
+        characters: [didi, enemy],
+        currentPlayerId: 'didi',
+        turnQueue: ['didi', 'enemy1'],
+        turnQueueIndex: 0,
+      });
+
+      expect(canSwapCurrentTurnWithNextAlly()).toBe(false);
+      const swapped = swapCurrentTurnWithNextAlly();
+
+      expect(swapped).toBe(false);
+      const state = getGameState();
+      expect(state.turnQueue).toEqual(['didi', 'enemy1']);
+      expect(state.currentPlayerId).toBe('didi');
+    });
+
+    it('consumes connected ally pair on end turn without restoring partner energy', () => {
+      const didi = createMockCharacter({
+        id: 'didi',
+        name: 'Didi',
+        isPlayer: true,
+        hp: 50,
+        energy: 0,
+        maxEnergy: 5,
+      });
+      const nyx = createMockCharacter({
+        id: 'nyx',
+        name: 'Nyx',
+        isPlayer: true,
+        hp: 50,
+        energy: 0,
+        maxEnergy: 5,
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        isPlayer: false,
+        hp: 50,
+        energy: 1,
+        maxEnergy: 3,
+      });
+
+      setupGameState({
+        characters: [didi, nyx, enemy],
+        currentPlayerId: 'nyx',
+        turnQueue: ['didi', 'nyx', 'enemy1'],
+        turnQueueIndex: 0,
+        roundNumber: 1,
+      });
+
+      endTurn();
+
+      const state = getGameState();
+      expect(state.currentPlayerId).toBe('enemy1');
+      expect(didi.energy).toBe(0);
+      expect(nyx.energy).toBe(0);
+      expect(enemy.energy).toBe(enemy.maxEnergy);
+    });
+
+    it('ends only the current ally turn when connected allies are consecutive', () => {
+      const didi = createMockCharacter({
+        id: 'didi',
+        name: 'Didi',
+        isPlayer: true,
+        hp: 50,
+        energy: 0,
+        maxEnergy: 5,
+      });
+      const nyx = createMockCharacter({
+        id: 'nyx',
+        name: 'Nyx',
+        isPlayer: true,
+        hp: 50,
+        energy: 1,
+        maxEnergy: 5,
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        isPlayer: false,
+        hp: 50,
+        energy: 0,
+        maxEnergy: 3,
+      });
+
+      setupGameState({
+        characters: [didi, nyx, enemy],
+        currentPlayerId: 'didi',
+        turnQueue: ['didi', 'nyx', 'enemy1'],
+        turnQueueIndex: 0,
+        roundNumber: 1,
+      });
+
+      endTurn();
+
+      const state = getGameState();
+      expect(state.currentPlayerId).toBe('nyx');
+      expect(state.turnQueueIndex).toBe(1);
+      expect(didi.energy).toBe(0);
+      expect(nyx.energy).toBe(nyx.maxEnergy);
     });
   });
 });

@@ -1,7 +1,7 @@
 // Combat logic - card playing, turn management, enemy AI
 
 import type { Application } from 'pixi.js';
-import type { Character, CardEffect, Card, BaseCardEffect, SpeedEffect, StatusSpreadEffect, LaneHazardEffect } from './types.js';
+import type { Character, CardEffect, Card, BaseCardEffect, SpeedEffect, StatusSpreadEffect, LaneHazardEffect, JumpEffect, ThornsEffect } from './types.js';
 import { addToCombatLog, getGameState, getRollbackEpoch, pushHistorySnapshot } from './gameState.js';
 import { getCard } from './card.js';
 import { drawCards } from './deck.js';
@@ -20,16 +20,26 @@ import {
   animateEnhancedScreenShake,
   animateParticles,
   animateCardPlayShowcase,
+  animateJumpMovement,
+  setCharacterFacing,
   type AnimationConfig,
   type PlayDamageAnimationOptions 
 } from '../../animations.js';
 import { applyDamageWithBlock, grantBlockLayer, decayBlockLayers } from './block.js';
 import { applyStatus, modifyStatusStacks, processStatusEffects, decayStatusDurations, getStatusStacks } from './status.js';
-import { MAX_SLOTS, SLOTS_PER_SIDE, calculateRangeModifier, getSuppressionDistance, getSuppressionRangedThreshold, getSuppressionStackCost } from './constants.js';
+import { MAX_SLOTS, SLOTS_PER_SIDE, calculateRangeModifier, getJumpMaxDistance, getJumpOccupiedSlotCost, getSuppressionDistance, getSuppressionRangedThreshold, getSuppressionStackCost } from './constants.js';
 import { getModifierRegistry } from './modifiers.js';
-import { computeDifficulty } from './waveGenerator.js';
+import { computeDifficulty, RARITY_WEIGHTS } from './waveGenerator.js';
 
 let app: Application | null = null;
+
+interface ThornsStatusMetadata {
+  reflectDamage?: number;
+  reflectPerStack?: boolean;
+  debuffStatus?: string;
+  debuffStacks?: number;
+  debuffDuration?: number;
+}
 
 function isRollbackEpochStale(expectedEpoch: number): boolean {
   return getRollbackEpoch() !== expectedEpoch;
@@ -112,6 +122,42 @@ export function getSuppressionCostPenalty(character: Character, card: Card): num
 }
 
 /**
+ * Resolve and apply thorns retaliation when attacker deals unblocked HP damage.
+ * This is called only from direct attack damage paths.
+ */
+function triggerThornsRetaliation(attacker: Character, defender: Character): void {
+  if (attacker.id === defender.id || attacker.hp <= 0) return;
+
+  const thorns = defender.statuses.find(s => s.id === 'thorns' && s.stacks > 0);
+  if (!thorns) return;
+
+  const metadata = (thorns.metadata ?? {}) as ThornsStatusMetadata;
+  const baseReflect = typeof metadata.reflectDamage === 'number' ? Math.max(0, metadata.reflectDamage) : 0;
+  const reflectPerStack = metadata.reflectPerStack !== false;
+  const reflectAmount = reflectPerStack ? baseReflect * thorns.stacks : baseReflect;
+
+  if (reflectAmount > 0) {
+    const reflectedDamage = applyDamageWithBlock(attacker, reflectAmount);
+    if (reflectedDamage > 0) {
+      addToCombatLog(`${attacker.name} takes ${reflectedDamage} thorns damage from ${defender.name}`);
+      if (attacker.hp <= 0) {
+        logCharacterDefeated(attacker.name, attacker.id, attacker.isPlayer);
+        addToCombatLog(`${attacker.name} is defeated!`);
+      }
+    }
+  }
+
+  if (attacker.hp <= 0) return;
+  if (typeof metadata.debuffStatus !== 'string' || metadata.debuffStatus.length === 0) return;
+
+  const debuffStacks = typeof metadata.debuffStacks === 'number' ? Math.max(1, Math.floor(metadata.debuffStacks)) : 1;
+  const debuffDuration = typeof metadata.debuffDuration === 'number'
+    ? Math.max(1, Math.floor(metadata.debuffDuration))
+    : undefined;
+  applyStatus(attacker, metadata.debuffStatus, debuffStacks, debuffDuration);
+}
+
+/**
  * Get all characters by position for a given side (sorted by slotIndex)
  */
 export function getCharactersByPosition(side: 'enemy' | 'ally'): Character[] {
@@ -134,6 +180,21 @@ export function getOccupiedSlots(character: Character): number[] {
 
 function rangesOverlap(a: number[], b: number[]): boolean {
   return a.some(slot => b.includes(slot));
+}
+
+function updateFacingFromDelta(character: Character, delta: number, reason: string): void {
+  if (delta === 0) return;
+  const previousFacing = character.facing ?? null;
+  const facing: 'left' | 'right' = delta > 0 ? 'right' : 'left';
+  character.facing = facing;
+  setCharacterFacing(character.id, facing);
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4a1d9c'},body:JSON.stringify({sessionId:'4a1d9c',runId:'post-fix-2',hypothesisId:'H4',location:'combat.ts:updateFacingFromDelta',message:'Facing updated from gameplay action',data:{characterId:character.id,name:character.name,reason,delta,previousFacing,newFacing:facing,slotIndex:character.slotIndex},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+}
+
+function updateFacingTowardsSlot(character: Character, targetSlot: number, reason: string): void {
+  updateFacingFromDelta(character, targetSlot - character.slotIndex, reason);
 }
 
 export function isSlotBlocked(
@@ -168,6 +229,104 @@ export function canOccupyRange(
     c.id !== excludingCharacterId &&
     rangesOverlap(getOccupiedSlots(c), occupiedRange)
   );
+}
+
+function getPrimaryJumpEffect(card: Card): JumpEffect | null {
+  const jump = card.effects.find((effect): effect is JumpEffect => effect.kind === 'jump');
+  return jump ?? null;
+}
+
+function shouldCardUpdateFacing(card: Card): boolean {
+  if (card.type === 'attack') return true;
+  return card.effects.some(effect =>
+    effect.kind === 'damage' ||
+    effect.kind === 'aoe_damage' ||
+    effect.kind === 'knockback' ||
+    effect.kind === 'jump'
+  );
+}
+
+function countEnemiesCrossed(caster: Character, destinationSlot: number): number {
+  const enemies = getGameState().characters.filter(c =>
+    c.hp > 0 &&
+    c.id !== caster.id &&
+    c.isPlayer !== caster.isPlayer
+  );
+  const casterFront = caster.slotIndex;
+  const targetFront = destinationSlot;
+  const dir = targetFront >= casterFront ? 1 : -1;
+  const slotsBetween = new Set<number>();
+
+  for (let s = casterFront + dir; s !== targetFront; s += dir) {
+    slotsBetween.add(s);
+  }
+  if (slotsBetween.size === 0) return 0;
+
+  let crossedEnemies = 0;
+  for (const enemy of enemies) {
+    if (getOccupiedSlots(enemy).some(slot => slotsBetween.has(slot))) {
+      crossedEnemies++;
+    }
+  }
+  return crossedEnemies;
+}
+
+function getJumpEnergySurcharge(caster: Character, card: Card, targetId: string | undefined): number {
+  const jumpEffect = getPrimaryJumpEffect(card);
+  if (!jumpEffect || !targetId) return 0;
+  const destinationSlot = resolveTargetSlot(targetId);
+  if (destinationSlot === null) return 0;
+  return getJumpSurchargeForSlot(caster, card, destinationSlot);
+}
+
+export function getJumpSurchargeForSlot(caster: Character, card: Card, destinationSlot: number): number {
+  const jumpEffect = getPrimaryJumpEffect(card);
+  if (!jumpEffect) return 0;
+  const enemiesCrossed = countEnemiesCrossed(caster, destinationSlot);
+  const perEnemyJumped =
+    jumpEffect.energyPerEnemyJumped
+    ?? jumpEffect.energyPerOccupiedSlot
+    ?? getJumpOccupiedSlotCost({ character: caster, card });
+  return Math.max(0, enemiesCrossed * Math.max(0, perEnemyJumped));
+}
+
+export function getJumpTotalEnergyCostForSlot(caster: Character, card: Card, destinationSlot: number): number {
+  const suppressionPenalty = getSuppressionCostPenalty(caster, card);
+  const movementCost = getMoveCost(caster).energyCost;
+  return card.cost.energy + suppressionPenalty + movementCost + getJumpSurchargeForSlot(caster, card, destinationSlot);
+}
+
+export function getValidJumpSlots(caster: Character, rangeLimit?: number): number[] {
+  const slotSize = getCharacterSlotSize(caster);
+  const resolvedLimit = rangeLimit ?? getJumpMaxDistance({ character: caster });
+  const limit = Math.max(0, Math.floor(resolvedLimit));
+  const gameState = getGameState();
+  const valid: number[] = [];
+
+  for (let slot = 0; slot < MAX_SLOTS; slot++) {
+    if (slot === caster.slotIndex) continue;
+    if (Math.abs(slot - caster.slotIndex) > limit) continue;
+    if (canOccupyRange(slot, slotSize, caster.isPlayer, gameState.characters, caster.id)) {
+      valid.push(slot);
+    }
+  }
+  return valid;
+}
+
+export function applyJump(caster: Character, destinationSlot: number, renderCallback?: () => void): boolean {
+  if (caster.hp <= 0) return false;
+  const slotSize = getCharacterSlotSize(caster);
+  if (!canOccupyRange(destinationSlot, slotSize, caster.isPlayer, getGameState().characters, caster.id)) {
+    return false;
+  }
+  updateFacingTowardsSlot(caster, destinationSlot, 'jump');
+  caster.slotIndex = destinationSlot;
+  const movementHazardDamage = applyLaneHazardsToCharacter(caster, 'movement', renderCallback);
+  if (movementHazardDamage > 0 || caster.hp <= 0) {
+    checkCombatResolutionAfterHazards();
+  }
+  if (renderCallback) renderCallback();
+  return true;
 }
 
 type HazardTrigger = 'movement' | 'turn_start' | 'round_end';
@@ -428,6 +587,18 @@ export function resolveCardTargets(
       return [target];
     }
 
+    case 'slot': {
+      if (!targetId) return null;
+      const slot = resolveTargetSlot(targetId);
+      if (slot === null) return null;
+      const jumpEffect = getPrimaryJumpEffect(card);
+      if (!jumpEffect) return null;
+      const validSlots = getValidJumpSlots(caster, jumpEffect.rangeLimit);
+      if (!validSlots.includes(slot)) return null;
+      // Slot-target cards act on caster movement; effects resolve from the caster context.
+      return [caster];
+    }
+
     default: {
       if (!targetId) return null;
       const target = gameState.characters.find(c => c.id === targetId);
@@ -449,6 +620,9 @@ function getAITargetCandidates(card: Card, caster: Character): Character[] {
     case 'allAllies':
     case 'allEnemies':
       return [caster]; // these modes don't need a specific targetId
+    case 'slot':
+      // Player-focused mechanic for now; enemy AI ignores slot-target cards.
+      return [];
     case 'ally':
       return gameState.characters.filter(c => c.isPlayer === caster.isPlayer && c.hp > 0);
     case 'aoe':
@@ -628,6 +802,7 @@ export function moveCharacterForward(characterId: string, renderCallback?: () =>
     ) {
       pushHistorySnapshot('move_forward');
       singleBlocker.slotIndex = char.slotIndex;
+      updateFacingFromDelta(char, targetSlot - char.slotIndex, 'move_forward');
       char.slotIndex = targetSlot;
     } else {
       return false;
@@ -637,6 +812,7 @@ export function moveCharacterForward(characterId: string, renderCallback?: () =>
       return false;
     }
     pushHistorySnapshot('move_forward');
+    updateFacingFromDelta(char, targetSlot - char.slotIndex, 'move_forward');
     char.slotIndex = targetSlot;
   }
 
@@ -701,6 +877,7 @@ export function moveCharacterBack(characterId: string, renderCallback?: () => vo
     ) {
       pushHistorySnapshot('move_back');
       singleBlocker.slotIndex = char.slotIndex;
+      updateFacingFromDelta(char, targetSlot - char.slotIndex, 'move_back');
       char.slotIndex = targetSlot;
     } else {
       return false;
@@ -710,6 +887,7 @@ export function moveCharacterBack(characterId: string, renderCallback?: () => vo
       return false;
     }
     pushHistorySnapshot('move_back');
+    updateFacingFromDelta(char, targetSlot - char.slotIndex, 'move_back');
     char.slotIndex = targetSlot;
   }
 
@@ -734,21 +912,31 @@ export function moveCharacterBack(characterId: string, renderCallback?: () => vo
 }
 
 /**
- * Apply knockback to a target, pushing them back (away from caster) by up to `amount` slots.
+ * Apply knockback to a target, pushing away from caster by up to `amount` slots.
  * Each step requires a free space — stops early if blocked or at grid edge.
  * Returns the number of slots actually moved.
  *
- * "Back" for an enemy (isPlayer=false) = +1 slotIndex (away from allies)
- * "Back" for an ally  (isPlayer=true)  = -1 slotIndex (away from enemies)
+ * Positive amount: push away from caster.
+ * Negative amount: pull toward caster.
  */
-export function applyKnockback(target: Character, amount: number, renderCallback?: () => void): number {
+export function applyKnockback(
+  target: Character,
+  amount: number,
+  renderCallback?: () => void,
+  caster?: Character
+): number {
   const gameState = getGameState();
   const allLiving = gameState.characters.filter(c => c.hp > 0);
   const targetSize = getCharacterSlotSize(target);
 
-  // Positive amount = push back (away from caster), negative = pull forward (toward caster)
-  const backDirection = target.isPlayer ? -1 : 1;
-  const direction = amount >= 0 ? backDirection : -backDirection;
+  // Positive amount = push away from caster; negative amount = pull toward caster.
+  // If caster is unavailable, fall back to legacy side-based behavior.
+  const inferredCaster = caster ?? gameState.characters.find(c => c.id === gameState.currentPlayerId);
+  const canUseRelative = !!inferredCaster && inferredCaster.id !== target.id;
+  const awayFromCasterDirection = canUseRelative
+    ? (target.slotIndex >= inferredCaster.slotIndex ? 1 : -1)
+    : (target.isPlayer ? -1 : 1);
+  const direction = amount >= 0 ? awayFromCasterDirection : -awayFromCasterDirection;
   const steps = Math.abs(amount);
   let slotsMoved = 0;
   let hazardDamageTotal = 0;
@@ -812,8 +1000,12 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
   }
   
   // Calculate suppression energy penalty for ranged cards
+  const jumpEffect = getPrimaryJumpEffect(card);
+  const moveCostForJump = jumpEffect ? getMoveCost(currentPlayer) : { energyCost: 0, usesCharge: false };
   const suppressionPenalty = getSuppressionCostPenalty(currentPlayer, card);
-  const totalEnergyCost = card.cost.energy + suppressionPenalty;
+  const jumpSurcharge = getJumpEnergySurcharge(currentPlayer, card, targetId);
+  const jumpMovementEnergyCost = jumpEffect ? moveCostForJump.energyCost : 0;
+  const totalEnergyCost = card.cost.energy + suppressionPenalty + jumpMovementEnergyCost + jumpSurcharge;
 
   if (currentPlayer.energy < totalEnergyCost) {
     // #region agent log
@@ -831,6 +1023,15 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
   // Determine targets based on targeting mode (relative to caster)
   const targets = resolveCardTargets(card, currentPlayer, targetId);
   if (!targets || targets.length === 0) return;
+
+  // Only directional actions should rotate facing. Non-directional cards (e.g. defend)
+  // should not cause "random" turns.
+  if (card.targeting !== 'self' && shouldCardUpdateFacing(card)) {
+    const actionSlot = targetId ? resolveTargetSlot(targetId) : (targets[0]?.slotIndex ?? null);
+    if (actionSlot !== null) {
+      updateFacingTowardsSlot(currentPlayer, actionSlot, `play_card:${card.id}`);
+    }
+  }
 
   // Range validation: if card has maxRange/minRange, verify primary target is within range
   if ((card.maxRange || card.minRange) && targetId && card.targeting !== 'self') {
@@ -875,6 +1076,16 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
   currentPlayer.energy -= totalEnergyCost;
   if (suppressionPenalty > 0) {
     addToCombatLog(`${currentPlayer.name} pays +${suppressionPenalty} energy (suppressed!)`);
+  }
+  if (jumpMovementEnergyCost > 0) {
+    addToCombatLog(`${currentPlayer.name} pays +${jumpMovementEnergyCost} energy (jump movement cost)`);
+  }
+  if (jumpSurcharge > 0) {
+    addToCombatLog(`${currentPlayer.name} pays +${jumpSurcharge} energy (enemies crossed)`);
+  }
+  if (jumpEffect && moveCostForJump.usesCharge && currentPlayer.moveCharges > 0) {
+    currentPlayer.moveCharges--;
+    addToCombatLog(`${currentPlayer.name} consumes 1 move charge for jump (${currentPlayer.moveCharges} left)`);
   }
 
   const exhaustText = card.exhaust ? ' (Exhaust)' : '';
@@ -1003,16 +1214,47 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
     
     // Resolve per-effect targets (may differ from card-level targets)
     let effectTargets = resolveEffectTargets(effect, currentPlayer, targets, targetId, card);
-    
-    // Knockback AOE: process back-to-front so rearmost target moves first,
-    // freeing space for the next one.  "Back" = +slotIndex for enemies, -slotIndex for allies.
+
+    // Cleave knockback should propagate to all enemy recipients hit by this card/effect
+    // target resolution, while preserving non-cleave single-target behavior.
+    if (effect.kind === 'knockback') {
+      const enemyHitTargets = new Map<string, Character>();
+
+      for (const candidateEffect of card.effects) {
+        const candidateTargets = resolveEffectTargets(candidateEffect, currentPlayer, targets, targetId, card);
+        const candidateEt = (candidateEffect as BaseCardEffect).effectTarget;
+        const isCleaveStyle =
+          candidateTargets.length > 1
+          || candidateEt === 'aoe'
+          || candidateEt === 'allEnemies'
+          || card.targeting === 'aoe'
+          || card.targeting === 'allEnemies';
+
+        if (!isCleaveStyle) continue;
+
+        for (const candidateTarget of candidateTargets) {
+          if (candidateTarget.hp > 0 && candidateTarget.isPlayer !== currentPlayer.isPlayer) {
+            enemyHitTargets.set(candidateTarget.id, candidateTarget);
+          }
+        }
+      }
+
+      if (enemyHitTargets.size > 0) {
+        effectTargets = [...enemyHitTargets.values()];
+      }
+    }
+
+    // Multi-target knockback: process in movement direction so the farthest target
+    // (relative to caster/push direction) moves first and can free space.
     if (effect.kind === 'knockback' && effectTargets.length > 1) {
       const firstTarget = effectTargets[0];
-      if (firstTarget) {
-        effectTargets = [...effectTargets].sort((a, b) =>
-          firstTarget.isPlayer ? a.slotIndex - b.slotIndex : b.slotIndex - a.slotIndex
-        );
-      }
+      const inferredAwayDirection = firstTarget
+        ? (firstTarget.slotIndex >= currentPlayer.slotIndex ? 1 : -1)
+        : 1;
+      const sortDirection = effect.amount >= 0 ? inferredAwayDirection : -inferredAwayDirection;
+      effectTargets = [...effectTargets].sort((a, b) =>
+        sortDirection > 0 ? b.slotIndex - a.slotIndex : a.slotIndex - b.slotIndex
+      );
     }
     
     // For AOE effects, animate on all targets in parallel
@@ -1031,6 +1273,7 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
           const actualDamage = applyDamageWithBlock(target, adjustedDamage);
           if (actualDamage > 0) {
             addToCombatLog(`${target.name} [slot ${target.slotIndex}] takes ${actualDamage} damage`);
+            triggerThornsRetaliation(currentPlayer, target);
             // Defer render for AOE until after animations - otherwise dead targets are removed
             // and characterSprites gets overwritten, causing animations to stack on surviving enemy
             const et = (effect as BaseCardEffect).effectTarget;
@@ -1044,10 +1287,22 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
             const targetDef = gameStateForAnim.characterLibrary[target.id];
             const spriteSheets: PlayDamageAnimationOptions = {};
             if (attackerDef?.spriteSheet && attackerDef?.spriteSheetLayout) {
-              spriteSheets.attackerSpriteSheet = { path: attackerDef.spriteSheet, layout: attackerDef.spriteSheetLayout };
+              spriteSheets.attackerSpriteSheet = {
+                path: attackerDef.spriteSheet,
+                layout: attackerDef.spriteSheetLayout,
+                preserveAspect: !!attackerDef.spriteSheetPreserveAspect,
+                offsetX: attackerDef.spriteSheetOffsetX ?? 0,
+                offsetY: attackerDef.spriteSheetOffsetY ?? 0,
+              };
             }
             if (targetDef?.spriteSheet && targetDef?.spriteSheetLayout) {
-              spriteSheets.targetSpriteSheet = { path: targetDef.spriteSheet, layout: targetDef.spriteSheetLayout };
+              spriteSheets.targetSpriteSheet = {
+                path: targetDef.spriteSheet,
+                layout: targetDef.spriteSheetLayout,
+                preserveAspect: !!targetDef.spriteSheetPreserveAspect,
+                offsetX: targetDef.spriteSheetOffsetX ?? 0,
+                offsetY: targetDef.spriteSheetOffsetY ?? 0,
+              };
             }
             const hasSpriteSheetAnim = Object.keys(spriteSheets).length > 0;
             // Defer render when playing sprite sheet animation (same as AOE) - render clears the stage
@@ -1088,6 +1343,7 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
           const actualAoEDamage = applyDamageWithBlock(target, aoeDamage);
           if (actualAoEDamage > 0) {
             addToCombatLog(`${target.name} [slot ${target.slotIndex}] takes ${actualAoEDamage} AOE damage`);
+            triggerThornsRetaliation(currentPlayer, target);
             // Defer render for AOE until after animations (see damage case)
             const aoeEt = (effect as BaseCardEffect).effectTarget;
             const isAoeStyle = effectTargets.length > 1 || aoeEt === 'aoe' || aoeEt === 'allEnemies' || aoeEt === 'allAllies'
@@ -1100,10 +1356,22 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
             const targetDefAoe = gameStateForAoeAnim.characterLibrary[target.id];
             const spriteSheetsAoe: PlayDamageAnimationOptions = {};
             if (attackerDefAoe?.spriteSheet && attackerDefAoe?.spriteSheetLayout) {
-              spriteSheetsAoe.attackerSpriteSheet = { path: attackerDefAoe.spriteSheet, layout: attackerDefAoe.spriteSheetLayout };
+              spriteSheetsAoe.attackerSpriteSheet = {
+                path: attackerDefAoe.spriteSheet,
+                layout: attackerDefAoe.spriteSheetLayout,
+                preserveAspect: !!attackerDefAoe.spriteSheetPreserveAspect,
+                offsetX: attackerDefAoe.spriteSheetOffsetX ?? 0,
+                offsetY: attackerDefAoe.spriteSheetOffsetY ?? 0,
+              };
             }
             if (targetDefAoe?.spriteSheet && targetDefAoe?.spriteSheetLayout) {
-              spriteSheetsAoe.targetSpriteSheet = { path: targetDefAoe.spriteSheet, layout: targetDefAoe.spriteSheetLayout };
+              spriteSheetsAoe.targetSpriteSheet = {
+                path: targetDefAoe.spriteSheet,
+                layout: targetDefAoe.spriteSheetLayout,
+                preserveAspect: !!targetDefAoe.spriteSheetPreserveAspect,
+                offsetX: targetDefAoe.spriteSheetOffsetX ?? 0,
+                offsetY: targetDefAoe.spriteSheetOffsetY ?? 0,
+              };
             }
             const hasSpriteSheetAnimAoe = Object.keys(spriteSheetsAoe).length > 0;
             if (renderCallback && !isAoeStyle && !hasSpriteSheetAnimAoe) {
@@ -1240,6 +1508,30 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
           ]).then(() => undefined);
           break;
 
+        case 'thorns': {
+          const thornsEffect = effect as ThornsEffect;
+          const thornsTarget = target;
+          const thornsStacks = Math.max(1, Math.floor(thornsEffect.stacks ?? 1));
+          const thornsDuration = thornsEffect.duration;
+          const thornsMetadata: ThornsStatusMetadata = {
+            reflectDamage: Math.max(0, Math.floor(thornsEffect.reflectDamage ?? 0)),
+            reflectPerStack: thornsEffect.reflectPerStack !== false,
+            debuffStatus: thornsEffect.debuffStatus,
+            debuffStacks: thornsEffect.debuffStacks !== undefined ? Math.max(1, Math.floor(thornsEffect.debuffStacks)) : undefined,
+            debuffDuration: thornsEffect.debuffDuration !== undefined ? Math.max(1, Math.floor(thornsEffect.debuffDuration)) : undefined,
+          };
+          applyStatus(thornsTarget, 'thorns', thornsStacks, thornsDuration, thornsMetadata);
+          sparkType = 'buff';
+          if (renderCallback) {
+            renderCallback();
+          }
+          animationPromise = Promise.all([
+            animateCharachterSpark(thornsTarget.id, sparkType, app),
+            animateParticles(thornsTarget.id, 'ice', 10, app)
+          ]).then(() => undefined);
+          break;
+        }
+
         case 'status_modify':
           const modTarget = target;
           const modStatusId = effect.status;
@@ -1301,10 +1593,53 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
           break;
         }
 
+        case 'jump': {
+          const jumpEffect = effect as JumpEffect;
+          const destinationSlot = targetId ? resolveTargetSlot(targetId) : null;
+          if (destinationSlot === null) {
+            addToCombatLog(`${card.name} failed - invalid destination slot`);
+            break;
+          }
+          const validSlots = getValidJumpSlots(currentPlayer, jumpEffect.rangeLimit);
+          if (!validSlots.includes(destinationSlot)) {
+            addToCombatLog(`${card.name} failed - destination occupied or out of jump range`);
+            break;
+          }
+
+          const startSlot = currentPlayer.slotIndex;
+          const enemiesCrossed = countEnemiesCrossed(currentPlayer, destinationSlot);
+
+          animationPromise = (async () => {
+            const jumpAnimConfig = {
+              anticipationMs: registry.resolve('jump_anticipation_ms', card.animationConfig?.jump?.anticipationMs ?? 140, { character: currentPlayer, card }),
+              arcMs: registry.resolve('jump_arc_ms', card.animationConfig?.jump?.arcMs ?? 300, { character: currentPlayer, card }),
+              landingMs: registry.resolve('jump_landing_ms', card.animationConfig?.jump?.landingMs ?? 120, { character: currentPlayer, card }),
+              arcHeight: registry.resolve('jump_arc_height', card.animationConfig?.jump?.arcHeight ?? 90, { character: currentPlayer, card }),
+            };
+            await animateJumpMovement(
+              currentPlayer.id,
+              startSlot,
+              destinationSlot,
+              app,
+              jumpAnimConfig
+            );
+            const moved = applyJump(currentPlayer, destinationSlot, renderCallback);
+            if (moved) {
+              addToCombatLog(
+                `${currentPlayer.name} jumps ${Math.abs(destinationSlot - startSlot)} slot${Math.abs(destinationSlot - startSlot) !== 1 ? 's' : ''} (${startSlot} → ${destinationSlot})` +
+                (enemiesCrossed > 0 ? ` over ${enemiesCrossed} ${enemiesCrossed === 1 ? 'enemy' : 'enemies'}` : '')
+              );
+            } else {
+              addToCombatLog(`${currentPlayer.name} fails to land - destination blocked`);
+            }
+          })();
+          break;
+        }
+
         case 'knockback':
           const knockbackTarget = target;
           const slotBefore = knockbackTarget.slotIndex;
-          const slotsMoved = applyKnockback(knockbackTarget, effect.amount, renderCallback);
+          const slotsMoved = applyKnockback(knockbackTarget, effect.amount, renderCallback, currentPlayer);
           if (slotsMoved > 0) {
             const knockLabel = effect.amount < 0 ? 'pulled' : 'knocked back';
             addToCombatLog(`${knockbackTarget.name} is ${knockLabel} ${slotsMoved} slot${slotsMoved > 1 ? 's' : ''} (${slotBefore} → ${knockbackTarget.slotIndex})!`);
@@ -1414,6 +1749,46 @@ export function buildTurnQueue(): string[] {
   return scored.map(s => s.id);
 }
 
+export function canSwapCurrentTurnWithNextAlly(): boolean {
+  const gameState = getGameState();
+  if (gameState.combatResult !== 'ongoing' || gameState.isProcessingTurn) return false;
+  if (gameState.turnQueueIndex < 0) return false;
+  const currentIndex = gameState.turnQueueIndex;
+  const nextIndex = currentIndex + 1;
+  if (nextIndex >= gameState.turnQueue.length) return false;
+
+  const currentId = gameState.turnQueue[currentIndex];
+  const nextId = gameState.turnQueue[nextIndex];
+  const currentChar = gameState.characters.find(c => c.id === currentId);
+  const nextChar = gameState.characters.find(c => c.id === nextId);
+  if (!currentChar || !nextChar) return false;
+  if (currentChar.hp <= 0 || nextChar.hp <= 0) return false;
+  if (!currentChar.isPlayer || !nextChar.isPlayer) return false;
+
+  return true;
+}
+
+export function swapCurrentTurnWithNextAlly(renderCallback?: () => void): boolean {
+  if (!canSwapCurrentTurnWithNextAlly()) return false;
+  const gameState = getGameState();
+  const currentIndex = gameState.turnQueueIndex;
+  const nextIndex = currentIndex + 1;
+  const currentId = gameState.turnQueue[currentIndex];
+  const nextId = gameState.turnQueue[nextIndex];
+  const currentChar = gameState.characters.find(c => c.id === currentId);
+  const nextChar = gameState.characters.find(c => c.id === nextId);
+  if (!currentChar || !nextChar) return false;
+
+  [gameState.turnQueue[currentIndex], gameState.turnQueue[nextIndex]] = [nextId, currentId];
+  gameState.currentPlayerId = nextId;
+  addToCombatLog(`${nextChar.name} takes point before ${currentChar.name}`);
+
+  if (renderCallback) {
+    renderCallback();
+  }
+  return true;
+}
+
 /**
  * Process round-start effects for ALL living characters:
  *   1. Build a new turn queue
@@ -1520,6 +1895,7 @@ export function processRoundStart(renderCallback?: () => void): void {
   // Rebuild queue after deaths (some characters may have died from DoTs)
   if (gameState.combatResult === 'ongoing') {
     gameState.turnQueue = buildTurnQueue();
+    applyEnemyPreRoundRangePositioning(renderCallback);
   }
 
   if (renderCallback) {
@@ -1535,6 +1911,14 @@ export function endTurn(renderCallback?: () => void): void {
   const gameState = getGameState();
   if (gameState.combatResult !== 'ongoing') return;
   pushHistorySnapshot('end_turn');
+
+  // The active actor can be manually swapped in the UI within the front pair.
+  // Sync queue index to whichever actor is actually active, so ending a turn
+  // always advances exactly one actor from the active one.
+  const activeQueueIndex = gameState.turnQueue.indexOf(gameState.currentPlayerId);
+  if (activeQueueIndex >= gameState.turnQueueIndex) {
+    gameState.turnQueueIndex = activeQueueIndex;
+  }
 
   gameState.turnIndex++;
   gameState.turnQueueIndex++;
@@ -1644,6 +2028,352 @@ function getMaxMoves(char: Character): number {
     moves += energy * movesPerEnergy;
   }
   return moves;
+}
+
+type EnemyRangeMode = 'forward_edge' | 'flexible' | 'max_optimal';
+
+type EnemyRangeProfile = {
+  forwardEdgeRange: number;
+  flexibleRange: number;
+  maxOptimalRange: number;
+};
+
+const RANGE_RARITY_INFLUENCE = 0.2;
+const PRE_ROUND_RANGE_TOLERANCE = 1;
+
+function clampAggression(value: number): number {
+  if (!Number.isFinite(value)) return 5;
+  return Math.max(0, Math.min(10, value));
+}
+
+function getCardTemplateForRangeAnalysis(cardId: string, gameState: ReturnType<typeof getGameState>): Card | null {
+  const direct = gameState.cardLibrary[cardId];
+  if (direct) return direct;
+  const fromInstance = gameState.cardInstances[cardId];
+  if (fromInstance?.templateId) {
+    return gameState.cardLibrary[fromInstance.templateId] ?? null;
+  }
+  return null;
+}
+
+function getEnemyCardsForRangeAnalysis(enemy: Character): Card[] {
+  const gameState = getGameState();
+  const ids = [...enemy.deck, ...enemy.discardPile, ...enemy.hand];
+  const cards: Card[] = [];
+  for (const id of ids) {
+    const card = getCardTemplateForRangeAnalysis(id, gameState);
+    if (card) cards.push(card);
+  }
+  return cards;
+}
+
+function getCardRangeBounds(card: Card): { minRange: number; maxRange: number } {
+  const minRange = Math.max(0, Math.floor(card.minRange ?? 0));
+  const rawMax = card.maxRange ?? (MAX_SLOTS - 1);
+  const maxRange = Math.max(minRange, Math.min(MAX_SLOTS - 1, Math.floor(rawMax)));
+  return { minRange, maxRange };
+}
+
+function getCardRangeWeight(card: Card): number {
+  const rarity = (card.rarity ?? 'common').toLowerCase();
+  const rarityWeight = RARITY_WEIGHTS[rarity] ?? 0;
+  return 1 + rarityWeight * RANGE_RARITY_INFLUENCE;
+}
+
+function weightedMedian(values: Array<{ value: number; weight: number }>): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a.value - b.value);
+  const totalWeight = sorted.reduce((sum, entry) => sum + entry.weight, 0);
+  let cumulative = 0;
+  for (const entry of sorted) {
+    cumulative += entry.weight;
+    if (cumulative >= totalWeight / 2) return entry.value;
+  }
+  return sorted[sorted.length - 1].value;
+}
+
+function pickBestDistance(scores: number[], tieBreak: 'lowest' | 'highest'): number {
+  let bestIndex = 0;
+  let bestValue = scores[0] ?? 0;
+  for (let i = 1; i < scores.length; i++) {
+    const score = scores[i] ?? 0;
+    if (score > bestValue) {
+      bestValue = score;
+      bestIndex = i;
+      continue;
+    }
+    if (score === bestValue) {
+      if (tieBreak === 'highest' && i > bestIndex) bestIndex = i;
+      if (tieBreak === 'lowest' && i < bestIndex) bestIndex = i;
+    }
+  }
+  return bestIndex;
+}
+
+function computeEnemyRangeProfileFromCards(cards: Card[]): EnemyRangeProfile {
+  if (cards.length === 0) {
+    return {
+      forwardEdgeRange: 1,
+      flexibleRange: 1,
+      maxOptimalRange: 1,
+    };
+  }
+
+  const maxDistance = MAX_SLOTS - 1;
+  const coverageScores = Array.from({ length: maxDistance + 1 }, () => 0);
+  const optimalScores = Array.from({ length: maxDistance + 1 }, () => 0);
+  const minRangeSamples: Array<{ value: number; weight: number }> = [];
+
+  for (const card of cards) {
+    const { minRange, maxRange } = getCardRangeBounds(card);
+    const weight = getCardRangeWeight(card);
+    minRangeSamples.push({ value: minRange, weight });
+    for (let distance = minRange; distance <= maxRange; distance++) {
+      coverageScores[distance] += weight;
+      optimalScores[distance] += weight * calculateRangeModifier(distance, card.optimalRange);
+    }
+  }
+
+  const flexibleRange = pickBestDistance(coverageScores, 'highest');
+  const bestOptimalScore = Math.max(...optimalScores);
+  const threshold = bestOptimalScore > 0 ? bestOptimalScore * 0.9 : 0;
+  let maxOptimalRange = flexibleRange;
+  for (let distance = maxDistance; distance >= 0; distance--) {
+    const hasCoverage = coverageScores[distance] > 0;
+    if (!hasCoverage) continue;
+    if (bestOptimalScore <= 0 || optimalScores[distance] >= threshold) {
+      maxOptimalRange = distance;
+      break;
+    }
+  }
+
+  const forwardEdgeRange = Math.max(0, Math.floor(weightedMedian(minRangeSamples)));
+
+  return {
+    forwardEdgeRange,
+    flexibleRange,
+    maxOptimalRange,
+  };
+}
+
+function computeEnemyRangeProfile(enemy: Character): EnemyRangeProfile {
+  const cards = getEnemyCardsForRangeAnalysis(enemy);
+  return computeEnemyRangeProfileFromCards(cards);
+}
+
+function selectEnemyRangeMode(aggressionRaw: number): EnemyRangeMode {
+  const aggression = clampAggression(aggressionRaw);
+  const forwardChance = aggression <= 5 ? 0 : (aggression - 5) / 5;
+  const flexibleChance = aggression <= 5 ? (aggression / 10) : (1 - forwardChance);
+  const maxOptimalChance = Math.max(0, 1 - forwardChance - flexibleChance);
+  const roll = Math.random();
+  if (roll < forwardChance) return 'forward_edge';
+  if (roll < forwardChance + flexibleChance) return 'flexible';
+  if (maxOptimalChance > 0) return 'max_optimal';
+  return 'forward_edge';
+}
+
+function getNearestLivingPlayer(enemy: Character, livingPlayers: Character[]): Character | null {
+  if (livingPlayers.length === 0) return null;
+  let nearest = livingPlayers[0];
+  let nearestDist = Math.abs(enemy.slotIndex - nearest.slotIndex);
+  for (let i = 1; i < livingPlayers.length; i++) {
+    const player = livingPlayers[i];
+    const dist = Math.abs(enemy.slotIndex - player.slotIndex);
+    if (dist < nearestDist) {
+      nearest = player;
+      nearestDist = dist;
+    }
+  }
+  return nearest;
+}
+
+function getNearestDistanceFromSlot(frontSlot: number, livingPlayers: Character[]): number {
+  if (livingPlayers.length === 0) return MAX_SLOTS;
+  let nearest = Math.abs(frontSlot - livingPlayers[0].slotIndex);
+  for (let i = 1; i < livingPlayers.length; i++) {
+    nearest = Math.min(nearest, Math.abs(frontSlot - livingPlayers[i].slotIndex));
+  }
+  return nearest;
+}
+
+function getOccupiedSlotsForFrontSlot(frontSlot: number, slotSize: number): number[] {
+  return Array.from({ length: slotSize }, (_, i) => frontSlot + i);
+}
+
+function isFriendlyOccupiedAtFrontSlot(enemy: Character, frontSlot: number, livingEnemies: Character[]): boolean {
+  const targetSlots = getOccupiedSlotsForFrontSlot(frontSlot, getCharacterSlotSize(enemy));
+  return livingEnemies.some(other =>
+    other.id !== enemy.id &&
+    getOccupiedSlots(other).some(slot => targetSlots.includes(slot))
+  );
+}
+
+function reserveEnemySlots(enemy: Character, reservedSlots: Set<number>): void {
+  for (const slot of getOccupiedSlots(enemy)) {
+    reservedSlots.add(slot);
+  }
+}
+
+function isReservedConflict(enemy: Character, frontSlot: number, reservedSlots: Set<number>): boolean {
+  const targetSlots = getOccupiedSlotsForFrontSlot(frontSlot, getCharacterSlotSize(enemy));
+  return targetSlots.some(slot => reservedSlots.has(slot));
+}
+
+function getModeTargetRange(mode: EnemyRangeMode, profile: EnemyRangeProfile): number {
+  switch (mode) {
+    case 'forward_edge':
+      return profile.forwardEdgeRange;
+    case 'flexible':
+      return profile.flexibleRange;
+    case 'max_optimal':
+    default:
+      return profile.maxOptimalRange;
+  }
+}
+
+export function getEnemyPreferredRangeDecisionForCardIds(
+  cardIds: string[],
+  aggressionRaw: number,
+  cardLibrary: Record<string, Card>,
+): { mode: EnemyRangeMode; targetRange: number } {
+  const cards: Card[] = [];
+  for (const cardId of cardIds) {
+    const card = cardLibrary[cardId];
+    if (card) cards.push(card);
+  }
+  const profile = computeEnemyRangeProfileFromCards(cards);
+  const mode = selectEnemyRangeMode(aggressionRaw);
+  return {
+    mode,
+    targetRange: getModeTargetRange(mode, profile),
+  };
+}
+
+export function getEnemyPreferredRangeForCardIds(
+  cardIds: string[],
+  aggressionRaw: number,
+  cardLibrary: Record<string, Card>,
+): number {
+  return getEnemyPreferredRangeDecisionForCardIds(cardIds, aggressionRaw, cardLibrary).targetRange;
+}
+
+function tryEnemyPreRoundRangeMove(
+  enemy: Character,
+  reservedSlots: Set<number>,
+  renderCallback?: () => void,
+): boolean {
+  const gameState = getGameState();
+  const livingPlayers = gameState.characters.filter(c => c.isPlayer && c.hp > 0);
+  const livingEnemies = gameState.characters.filter(c => !c.isPlayer && c.hp > 0);
+  if (livingPlayers.length === 0 || enemy.hp <= 0) {
+    reserveEnemySlots(enemy, reservedSlots);
+    return false;
+  }
+
+  const profile = computeEnemyRangeProfile(enemy);
+  const mode = selectEnemyRangeMode(enemy.aggression);
+  const targetRange = getModeTargetRange(mode, profile);
+  const nearestPlayer = getNearestLivingPlayer(enemy, livingPlayers);
+  if (!nearestPlayer) {
+    reserveEnemySlots(enemy, reservedSlots);
+    return false;
+  }
+
+  const desiredSlot = Math.max(0, Math.min(MAX_SLOTS - 1, nearestPlayer.slotIndex + targetRange));
+  const currentDist = getNearestDistanceFromSlot(enemy.slotIndex, livingPlayers);
+  const currentDistanceBefore = currentDist;
+  let blockedByLaneConflict = false;
+  if (Math.abs(currentDist - targetRange) <= PRE_ROUND_RANGE_TOLERANCE) {
+    gameState.enemyAiDebug.preRound.push({
+      enemyId: enemy.id,
+      enemyName: enemy.name,
+      roundNumber: gameState.roundNumber,
+      aggression: enemy.aggression,
+      mode,
+      targetRange,
+      currentDistanceBefore,
+      currentDistanceAfter: currentDist,
+      moved: false,
+      blockedByLaneConflict,
+    });
+    reserveEnemySlots(enemy, reservedSlots);
+    return false;
+  }
+  if (enemy.slotIndex === desiredSlot) {
+    gameState.enemyAiDebug.preRound.push({
+      enemyId: enemy.id,
+      enemyName: enemy.name,
+      roundNumber: gameState.roundNumber,
+      aggression: enemy.aggression,
+      mode,
+      targetRange,
+      currentDistanceBefore,
+      currentDistanceAfter: currentDist,
+      moved: false,
+      blockedByLaneConflict,
+    });
+    reserveEnemySlots(enemy, reservedSlots);
+    return false;
+  }
+
+  let movedAny = false;
+  let safety = 0;
+  while (enemy.slotIndex !== desiredSlot && safety < MAX_SLOTS * 2) {
+    safety++;
+    const needsForward = desiredSlot < enemy.slotIndex;
+    const nextSlot = needsForward ? enemy.slotIndex - 1 : enemy.slotIndex + 1;
+    const currentError = Math.abs(getNearestDistanceFromSlot(enemy.slotIndex, livingPlayers) - targetRange);
+    const nextError = Math.abs(getNearestDistanceFromSlot(nextSlot, livingPlayers) - targetRange);
+    if (nextError > currentError) {
+      break;
+    }
+
+    // Anti-oscillation/traffic rule:
+    // if this lane is already claimed or occupied by a friendly, stay and accept suboptimal range.
+    if (isReservedConflict(enemy, nextSlot, reservedSlots) || isFriendlyOccupiedAtFrontSlot(enemy, nextSlot, livingEnemies)) {
+      blockedByLaneConflict = true;
+      break;
+    }
+
+    const moved = needsForward
+      ? moveCharacterForward(enemy.id, renderCallback)
+      : moveCharacterBack(enemy.id, renderCallback);
+    if (!moved) break;
+    movedAny = true;
+  }
+
+  gameState.enemyAiDebug.preRound.push({
+    enemyId: enemy.id,
+    enemyName: enemy.name,
+    roundNumber: gameState.roundNumber,
+    aggression: enemy.aggression,
+    mode,
+    targetRange,
+    currentDistanceBefore,
+    currentDistanceAfter: getNearestDistanceFromSlot(enemy.slotIndex, livingPlayers),
+    moved: movedAny,
+    blockedByLaneConflict,
+  });
+  reserveEnemySlots(enemy, reservedSlots);
+  return movedAny;
+}
+
+function applyEnemyPreRoundRangePositioning(renderCallback?: () => void): void {
+  const gameState = getGameState();
+  gameState.enemyAiDebug.preRound = [];
+  const livingEnemies = gameState.characters
+    .filter(c => !c.isPlayer && c.hp > 0)
+    .sort((a, b) => {
+      if (b.aggression !== a.aggression) return b.aggression - a.aggression;
+      return a.slotIndex - b.slotIndex;
+    });
+  if (livingEnemies.length === 0) return;
+
+  const reservedSlots = new Set<number>();
+  for (const enemy of livingEnemies) {
+    tryEnemyPreRoundRangeMove(enemy, reservedSlots, renderCallback);
+  }
 }
 
 /**

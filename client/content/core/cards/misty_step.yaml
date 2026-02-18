@@ -1,0 +1,21 @@
+id: misty_step
+name: Misty Step
+cost: 1
+copies: 1
+type: skill
+rarity: Legendary
+exhaust: true
+targeting: slot
+description: Blink to any empty slot. Costs extra for each occupied slot crossed. This costs alot of energy!
+effects:
+  - kind: jump
+    amount: 0
+    destination: anyEmptySlot
+    rangeLimit: 12
+    energyPerEnemyJumped: 2
+animation:
+  jump:
+    anticipationMs: 140
+    arcMs: 300
+    landingMs: 120
+    arcHeight: 90

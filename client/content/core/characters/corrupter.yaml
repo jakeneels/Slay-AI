@@ -11,6 +11,7 @@ visual:
   offsetY: -7
 spriteSheet: "/assets/game/allies/nyx_radiated.png"
 spriteSheetLayout: [2, 2]
+spriteSheetOffsetY: 9
 title: "Radborn Corrupter"
 description: "Survivor mutated by radiation, glowing with toxic energy, body partly armored with metallic growths."
 role: utility
@@ -36,3 +37,4 @@ startingDeck:
   - "rad_phase"
   - "rad_cleave"
   - "rad_defend"
+  - "rad_thorn"

@@ -4,10 +4,10 @@ import type { Application, Texture, Sprite } from 'pixi.js';
 import { Assets, Text, Graphics, Sprite as SpriteImpl } from 'pixi.js';
 import type { GameState, Character, CharacterDefinition } from '../core/types.js';
 import { getSelectedCardId, getGameState } from '../core/gameState.js';
-import { playCard, calculateAoeTargets, getOccupiedSlots, getCharacterSlotSize, isCharacterSuppressed, getNetSuppressionPenalty } from '../core/combat.js';
+import { playCard, calculateAoeTargets, getOccupiedSlots, getCharacterSlotSize, getJumpTotalEnergyCostForSlot, getValidJumpSlots, isCharacterSuppressed, getNetSuppressionPenalty } from '../core/combat.js';
 import { getSuppressionStackCost } from '../core/constants.js';
 import { render as renderCallback } from './renderer.js';
-import { registerCharacterSprite } from '../../animations.js';
+import { registerCharacterSprite, hasActiveSpriteSheetOverlay } from '../../animations.js';
 import { getTotalBlock } from '../core/block.js';
 import { MAX_SLOTS, WIDTH, HEIGHT, calculateRangeModifier } from '../core/constants.js';
 import { createEnergyIcon } from './icons/energyIcon.js';
@@ -63,6 +63,13 @@ const Z_ARROW = 280;
 const characterSpriteMap = new Map<string, SpriteImpl>();
 const TARGETING_FEEDBACK_DURATION_MS = 1400;
 
+function getScaleSignForFacing(
+  facing: 'left' | 'right',
+  authoredFacing: 'left' | 'right'
+): number {
+  return facing === authoredFacing ? 1 : -1;
+}
+
 type TargetingFeedback = {
   message: string;
   expiresAt: number;
@@ -70,6 +77,7 @@ type TargetingFeedback = {
 
 let activeTargetingFeedback: TargetingFeedback | null = null;
 let targetingFeedbackTimeout: ReturnType<typeof setTimeout> | null = null;
+const facingDebugLastLogAt = new Map<string, number>();
 
 export type ResolvedVisualProfile = {
   scale: number;
@@ -275,7 +283,7 @@ export function renderCharacters(app: Application, gameState: GameState): void {
     renderCharacter(app, gameState, char, x, battleGroundY, showPositionDebug);
   });
 
-  // --- Render clickable empty-slot hit areas for AOE cards ---
+  // --- Render clickable empty-slot hit areas for slot-based targeting ---
   const selectedCardIdForAoe = selectedCardId;
   if (selectedCardIdForAoe) {
     const gsForCard = getGameState();
@@ -284,7 +292,7 @@ export function renderCharacters(app: Application, gameState: GameState): void {
       return inst ? gsForCard.cardLibrary[inst.templateId] : null;
     })();
 
-    if (card && card.targeting === 'aoe') {
+    if (card && (card.targeting === 'aoe' || card.targeting === 'slot')) {
       const caster = gsForCard.characters.find(c => c.id === gsForCard.currentPlayerId);
       if (caster) {
         // Collect occupied slot indices (any living character)
@@ -293,44 +301,82 @@ export function renderCharacters(app: Application, gameState: GameState): void {
           getOccupiedSlots(c).forEach(slot => occupiedSlots.add(slot));
         });
 
-        const highlightColor = 0xffaa00; // Same orange as AOE targeting
+        const highlightColor = card.targeting === 'slot' ? 0x8b5cf6 : 0xffaa00;
+        const jumpEffect = card.targeting === 'slot'
+          ? card.effects.find(effect => effect.kind === 'jump')
+          : null;
+        const validJumpSlots = card.targeting === 'slot'
+          ? new Set(getValidJumpSlots(caster, jumpEffect?.rangeLimit))
+          : null;
 
-        // Scan all slots — AOE hits everyone in the blast radius (friendly fire).
-        // Only show a hit area if the AOE from that slot would actually hit someone.
+        // Scan all slots and render empty clickable destinations.
         for (let slot = 0; slot < MAX_SLOTS; slot++) {
           if (occupiedSlots.has(slot)) continue; // character already renders a clickable sprite
+          if (card.targeting === 'slot' && validJumpSlots && !validJumpSlots.has(slot)) continue;
 
-          // Range check
-          if (card.maxRange || card.minRange) {
+          // Range check (AOE cards only; jump uses getValidJumpSlots)
+          if (card.targeting === 'aoe' && (card.maxRange || card.minRange)) {
             const dist = Math.abs(caster.slotIndex - slot);
             if (card.maxRange && dist > card.maxRange) continue;
             if (card.minRange && dist < card.minRange) continue;
           }
 
-          // Skip empty slots whose AOE wouldn't hit any characters
-          const aoeCheck = card.aoeSlots ?? 3;
-          let potentialTargets = calculateAoeTargets(slot, 'all', aoeCheck);
-          if (card.maxRange) {
-            potentialTargets = potentialTargets.filter(t => Math.abs(caster.slotIndex - t.slotIndex) <= card.maxRange!);
+          // Skip empty slots whose AOE wouldn't hit any characters.
+          if (card.targeting === 'aoe') {
+            const aoeCheck = card.aoeSlots ?? 3;
+            let potentialTargets = calculateAoeTargets(slot, 'all', aoeCheck);
+            if (card.maxRange) {
+              potentialTargets = potentialTargets.filter(t => Math.abs(caster.slotIndex - t.slotIndex) <= card.maxRange!);
+            }
+            if (potentialTargets.length === 0) continue;
           }
-          if (potentialTargets.length === 0) continue;
 
           const slotX = leftBase + slot * slotSpacing;
           const hitW = LANE_SELECTOR_WIDTH;
           const hitH = LANE_SELECTOR_HEIGHT;
           const hitX = slotX + CHAR_CENTER - hitW / 2;
           const hitY = battleGroundY - hitH;
+          const jumpEnergyCost = card.targeting === 'slot'
+            ? getJumpTotalEnergyCostForSlot(caster, card, slot)
+            : null;
+          const canAffordJump = jumpEnergyCost === null ? true : caster.energy >= jumpEnergyCost;
 
           // Semi-transparent hit area so player can see it's clickable
           const hitArea = new Graphics();
           hitArea.roundRect(0, 0, hitW, hitH, 8)
-            .fill({ color: highlightColor, alpha: 0.08 })
-            .stroke({ width: 2, color: highlightColor, alpha: 0.25 });
+            .fill({ color: highlightColor, alpha: canAffordJump ? 0.08 : 0.035 })
+            .stroke({ width: 2, color: highlightColor, alpha: canAffordJump ? 0.25 : 0.12 });
           hitArea.x = hitX;
           hitArea.y = hitY;
           hitArea.eventMode = 'static';
-          hitArea.cursor = 'pointer';
+          hitArea.cursor = canAffordJump ? 'pointer' : 'not-allowed';
           hitArea.zIndex = -2;
+
+          if (jumpEnergyCost !== null) {
+            const costBg = new Graphics();
+            costBg.roundRect(0, 0, 38, 18, 6)
+              .fill({ color: 0x111827, alpha: 0.86 })
+              .stroke({ width: 1.5, color: canAffordJump ? 0x22c55e : 0xef4444, alpha: 0.9 });
+            costBg.x = hitX + hitW - 41;
+            costBg.y = hitY + 4;
+            costBg.eventMode = 'none';
+            costBg.zIndex = -1;
+            app.stage.addChild(costBg);
+
+            const costText = new Text({
+              text: `${jumpEnergyCost}E`,
+              style: {
+                fill: canAffordJump ? 0x86efac : 0xfca5a5,
+                fontSize: 11,
+                fontWeight: 'bold',
+              },
+            });
+            costText.x = costBg.x + (38 - costText.width) / 2;
+            costText.y = costBg.y + (18 - costText.height) / 2;
+            costText.eventMode = 'none';
+            costText.zIndex = -1;
+            app.stage.addChild(costText);
+          }
 
           // Store highlights for cleanup on hover
           const hoverGraphics: Graphics[] = [];
@@ -339,42 +385,44 @@ export function renderCharacters(app: Application, gameState: GameState): void {
             // Brighten the hit area
             hitArea.clear();
             hitArea.roundRect(0, 0, hitW, hitH, 8)
-              .fill({ color: highlightColor, alpha: 0.18 })
-              .stroke({ width: 3, color: highlightColor, alpha: 0.6 });
+              .fill({ color: highlightColor, alpha: canAffordJump ? 0.18 : 0.06 })
+              .stroke({ width: 3, color: highlightColor, alpha: canAffordJump ? 0.6 : 0.22 });
 
-            // Preview: highlight characters that would be hit
-            const aoeSlots = card.aoeSlots ?? 3;
-            let previewTargets = calculateAoeTargets(slot, 'all', aoeSlots);
-            // Filter splash targets by maxRange
-            if (card.maxRange && caster) {
-              previewTargets = previewTargets.filter(t => Math.abs(caster.slotIndex - t.slotIndex) <= card.maxRange!);
-            }
-            const padding = 8;
-            previewTargets.forEach(tc => {
-              const tcSprite = characterSpriteMap.get(tc.id);
-              if (tcSprite) {
-                const hl = new Graphics();
-                const hlW = tcSprite.width + padding * 2;
-                const hlH = tcSprite.height + padding * 2;
-                hl.roundRect(-padding, -padding, hlW, hlH, 8)
-                  .stroke({ width: 4, color: highlightColor, alpha: 0.9 });
-                // Rect drawn at (-padding,-padding); position so rect top-left = sprite top-left - padding
-                hl.x = tcSprite.x - tcSprite.width / 2;
-                hl.y = tcSprite.y - tcSprite.height / 2;
-                hl.zIndex = -1;
-                hl.eventMode = 'none';
-                app.stage.addChild(hl);
-                hoverGraphics.push(hl);
+            if (card.targeting === 'aoe') {
+              // Preview: highlight characters that would be hit
+              const aoeSlots = card.aoeSlots ?? 3;
+              let previewTargets = calculateAoeTargets(slot, 'all', aoeSlots);
+              // Filter splash targets by maxRange
+              if (card.maxRange && caster) {
+                previewTargets = previewTargets.filter(t => Math.abs(caster.slotIndex - t.slotIndex) <= card.maxRange!);
               }
-            });
+              const padding = 8;
+              previewTargets.forEach(tc => {
+                const tcSprite = characterSpriteMap.get(tc.id);
+                if (tcSprite) {
+                  const hl = new Graphics();
+                  const hlW = tcSprite.width + padding * 2;
+                  const hlH = tcSprite.height + padding * 2;
+                  hl.roundRect(-padding, -padding, hlW, hlH, 8)
+                    .stroke({ width: 4, color: highlightColor, alpha: 0.9 });
+                  // Rect drawn at (-padding,-padding); position so rect top-left = sprite top-left - padding
+                  hl.x = tcSprite.x - tcSprite.width / 2;
+                  hl.y = tcSprite.y - tcSprite.height / 2;
+                  hl.zIndex = -1;
+                  hl.eventMode = 'none';
+                  app.stage.addChild(hl);
+                  hoverGraphics.push(hl);
+                }
+              });
+            }
           });
 
           hitArea.on('pointerleave', () => {
             // Restore subtle appearance
             hitArea.clear();
             hitArea.roundRect(0, 0, hitW, hitH, 8)
-              .fill({ color: highlightColor, alpha: 0.08 })
-              .stroke({ width: 2, color: highlightColor, alpha: 0.25 });
+              .fill({ color: highlightColor, alpha: canAffordJump ? 0.08 : 0.035 })
+              .stroke({ width: 2, color: highlightColor, alpha: canAffordJump ? 0.25 : 0.12 });
 
             // Remove preview highlights
             hoverGraphics.forEach(g => {
@@ -384,6 +432,11 @@ export function renderCharacters(app: Application, gameState: GameState): void {
           });
 
           hitArea.on('pointerdown', async () => {
+            if (!canAffordJump && jumpEnergyCost !== null) {
+              showTargetingFeedback(`Jump to lane ${slot} costs ${jumpEnergyCost} energy (have ${caster.energy})`);
+              renderCallback();
+              return;
+            }
             await playCard(selectedCardIdForAoe, `slot:${slot}`, renderCallback);
           });
 
@@ -438,10 +491,24 @@ function renderCharacter(
       const anchorY = visual.anchorY;
       sprite.anchor.set(anchorX, anchorY);
       // Keep visual center and foot contact stable, regardless of anchor changes.
+      const authoredFacing: 'left' | 'right' = char.isPlayer ? 'right' : 'left';
+      const facing = char.facing ?? (char.isPlayer ? 'right' : 'left');
+      const facingSign = getScaleSignForFacing(facing, authoredFacing);
       const placement = computeSpritePlacement(slotCenterX, groundY, sprite.width, sprite.height, visual);
-      sprite.x = placement.x;
+      const absScaleX = Math.abs(sprite.scale.x || 1);
+      sprite.scale.x = absScaleX * facingSign;
+      // Anchor compensation must follow facing sign for non-centered anchors (Ted anchorX=1).
+      sprite.x = slotCenterX + visual.offsetX + (visual.anchorX - 0.5) * sprite.width * facingSign;
       sprite.y = placement.y;
       sprite.zIndex = Z_SPRITE;
+      const now = Date.now();
+      const lastAt = facingDebugLastLogAt.get(char.id) ?? 0;
+      if (now - lastAt > 800) {
+        facingDebugLastLogAt.set(char.id, now);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4a1d9c'},body:JSON.stringify({sessionId:'4a1d9c',runId:'post-fix-3',hypothesisId:'H2',location:'renderCharacters.ts:renderCharacter:facing-apply',message:'Applied facing at render',data:{characterId:char.id,name:char.name,isPlayer:char.isPlayer,authoredFacing,storedFacing:char.facing ?? null,effectiveFacing:facing,facingSign,slotIndex:char.slotIndex,slotCenterX,anchorX:visual.anchorX,spriteWidth:sprite.width,computedX:sprite.x,computedY:sprite.y,scaleX:sprite.scale.x},timestamp:now})}).catch(()=>{});
+        // #endregion
+      }
 
       if (showPositionDebug) {
         drawPositionDebugOverlay(app, slotCenterX, groundY, visual);
@@ -627,7 +694,10 @@ function renderCharacter(
       characterSpriteMap.set(char.id, sprite);
       
       // Register sprite for animations
-      registerCharacterSprite(char.id, sprite);
+      registerCharacterSprite(char.id, sprite, authoredFacing);
+      
+      // Hide if sprite-sheet overlay is active (e.g. attack animation) so we don't see duplicate
+      if (hasActiveSpriteSheetOverlay(char.id)) sprite.visible = false;
       
       app.stage.addChild(sprite);
     }).catch(err => {

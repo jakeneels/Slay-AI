@@ -6,6 +6,8 @@ description: "A towering zealot wrapped in radiant metal, advancing as an immova
 role: tank
 theme: "Large frontliner that controls space and shrugs off pressure."
 sprite: "/assets/game/enemies/actual-kyle.png"
+spriteSheet: "/assets/game/enemies/actual_kyle_attack.png"
+spriteSheetLayout: [2, 2]
 visual:
   preset: large
   scale: 2.2
@@ -18,8 +20,8 @@ slotSize: 3
 stats:
   hp: 130
   maxHp: 130
-  energy: 3
-  maxEnergy: 3
+  energy: 20
+  maxEnergy: 20
   speed: 0
   suppression: 3
   suppressionResist: 3
@@ -33,4 +35,7 @@ startingDeck:
   - "shockwave"
   - "rad_wave"
   - "shield_dome"
+  - "overclock"
+  - "lob_c4"
+  - "incendiary_drone"
   - "defend"

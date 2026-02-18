@@ -28,6 +28,6 @@ mechanics:
   - "Poor defense"
 tags: ["human", "fanatic", "normal", "enemy", "aggressive"]
 startingDeck:
-  - "blast"
-  - "shrapnel_grenade"
-  - "strike"
+  - "heal"
+  
+

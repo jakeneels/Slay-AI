@@ -85,6 +85,17 @@ export interface StatusSpreadEffect extends BaseCardEffect {
   spreadSide?: StatusSpreadSide;
 }
 
+export interface ThornsEffect extends BaseCardEffect {
+  kind: 'thorns';
+  stacks?: number; // Stacks of thorns status to apply (default 1)
+  duration?: number; // Optional status duration override
+  reflectDamage: number; // Base reflected damage when thorns triggers
+  reflectPerStack?: boolean; // True = reflectDamage * thorns stacks, false = flat reflectDamage
+  debuffStatus?: string; // Optional status to apply to attacker on trigger
+  debuffStacks?: number; // Optional stacks of debuff to apply (default 1 when debuffStatus is set)
+  debuffDuration?: number; // Optional debuff duration override
+}
+
 export interface ModifierEffect {
   kind: 'modifier';
   when?: {
@@ -97,6 +108,15 @@ export interface ModifierEffect {
 export interface KnockbackEffect extends BaseCardEffect {
   kind: 'knockback';
   amount: number; // Number of slots to push the target back (away from caster)
+}
+
+export interface JumpEffect extends BaseCardEffect {
+  kind: 'jump';
+  amount: number; // Unused for movement distance; kept for compatibility with BaseCardEffect
+  destination?: 'anyEmptySlot';
+  rangeLimit?: number; // Optional max slot distance from caster front slot
+  energyPerEnemyJumped?: number; // Extra card-energy surcharge per enemy crossed
+  energyPerOccupiedSlot?: number; // Legacy fallback for older content
 }
 
 export interface DeckInjectEffect {
@@ -123,7 +143,9 @@ export type CardEffect =
   | StatusEffect 
   | StatusModifyEffect
   | StatusSpreadEffect
+  | ThornsEffect
   | KnockbackEffect
+  | JumpEffect
   | LaneHazardEffect
   | ModifierEffect 
   | DeckInjectEffect;
@@ -134,7 +156,7 @@ export interface Card {
   cost: CardCost;
   effects: CardEffect[];
   targetSide: 'self' | 'ally' | 'enemy';
-  targeting: 'single' | 'aoe' | 'self' | 'ally' | 'enemy' | 'allEnemies' | 'allAllies';
+  targeting: 'single' | 'aoe' | 'self' | 'ally' | 'enemy' | 'allEnemies' | 'allAllies' | 'slot';
   aoeSlots?: number; // Number of slots to hit with AOE (2, 3, or 4). Defaults to 3 if not specified.
   rarity?: string;
   copies?: number;
@@ -156,6 +178,12 @@ export interface Card {
       particleColor?: number;
       glowIntensity?: number;
     };
+    jump?: {
+      anticipationMs?: number;
+      arcMs?: number;
+      landingMs?: number;
+      arcHeight?: number;
+    };
   };
 }
 
@@ -173,6 +201,7 @@ export interface CharacterStats {
   speed?: number;              // Speed stat: determines movement efficiency AND turn order priority (default 0)
   suppression?: number;        // How much ranged-attack penalty this character projects to nearby enemies (default 0)
   suppressionResist?: number;  // How much suppression penalty this character can ignore (default 0)
+  aggression?: number;         // Enemy positioning tendency (0 = backline, 10 = forward pressure; default 5)
 }
 
 // Block layer - each block source has its own decay rate
@@ -212,6 +241,8 @@ export interface Character {
   moveCharges: number;        // Remaining free move charges this turn (resets to 0 each turn)
   suppression: number;        // How much ranged-attack penalty this character projects to nearby enemies
   suppressionResist: number;  // How much suppression penalty this character can ignore
+  aggression: number;         // Positioning tendency (0..10)
+  facing?: 'left' | 'right';  // Persistent sprite facing, updated by movement/attacks
   gear: Record<GearSlot, GearDefinition | null>; // Equipped gear per slot
 }
 
@@ -238,6 +269,9 @@ export interface CharacterDefinition extends Character {
   spriteVisualPreset?: CharacterVisualPreset;
   spriteSheet?: string; // Optional sprite sheet for attack/hit animation (e.g. 2x2 grid)
   spriteSheetLayout?: [number, number]; // [cols, rows] for frame extraction
+  spriteSheetPreserveAspect?: boolean; // Optional opt-in for non-legacy sprite sheet sizing
+  spriteSheetOffsetX?: number; // Optional sprite-sheet overlay horizontal nudge
+  spriteSheetOffsetY?: number; // Optional sprite-sheet overlay vertical nudge
   startingDeck?: string[];
   stats: CharacterStats;
 }
@@ -368,6 +402,36 @@ export interface PreFightState {
   threatBudget: number;
 }
 
+export interface EnemyAiSpawnDebugEntry {
+  enemyId: string;
+  enemyName: string;
+  waveNumber: number;
+  aggression: number;
+  mode: 'forward_edge' | 'flexible' | 'max_optimal';
+  targetRange: number;
+  usedOptimalSpawn: boolean;
+  desiredFrontSlot: number | null;
+  finalFrontSlot: number;
+}
+
+export interface EnemyAiPreRoundDebugEntry {
+  enemyId: string;
+  enemyName: string;
+  roundNumber: number;
+  aggression: number;
+  mode: 'forward_edge' | 'flexible' | 'max_optimal';
+  targetRange: number;
+  currentDistanceBefore: number;
+  currentDistanceAfter: number;
+  moved: boolean;
+  blockedByLaneConflict: boolean;
+}
+
+export interface EnemyAiDebugState {
+  spawns: EnemyAiSpawnDebugEntry[];
+  preRound: EnemyAiPreRoundDebugEntry[];
+}
+
 export type RollbackSnapshotReason =
   | 'play_card'
   | 'move_forward'
@@ -402,6 +466,7 @@ export interface GameState {
   playedCardsStack: PlayedCardEntry[];
   laneHazards: LaneHazard[];
   preFight: PreFightState;
+  enemyAiDebug: EnemyAiDebugState;
 }
 
 export interface LoadedContent {

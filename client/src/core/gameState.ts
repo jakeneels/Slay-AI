@@ -30,6 +30,10 @@ let gameState: GameState = {
   currentMap: pickRandomMap(undefined, 1),
   playedCardsStack: [],
   laneHazards: [],
+  enemyAiDebug: {
+    spawns: [],
+    preRound: [],
+  },
   preFight: {
     active: false,
     page: 'lineup',

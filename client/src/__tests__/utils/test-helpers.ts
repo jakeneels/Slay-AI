@@ -43,6 +43,7 @@ export function createMockCharacter(overrides?: Partial<Character>): Character {
     moveCharges: overrides?.moveCharges ?? 0,
     suppression: overrides?.suppression ?? 0,
     suppressionResist: overrides?.suppressionResist ?? 0,
+    aggression: overrides?.aggression ?? 5,
     gear: overrides?.gear ?? { weapon: null, armor: null, accessory: null },
     ...overrides
   };
@@ -72,12 +73,14 @@ export function createMockCharacterDefinition(overrides?: Partial<CharacterDefin
     moveCharges: overrides?.moveCharges ?? 0,
     suppression: overrides?.suppression ?? 0,
     suppressionResist: overrides?.suppressionResist ?? 0,
+    aggression: overrides?.aggression ?? 5,
     gear: overrides?.gear ?? { weapon: null, armor: null, accessory: null },
     stats: overrides?.stats || {
       hp: overrides?.hp ?? 100,
       maxHp: overrides?.maxHp ?? 100,
       energy: overrides?.energy ?? 3,
-      maxEnergy: overrides?.maxEnergy ?? 3
+      maxEnergy: overrides?.maxEnergy ?? 3,
+      aggression: overrides?.aggression ?? 5,
     },
     startingDeck: overrides?.startingDeck || [],
     ...overrides
@@ -114,6 +117,10 @@ export function createMockGameState(overrides?: Partial<GameState>): GameState {
     currentMap: overrides?.currentMap ?? 'test_map',
     playedCardsStack: overrides?.playedCardsStack || [],
     laneHazards: overrides?.laneHazards || [],
+    enemyAiDebug: overrides?.enemyAiDebug ?? {
+      spawns: [],
+      preRound: [],
+    },
     preFight: overrides?.preFight ?? {
       active: false,
       page: 'lineup',

@@ -6,7 +6,7 @@ import type { GameState } from '../core/types.js';
 import { WIDTH } from '../core/constants.js';
 import { getCard } from '../core/card.js';
 import { canRollbackTurn, getSelectedCardId, rollbackTurn } from '../core/gameState.js';
-import { endTurn, moveCharacterForward, moveCharacterBack, getMoveCost, getSuppressionCostPenalty } from '../core/combat.js';
+import { endTurn, moveCharacterForward, moveCharacterBack, getMoveCost, getSuppressionCostPenalty, canSwapCurrentTurnWithNextAlly, swapCurrentTurnWithNextAlly, getJumpTotalEnergyCostForSlot, getValidJumpSlots } from '../core/combat.js';
 import { render as renderCallback } from './renderer.js';
 import type { Card, Character } from '../core/types.js';
 import { createEnergyIcon } from './icons/energyIcon.js';
@@ -120,7 +120,20 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
       chipBg.x = cursorX;
       chipBg.y = cursorY;
       chipBg.zIndex = 2000;
-      chipBg.eventMode = 'none';
+      const canSwapConnectedAllies = canSwapCurrentTurnWithNextAlly();
+      const isConnectedAllyTurnChip = canSwapConnectedAllies
+        && char.isPlayer
+        && (i === gameState.turnQueueIndex || i === gameState.turnQueueIndex + 1);
+      if (isConnectedAllyTurnChip) {
+        chipBg.eventMode = 'static';
+        chipBg.cursor = 'pointer';
+        chipBg.hitArea = new Rectangle(0, 0, chipW, chipH);
+        chipBg.on('pointerdown', () => {
+          swapCurrentTurnWithNextAlly(renderCallback);
+        });
+      } else {
+        chipBg.eventMode = 'none';
+      }
       app.stage.addChild(chipBg);
 
       const label = new Text({
@@ -168,6 +181,8 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
         instructionText = 'Click card again to use!';
       } else if (card.targeting === 'enemy') {
         instructionText = 'Click enemy to target!';
+      } else if (card.targeting === 'slot') {
+        instructionText = 'Click an empty slot to jump!';
       }
       
       const selectedText = new Text({
@@ -422,6 +437,19 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
 export function getTargetingWarning(card: Card, caster: Character, gameState: GameState): string | null {
   // Self-targeting cards always have a target (the caster)
   if (card.targeting === 'self') return null;
+
+  if (card.targeting === 'slot') {
+    const jumpEffect = card.effects.find(effect => effect.kind === 'jump');
+    const validSlots = getValidJumpSlots(caster, jumpEffect?.rangeLimit);
+    if (validSlots.length === 0) {
+      return 'No legal jump destinations!';
+    }
+    const cheapestJump = Math.min(...validSlots.map(slot => getJumpTotalEnergyCostForSlot(caster, card, slot)));
+    if (caster.energy < cheapestJump) {
+      return `Not enough energy! Cheapest jump costs ${cheapestJump}, have ${caster.energy}`;
+    }
+    return null;
+  }
 
   const living = gameState.characters.filter(c => c.hp > 0);
 

@@ -41,6 +41,7 @@ function resolveDisplayKey(effect: CardEffect, card: Card): string {
       case 'aoe': return `aoe_${card.aoeSlots ?? 3}`;
       case 'allEnemies': return 'allEnemies';
       case 'allAllies': return 'allAllies';
+      case 'slot': return 'slot';
       default: return 'enemy'; // 'enemy', 'single'
     }
   }
@@ -58,6 +59,7 @@ function labelForKey(key: string): { usePositionIndicator: boolean; targetType: 
   if (key === 'self') return { usePositionIndicator: true, targetType: 'self', filledCount: 1 };
   if (key === 'ally') return { usePositionIndicator: true, targetType: 'ally', filledCount: 1 };
   if (key === 'enemy') return { usePositionIndicator: true, targetType: 'enemy', filledCount: 1 };
+  if (key === 'slot') return { usePositionIndicator: true, targetType: 'enemy', filledCount: MAX_INDICATOR_SLOTS };
   if (key === 'allEnemies') return { usePositionIndicator: true, targetType: 'enemy', filledCount: MAX_INDICATOR_SLOTS };
   if (key === 'allAllies') return { usePositionIndicator: true, targetType: 'ally', filledCount: MAX_INDICATOR_SLOTS };
   if (key.startsWith('aoe_')) {
@@ -145,6 +147,7 @@ function createEffectIcon(kind: string, size: number): Graphics | null {
     case 'energy': return createEnergyIcon(size);
     case 'grant_block_layer': return createShieldIcon(size);
     case 'knockback': return createKnockbackIcon(size);
+    case 'jump': return createSpeedIcon(size);
     case 'lane_hazard': return createLaneHazardIcon(size);
     default: return null;
   }
@@ -159,6 +162,7 @@ function effectColor(kind: string): number {
     case 'energy':                    return 0x38bdf8;   // blue
     case 'grant_block_layer':         return 0x60a5fa;   // blue
     case 'knockback':                 return 0xef4444;   // red-orange
+    case 'jump':                      return 0x8b5cf6;   // violet
     case 'lane_hazard':               return 0xf97316;   // orange (fire)
     default:                          return 0xd1d5db;   // gray fallback
   }

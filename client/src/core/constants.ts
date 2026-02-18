@@ -33,6 +33,13 @@ export const SUPPRESSION_RANGED_THRESHOLD = 4;  // Cards with maxRange >= this a
 export const SUPPRESSION_BASE_COST = 1;         // Extra energy from proximity alone
 export const SUPPRESSION_STACK_COST = 1;        // Extra energy per 'suppressed' status stack
 
+// Jump defaults
+export const JUMP_MAX_DISTANCE = MAX_SLOTS;     // Default: can jump to any board slot
+export const JUMP_OCCUPIED_SLOT_COST = 1;       // Extra energy per occupied slot crossed
+
+// Spawn positioning defaults
+export const ENEMY_OPTIMAL_SPAWN_CHANCE = 0;    // 0..1 chance enemies spawn using optimal-range positioning
+
 // ── Resolved accessors ──────────────────────────────────────────────
 // These pull the live value through the modifier pipeline.
 
@@ -50,6 +57,14 @@ export function getSuppressionBaseCost(ctx: ModifierContext = {}): number {
 
 export function getSuppressionStackCost(ctx: ModifierContext = {}): number {
   return getModifierRegistry().resolve('suppression_stack_cost', SUPPRESSION_STACK_COST, ctx);
+}
+
+export function getJumpMaxDistance(ctx: ModifierContext = {}): number {
+  return getModifierRegistry().resolve('jump_max_distance', JUMP_MAX_DISTANCE, ctx);
+}
+
+export function getJumpOccupiedSlotCost(ctx: ModifierContext = {}): number {
+  return getModifierRegistry().resolve('jump_occupied_slot_cost', JUMP_OCCUPIED_SLOT_COST, ctx);
 }
 
 /**

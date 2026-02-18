@@ -15,7 +15,7 @@ effects:
   - kind: damage
     amount: 8
   - kind: knockback
-    amount: -1
+    amount: -6
     effectTarget: target
   - kind: speed
     amount: -1

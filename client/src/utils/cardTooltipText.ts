@@ -1,7 +1,7 @@
 // Templated card tooltip text generation
 // Pure logic — no PIXI dependency. Generates structured tooltip data from a Card object.
 
-import type { Card, CardEffect, BaseCardEffect, BlockEffect, StatusEffect, StatusModifyEffect, StatusSpreadEffect, KnockbackEffect, DeckInjectEffect, ModifierEffect, LaneHazardEffect } from '../core/types.js';
+import type { Card, CardEffect, BaseCardEffect, BlockEffect, StatusEffect, StatusModifyEffect, StatusSpreadEffect, ThornsEffect, KnockbackEffect, DeckInjectEffect, ModifierEffect, LaneHazardEffect } from '../core/types.js';
 import { RANGE_OPTIMAL_BONUS, RANGE_PENALTY_PER_SLOT, RANGE_MODIFIER_MIN } from '../core/constants.js';
 
 // ---------------------------------------------------------------------------
@@ -71,6 +71,8 @@ function targetingLabel(card: Card): { label: string; detail: string | null } {
       return { label: 'All Allies', detail: 'Hits every living ally' };
     case 'single':
       return { label: 'Single Target', detail: null };
+    case 'slot':
+      return { label: 'Empty Slot', detail: 'Choose any unoccupied slot to reposition' };
     default:
       return { label: capitalise(card.targeting), detail: null };
   }
@@ -128,9 +130,13 @@ function describeEffect(effect: CardEffect, card: Card): TooltipEffectLine {
     }
 
     case 'speed': {
+      const absAmount = Math.abs(effect.amount);
+      const text = effect.amount >= 0
+        ? `Grants ${effect.amount} speed`
+        : `Reduces speed by ${absAmount}`;
       return {
         icon: 'speed',
-        text: `Moves ${effect.amount} slot${effect.amount !== 1 ? 's' : ''} forward`,
+        text,
         subLines: [],
         targetLabel,
       };
@@ -177,6 +183,20 @@ function describeEffect(effect: CardEffect, card: Card): TooltipEffectLine {
         icon: 'knockback',
         text: `Pushes target back ${absAmount} ${slotWord}`,
         subLines: ['Pushes away from caster'],
+        targetLabel,
+      };
+    }
+
+    case 'jump': {
+      const rangeText = effect.rangeLimit ? `up to ${effect.rangeLimit} slots` : 'to any distance';
+      const perEnemy = effect.energyPerEnemyJumped ?? effect.energyPerOccupiedSlot ?? 1;
+      return {
+        icon: 'speed',
+        text: 'Jump to an empty slot',
+        subLines: [
+          `Reposition ${rangeText}`,
+          `Costs standard movement +${perEnemy} energy per enemy crossed`
+        ],
         targetLabel,
       };
     }
@@ -258,6 +278,31 @@ function describeEffect(effect: CardEffect, card: Card): TooltipEffectLine {
         icon: null,
         text: `Spreads ${pct}% ${statusName} (${spreadRange} slot${spreadRange !== 1 ? 's' : ''}, ${sideLabel})`,
         subLines: ['Reads stacks from target, applies fraction to nearby units'],
+        targetLabel,
+      };
+    }
+
+    case 'thorns': {
+      const th = effect as ThornsEffect;
+      const stacks = Math.max(1, Math.floor(th.stacks ?? 1));
+      const reflectAmount = Math.max(0, Math.floor(th.reflectDamage ?? 0));
+      const reflectPerStack = th.reflectPerStack !== false;
+      const debuffStacks = th.debuffStacks ?? 1;
+      const subLines = [
+        reflectPerStack
+          ? `On unblocked hit: reflect ${reflectAmount} x stacks damage to attacker`
+          : `On unblocked hit: reflect ${reflectAmount} damage to attacker`
+      ];
+      if (th.debuffStatus) {
+        subLines.push(`Also applies ${debuffStacks} ${capitalise(th.debuffStatus)} to attacker`);
+      }
+      if (th.duration !== undefined) {
+        subLines.push(`Lasts ${th.duration} turn${th.duration !== 1 ? 's' : ''}`);
+      }
+      return {
+        icon: 'shield',
+        text: `Grants ${stacks} Thorns`,
+        subLines,
         targetLabel,
       };
     }

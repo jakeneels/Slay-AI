@@ -5,7 +5,7 @@ import { getModifierRegistry } from '../core/modifiers.js';
 import { getGameState } from '../core/gameState.js';
 import {
   RANGE_OPTIMAL_BONUS, RANGE_PENALTY_PER_SLOT, RANGE_MODIFIER_MIN, RANGE_MODIFIER_MAX,
-  SUPPRESSION_DISTANCE, SUPPRESSION_RANGED_THRESHOLD, SUPPRESSION_BASE_COST, SUPPRESSION_STACK_COST,
+  SUPPRESSION_DISTANCE, SUPPRESSION_RANGED_THRESHOLD, SUPPRESSION_BASE_COST, SUPPRESSION_STACK_COST, ENEMY_OPTIMAL_SPAWN_CHANCE,
 } from '../core/constants.js';
 import {
   WAVE_BASE_BUDGET, WAVE_BUDGET_INCREMENT, WAVE_BUDGET_JITTER, WAVE_MIN_ENEMIES, WAVE_MAX_ENEMIES,
@@ -22,6 +22,8 @@ import {
 let initialized = false;
 const ACS_TARGET = 'acs_wave4_boss';
 const ACS_MOD_ID = `devpanel:global:${ACS_TARGET}`;
+const ACS_KYLE_WAVE1_TARGET = 'acs_kyle_wave1';
+const ACS_KYLE_WAVE1_MOD_ID = `devpanel:global:${ACS_KYLE_WAVE1_TARGET}`;
 
 // Track which sections are collapsed (persists across renders)
 const collapsedSections = new Set<string>();
@@ -53,6 +55,12 @@ const GLOBAL_TWEAKS: TweakDef[] = [
   { target: 'range_penalty_per_slot',    label: 'Range Penalty/Slot',     defaultValue: RANGE_PENALTY_PER_SLOT,    step: 0.05, min: 0, max: 1 },
   { target: 'range_modifier_min',        label: 'Range Modifier Floor',   defaultValue: RANGE_MODIFIER_MIN,        step: 0.05, min: 0, max: 2 },
   { target: 'range_modifier_max',        label: 'Range Modifier Cap',     defaultValue: RANGE_MODIFIER_MAX,        step: 0.05, min: 0, max: 3 },
+  { target: 'jump_max_distance',         label: 'Jump Max Distance',      defaultValue: 12, step: 1, min: 1, max: 12 },
+  { target: 'jump_occupied_slot_cost',   label: 'Jump Occupied Slot Cost', defaultValue: 1, step: 1, min: 0, max: 5 },
+  { target: 'jump_anticipation_ms',      label: 'Jump Anticipation (ms)', defaultValue: 140, step: 10, min: 0, max: 800 },
+  { target: 'jump_arc_ms',               label: 'Jump Arc (ms)',          defaultValue: 300, step: 10, min: 50, max: 1200 },
+  { target: 'jump_landing_ms',           label: 'Jump Landing (ms)',      defaultValue: 120, step: 10, min: 0, max: 800 },
+  { target: 'jump_arc_height',           label: 'Jump Arc Height',        defaultValue: 90, step: 5, min: 20, max: 300 },
   // Wave generation tuning
   { target: 'wave_base_budget',          label: 'Wave Base Budget',       defaultValue: WAVE_BASE_BUDGET,          step: 10, min: 20, max: 500 },
   { target: 'wave_budget_increment',     label: 'Wave Budget Incr.',      defaultValue: WAVE_BUDGET_INCREMENT,     step: 5,  min: 0,  max: 100 },
@@ -60,6 +68,7 @@ const GLOBAL_TWEAKS: TweakDef[] = [
   { target: 'wave_min_enemies',          label: 'Wave Min Enemies',       defaultValue: WAVE_MIN_ENEMIES,          step: 1, min: 1, max: 4 },
   { target: 'wave_max_enemies',          label: 'Wave Max Enemies',       defaultValue: WAVE_MAX_ENEMIES,          step: 1, min: 1, max: 8 },
   { target: 'wave_heal_fraction',        label: 'Wave Heal Fraction',     defaultValue: WAVE_HEAL_FRACTION,        step: 0.05, min: 0, max: 1 },
+  { target: 'enemy_optimal_spawn_chance', label: 'Enemy Optimal Spawn Chance', defaultValue: ENEMY_OPTIMAL_SPAWN_CHANCE, step: 0.05, min: 0, max: 1 },
 ];
 
 const CHAR_TWEAKS: TweakDef[] = [
@@ -159,6 +168,10 @@ export function initDevPanel(): void {
         setAcsEnabled(input.checked);
         requestFullRender();
       }
+      if (toggle === 'acs-kyle-wave1') {
+        setAcsKyleWave1Enabled(input.checked);
+        requestFullRender();
+      }
     });
   }
 
@@ -222,6 +235,7 @@ export function renderDevPanel(gameState: GameState): void {
     const noPreFightSetupChecked = getNoPreFightSetupSetting() ? 'checked' : '';
     const showRollbackButtonChecked = getShowRollbackButtonSetting() ? 'checked' : '';
     const acsChecked = isAcsEnabled() ? 'checked' : '';
+    const acsKyleWave1Checked = isAcsKyleWave1Enabled() ? 'checked' : '';
     return `
       <label style="display:flex;align-items:center;gap:6px;color:#d1d5db;font-size:11px;cursor:pointer;">
         <input type="checkbox" data-dev-toggle="show-lanes" ${checked} />
@@ -239,12 +253,21 @@ export function renderDevPanel(gameState: GameState): void {
         <input type="checkbox" data-dev-toggle="acs" ${acsChecked} />
         <span>ACS</span>
       </label>
+      <label style="display:flex;align-items:center;gap:6px;color:#d1d5db;font-size:11px;cursor:pointer;margin-top:6px;">
+        <input type="checkbox" data-dev-toggle="acs-kyle-wave1" ${acsKyleWave1Checked} />
+        <span>ACS Wave 1</span>
+      </label>
     `;
   });
 
   // ── Combat Log section ──
   html += renderCollapsibleSection('combat-log', 'Combat Log', () => {
     return renderCombatLogBody(gameState);
+  });
+
+  // ── Enemy AI Debug section ──
+  html += renderCollapsibleSection('enemy-ai-debug', 'Enemy AI Debug', () => {
+    return renderEnemyAiDebugBody(gameState);
   });
 
   // ── Draw Pile / Deck section ──
@@ -370,6 +393,42 @@ function renderCombatLogBody(gameState: GameState): string {
   for (let i = 0; i < reversed.length; i++) {
     const opacity = i < 3 ? 1 : Math.max(0.4, 1 - (i - 2) * 0.08);
     html += `<div class="dev-log-entry" style="opacity:${opacity};">${escapeHtml(reversed[i])}</div>`;
+  }
+  return html;
+}
+
+function renderEnemyAiDebugBody(gameState: GameState): string {
+  const spawnEntries = gameState.enemyAiDebug.spawns;
+  const preRoundEntries = gameState.enemyAiDebug.preRound;
+  if (spawnEntries.length === 0 && preRoundEntries.length === 0) {
+    return `<div class="dev-log-entry" style="color:#4b5563;font-style:italic;">No AI debug data yet</div>`;
+  }
+
+  let html = '';
+  html += `<div style="color:#9ca3af;font-size:10px;text-transform:uppercase;margin-bottom:4px;">Spawn Decisions</div>`;
+  if (spawnEntries.length === 0) {
+    html += `<div class="dev-log-entry" style="color:#6b7280;">None</div>`;
+  } else {
+    for (const entry of [...spawnEntries].reverse()) {
+      const spawnMode = entry.usedOptimalSpawn ? 'optimal' : 'backline';
+      const desired = entry.desiredFrontSlot === null ? '-' : entry.desiredFrontSlot;
+      html += `<div class="dev-log-entry">`;
+      html += `${escapeHtml(entry.enemyName)} W${entry.waveNumber} [${spawnMode}] mode=${entry.mode} range=${entry.targetRange} desired=${desired} final=${entry.finalFrontSlot} aggr=${entry.aggression}`;
+      html += `</div>`;
+    }
+  }
+
+  html += `<div style="color:#9ca3af;font-size:10px;text-transform:uppercase;margin:8px 0 4px;">Pre-Round Decisions</div>`;
+  if (preRoundEntries.length === 0) {
+    html += `<div class="dev-log-entry" style="color:#6b7280;">None</div>`;
+  } else {
+    for (const entry of [...preRoundEntries].reverse()) {
+      const conflict = entry.blockedByLaneConflict ? ' lane-conflict' : '';
+      const moved = entry.moved ? 'moved' : 'held';
+      html += `<div class="dev-log-entry">`;
+      html += `${escapeHtml(entry.enemyName)} R${entry.roundNumber} ${moved}${conflict} mode=${entry.mode} range=${entry.targetRange} d:${entry.currentDistanceBefore}->${entry.currentDistanceAfter} aggr=${entry.aggression}`;
+      html += `</div>`;
+    }
   }
   return html;
 }
@@ -716,6 +775,27 @@ function setAcsEnabled(enabled: boolean): void {
     });
   } else {
     registry.remove(ACS_MOD_ID);
+  }
+  persistDevPanelModifiers();
+}
+
+function isAcsKyleWave1Enabled(): boolean {
+  return getModifierRegistry().resolve(ACS_KYLE_WAVE1_TARGET, 0) >= 1;
+}
+
+function setAcsKyleWave1Enabled(enabled: boolean): void {
+  const registry = getModifierRegistry();
+  if (enabled) {
+    registry.add({
+      id: ACS_KYLE_WAVE1_MOD_ID,
+      target: ACS_KYLE_WAVE1_TARGET,
+      op: 'set',
+      value: 1,
+      source: 'devpanel',
+      scope: { kind: 'global' },
+    });
+  } else {
+    registry.remove(ACS_KYLE_WAVE1_MOD_ID);
   }
   persistDevPanelModifiers();
 }

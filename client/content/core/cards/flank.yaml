@@ -1,0 +1,21 @@
+id: flank
+name: Flank
+cost: 0
+copies: 2
+type: skill
+rarity: Legendary
+exhaust: true
+targeting: slot
+description: Blink to any empty slot. Costs extra for each occupied slot crossed. This costs alot of energy!
+effects:
+  - kind: jump
+    amount: 0
+    destination: anyEmptySlot
+    rangeLimit: 2
+    energyPerOccupiedSlot: 4
+animation:
+  jump:
+    anticipationMs: 140
+    arcMs: 300
+    landingMs: 120
+    arcHeight: 90

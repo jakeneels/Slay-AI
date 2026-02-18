@@ -11,8 +11,8 @@ import { shuffleArray } from './src/utils/shuffle.js';
 import { loadContent } from './src/data/contentLoader.js';
 import { render, setApp } from './src/rendering/renderer.js';
 import { clearAllHoverStates, getHoveredCard, getHoveredCharacter, getHoveredStatus } from './src/rendering/tooltipState.js';
-import { setApp as setCombatApp } from './src/core/combat.js';
-import { WIDTH, HEIGHT, ENEMY_SLOT_START, ALLY_SLOT_END, MAX_SLOTS } from './src/core/constants.js';
+import { getEnemyPreferredRangeDecisionForCardIds, setApp as setCombatApp } from './src/core/combat.js';
+import { WIDTH, HEIGHT, ENEMY_SLOT_START, ALLY_SLOT_END, MAX_SLOTS, ENEMY_OPTIMAL_SPAWN_CHANCE } from './src/core/constants.js';
 import { initDevPanel, restoreDevPanelOverridesFromStorage } from './src/rendering/devPanel.js';
 import { getModifierRegistry } from './src/core/modifiers.js';
 import { generateWave, computeDifficulty } from './src/core/waveGenerator.js';
@@ -29,7 +29,44 @@ function findAvailableFrontSlot(characters: Character[], isPlayer: boolean, slot
   const sideMin = isPlayer ? 0 : ENEMY_SLOT_START;
   const sideMax = isPlayer ? ALLY_SLOT_END : MAX_SLOTS - 1;
   const maxFrontSlot = sideMax - slotSize + 1;
-  for (let frontSlot = sideMin; frontSlot <= maxFrontSlot; frontSlot++) {
+  // Allies place from the front, enemies place from the back.
+  // This keeps enemies as far away from players as possible at combat start.
+  const step = isPlayer ? 1 : -1;
+  const start = isPlayer ? sideMin : maxFrontSlot;
+  const endExclusive = isPlayer ? maxFrontSlot + 1 : sideMin - 1;
+  for (let frontSlot = start; frontSlot !== endExclusive; frontSlot += step) {
+    const candidateSlots = getOccupiedSlotsForPlacement(frontSlot, slotSize);
+    const blocked = characters.some(existing => {
+      if (existing.hp <= 0 || existing.isPlayer !== isPlayer) return false;
+      const existingSize = Math.max(1, Math.floor(existing.slotSize ?? 1));
+      const existingSlots = getOccupiedSlotsForPlacement(existing.slotIndex, existingSize);
+      return existingSlots.some(slot => candidateSlots.includes(slot));
+    });
+    if (!blocked) return frontSlot;
+  }
+  return null;
+}
+
+function findAvailableNearestSlot(
+  characters: Character[],
+  isPlayer: boolean,
+  slotSize: number,
+  desiredFrontSlot: number,
+): number | null {
+  const sideMin = isPlayer ? 0 : ENEMY_SLOT_START;
+  const sideMax = isPlayer ? ALLY_SLOT_END : MAX_SLOTS - 1;
+  const maxFrontSlot = sideMax - slotSize + 1;
+  const clampedDesired = Math.max(sideMin, Math.min(maxFrontSlot, desiredFrontSlot));
+  const candidates = Array.from({ length: maxFrontSlot - sideMin + 1 }, (_, i) => sideMin + i)
+    .sort((a, b) => {
+      const aDist = Math.abs(a - clampedDesired);
+      const bDist = Math.abs(b - clampedDesired);
+      if (aDist !== bDist) return aDist - bDist;
+      // Enemy tiebreak: prefer farther back. Ally tiebreak: prefer farther front.
+      return isPlayer ? a - b : b - a;
+    });
+
+  for (const frontSlot of candidates) {
     const candidateSlots = getOccupiedSlotsForPlacement(frontSlot, slotSize);
     const blocked = characters.some(existing => {
       if (existing.hp <= 0 || existing.isPlayer !== isPlayer) return false;
@@ -175,7 +212,15 @@ async function initGame(): Promise<void> {
 
   // Generate first wave of enemies via difficulty budget
   const enemyPool = Object.values(characters).filter(c => !c.isPlayer);
-  const enemyCharacters = generateWave(1, enemyPool, undefined, gameState.cardLibrary);
+  let enemyCharacters = generateWave(1, enemyPool, undefined, gameState.cardLibrary);
+  // Kyle Wave 1 dev: spawn Actual Kyle first so his 3-slot footprint is placeable
+  if (getModifierRegistry().resolve('acs_kyle_wave1', 0) >= 1) {
+    enemyCharacters = [...enemyCharacters].sort((a, b) => {
+      if (a.id === 'actual_kyle') return -1;
+      if (b.id === 'actual_kyle') return 1;
+      return 0;
+    });
+  }
 
   gameState.characters = [];
 
@@ -231,8 +276,13 @@ async function initGame(): Promise<void> {
       moveCharges: 0,
       suppression: charDef.stats.suppression ?? 0,
       suppressionResist: charDef.stats.suppressionResist ?? 0,
+      aggression: charDef.stats.aggression ?? 5,
+      facing: 'right',
       gear: { weapon: null, armor: null, accessory: null },
     };
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4a1d9c'},body:JSON.stringify({sessionId:'4a1d9c',runId:'facing-debug-1',hypothesisId:'H1',location:'game.ts:initGame:spawn-ally',message:'Spawned ally with default facing',data:{characterId:character.id,name:character.name,isPlayer:character.isPlayer,slotIndex:character.slotIndex,facing:character.facing},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     // Draw initial hand
     drawCards(character, character.drawCount);
@@ -240,12 +290,55 @@ async function initGame(): Promise<void> {
     gameState.characters.push(character);
   });
 
-  // Add enemy characters on enemy-side slots (from center-right).
+  // Add enemy characters on enemy-side slots (from backline first).
+  // Larger enemies spawn first so multi-slot footprints can claim deep slots.
+  gameState.enemyAiDebug.spawns = [];
+  const enemyOptimalSpawnChance = Math.max(
+    0,
+    Math.min(1, getModifierRegistry().resolve('enemy_optimal_spawn_chance', ENEMY_OPTIMAL_SPAWN_CHANCE)),
+  );
+  const furthestAllyFrontSlot = gameState.characters
+    .filter(c => c.isPlayer && c.hp > 0)
+    .reduce((max, ally) => Math.max(max, ally.slotIndex), 0);
+  const orderedEnemyCharacters = [...enemyCharacters].sort((a, b) => {
+    if (a.id === 'actual_kyle') return -1;
+    if (b.id === 'actual_kyle') return 1;
+    const aSize = Math.max(1, Math.floor(a.slotSize ?? 1));
+    const bSize = Math.max(1, Math.floor(b.slotSize ?? 1));
+    return bSize - aSize;
+  });
   const usedEnemyIds = new Set<string>();
-  enemyCharacters.forEach((charDef, i) => {
+  orderedEnemyCharacters.forEach((charDef, i) => {
     const deck = shuffleArray(buildDeckFromDefinition(charDef));
     const slotSize = Math.max(1, Math.floor(charDef.slotSize ?? 1));
-    const slotIndex = findAvailableFrontSlot(gameState.characters, false, slotSize);
+    const shouldUseOptimalSpawn = Math.random() < enemyOptimalSpawnChance;
+    let slotIndex: number | null = null;
+    let desiredFrontSlot: number | null = null;
+    let mode: 'forward_edge' | 'flexible' | 'max_optimal' = 'flexible';
+    let targetRange = 1;
+    if (shouldUseOptimalSpawn) {
+      const decision = getEnemyPreferredRangeDecisionForCardIds(
+        charDef.startingDeck ?? [],
+        charDef.stats.aggression ?? 5,
+        gameState.cardLibrary,
+      );
+      mode = decision.mode;
+      targetRange = decision.targetRange;
+      desiredFrontSlot = furthestAllyFrontSlot + decision.targetRange;
+      slotIndex = findAvailableNearestSlot(gameState.characters, false, slotSize, desiredFrontSlot);
+    }
+    if (slotIndex === null) {
+      slotIndex = findAvailableFrontSlot(gameState.characters, false, slotSize);
+      if (!shouldUseOptimalSpawn) {
+        const decision = getEnemyPreferredRangeDecisionForCardIds(
+          charDef.startingDeck ?? [],
+          charDef.stats.aggression ?? 5,
+          gameState.cardLibrary,
+        );
+        mode = decision.mode;
+        targetRange = decision.targetRange;
+      }
+    }
     if (slotIndex === null) {
       console.warn(`No enemy slot available for ${charDef.name} (slotSize ${slotSize}), skipping spawn`);
       return;
@@ -278,13 +371,30 @@ async function initGame(): Promise<void> {
       moveCharges: 0,
       suppression: charDef.stats.suppression ?? 0,
       suppressionResist: charDef.stats.suppressionResist ?? 0,
+      aggression: charDef.stats.aggression ?? 5,
+      facing: 'left',
       gear: { weapon: null, armor: null, accessory: null },
     };
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4a1d9c'},body:JSON.stringify({sessionId:'4a1d9c',runId:'facing-debug-1',hypothesisId:'H1',location:'game.ts:initGame:spawn-enemy',message:'Spawned enemy with default facing',data:{characterId:character.id,name:character.name,isPlayer:character.isPlayer,slotIndex:character.slotIndex,facing:character.facing},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     // Register cloned enemies in library so sprite lookup works
     if (character.id !== charDef.id) {
       gameState.characterLibrary[character.id] = charDef;
     }
+
+    gameState.enemyAiDebug.spawns.push({
+      enemyId: character.id,
+      enemyName: character.name,
+      waveNumber: gameState.waveNumber,
+      aggression: character.aggression,
+      mode,
+      targetRange,
+      usedOptimalSpawn: shouldUseOptimalSpawn,
+      desiredFrontSlot,
+      finalFrontSlot: character.slotIndex,
+    });
 
     // Draw initial hand
     drawCards(character, character.drawCount);

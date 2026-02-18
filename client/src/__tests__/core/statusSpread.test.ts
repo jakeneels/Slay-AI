@@ -13,6 +13,7 @@ vi.mock('../../../animations.js', () => ({
   animateEnhancedScreenShake: vi.fn().mockResolvedValue(undefined),
   animateCameraZoom: vi.fn().mockResolvedValue(undefined),
   animateParticles: vi.fn().mockResolvedValue(undefined),
+  setCharacterFacing: vi.fn(),
   registerCharacterSprite: vi.fn(),
 }));
 

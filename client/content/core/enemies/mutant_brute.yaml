@@ -12,7 +12,7 @@ visual:
   anchorX: 0.5
   anchorY: 1
   offsetX: 0
-  offsetY: 13
+  offsetY: 16
 isPlayer: false
 slotSize: 2
 stats:

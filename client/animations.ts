@@ -7,8 +7,48 @@ import { Graphics, Text, Assets, Texture, Rectangle, Sprite as SpriteImpl } from
 
 // Store character sprites for animation access
 const characterSprites = new Map<string, Sprite>();
+const characterAuthoredFacing = new Map<string, 'left' | 'right'>();
+
+function getScaleSignForFacing(
+  facing: 'left' | 'right',
+  authoredFacing: 'left' | 'right'
+): number {
+  return facing === authoredFacing ? 1 : -1;
+}
+
+function setSpriteFacingInternal(
+  sprite: Sprite,
+  facing: 'left' | 'right',
+  authoredFacing: 'left' | 'right'
+): void {
+  const desiredSign = getScaleSignForFacing(facing, authoredFacing);
+  const currentSign = Math.sign(sprite.scale.x || 1) || 1;
+  const absScaleX = Math.abs(sprite.scale.x || 1);
+  if (currentSign === desiredSign) return;
+
+  // No X compensation here: render step computes canonical slot position each frame.
+  // Compensating on flip caused lateral drift for non-centered anchors.
+  const xBefore = sprite.x;
+  sprite.scale.x = absScaleX * desiredSign;
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4a1d9c'},body:JSON.stringify({sessionId:'4a1d9c',runId:'post-fix-3',hypothesisId:'H3',location:'animations.ts:setSpriteFacingInternal',message:'Sprite flipped via setCharacterFacing',data:{facing,authoredFacing,currentSign,desiredSign,anchorX:sprite.anchor.x,spriteWidth:sprite.width,xBefore,xAfter:sprite.x,appliedScaleX:sprite.scale.x},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+}
+
 // Active card showcase graphics that must survive stage re-renders.
 const activeCardShowcases = new Set<Graphics>();
+/** Sprite sheet overlays that must survive stage re-renders. */
+const activeSpriteSheetOverlays = new Map<string, {
+  overlay: SpriteImpl;
+  frameTextures: Texture[];
+  frameAspect: number;
+  preserveAspect: boolean;
+  offsetX: number;
+  offsetY: number;
+  startTime: number;
+  durationPerFrame: number;
+  totalDuration: number;
+}>();
 
 
 // Animation configuration interface
@@ -22,13 +62,36 @@ export interface AnimationConfig {
     particleColor?: number;
     glowIntensity?: number;
   };
+  jump?: {
+    anticipationMs?: number;
+    arcMs?: number;
+    landingMs?: number;
+    arcHeight?: number;
+  };
 }
 
 /**
  * Register a character sprite for animations
  */
-export function registerCharacterSprite(characterId: string, sprite: Sprite): void {
+export function registerCharacterSprite(
+  characterId: string,
+  sprite: Sprite,
+  authoredFacing: 'left' | 'right' = 'right'
+): void {
   characterSprites.set(characterId, sprite);
+  characterAuthoredFacing.set(characterId, authoredFacing);
+}
+
+export function setCharacterFacing(characterId: string, facing: 'left' | 'right'): void {
+  const sprite = characterSprites.get(characterId);
+  if (!sprite) return;
+  const authoredFacing = characterAuthoredFacing.get(characterId) ?? 'right';
+  setSpriteFacingInternal(sprite, facing, authoredFacing);
+}
+
+/** Whether this character currently has an active sprite-sheet overlay (attack anim etc.) */
+export function hasActiveSpriteSheetOverlay(characterId: string): boolean {
+  return activeSpriteSheetOverlays.has(characterId);
 }
 
 /**
@@ -480,6 +543,9 @@ export function animateScreenShake(app: Application, intensity: number = 5, dura
 export interface SpriteSheetConfig {
   path: string;
   layout: [number, number]; // [cols, rows]
+  preserveAspect?: boolean; // Optional per-character sizing mode for sprite sheet overlays
+  offsetX?: number; // Optional per-sheet pixel nudge
+  offsetY?: number; // Optional per-sheet pixel nudge
 }
 
 /** Frame cache per sprite sheet path to avoid reloading */
@@ -495,7 +561,10 @@ export async function animateSpriteSheetFrames(
   spriteSheetPath: string,
   layout: [number, number],
   app: Application,
-  durationPerFrame: number = 150
+  preserveAspect: boolean = false,
+  durationPerFrame: number = 150,
+  offsetX: number = 0,
+  offsetY: number = 0
 ): Promise<void> {
   const charSprite = characterSprites.get(characterId);
   if (!charSprite) return;
@@ -525,31 +594,98 @@ export async function animateSpriteSheetFrames(
     spriteSheetFrameCache.set(path, frames);
   }
 
+  const frameW = frames[0].width;
+  const frameH = frames[0].height;
   const overlay = new SpriteImpl(frames[0]);
-  // Match the original sprite transform to avoid stretching/offsets.
+  const frameAspect = frameW / frameH;
+  const charAspect = charSprite.width / charSprite.height;
+  let ow: number;
+  let oh: number;
+  if (preserveAspect && frameAspect >= charAspect) {
+    // Only opt in for characters that need wider attack-sheet framing (Ted).
+    oh = charSprite.height;
+    ow = oh * frameAspect;
+  } else {
+    // Legacy behavior for existing characters (Didi etc) is scale-based.
+    ow = charSprite.width;
+    oh = charSprite.height;
+  }
   overlay.anchor.set(charSprite.anchor.x, charSprite.anchor.y);
-  overlay.x = charSprite.x;
-  overlay.y = charSprite.y;
-  overlay.scale.set(charSprite.scale.x, charSprite.scale.y);
+  if (preserveAspect) {
+    overlay.width = ow;
+    overlay.height = oh;
+  } else {
+    overlay.scale.set(charSprite.scale.x, charSprite.scale.y);
+  }
+  overlay.x = charSprite.x + offsetX;
+  overlay.y = charSprite.y + offsetY;
   overlay.zIndex = charSprite.zIndex + 1;
-  const originalVisible = charSprite.visible;
-  charSprite.visible = false;
-  app.stage.addChild(overlay);
 
   const totalDuration = frames.length * durationPerFrame;
   const frameTextures = frames;
+  const startTime = performance.now();
+
+  function syncOverlay(char: Sprite | undefined): void {
+    if (!char) return;
+    const fa = frameW / frameH;
+    const ca = char.width / char.height;
+    let w: number;
+    let h: number;
+    if (preserveAspect && fa >= ca) {
+      h = char.height;
+      w = h * fa;
+    } else {
+      w = char.width;
+      h = char.height;
+    }
+    overlay.anchor.set(char.anchor.x, char.anchor.y);
+    if (preserveAspect) {
+      overlay.width = w;
+      overlay.height = h;
+    } else {
+      overlay.scale.set(char.scale.x, char.scale.y);
+    }
+    overlay.x = char.x + offsetX;
+    overlay.y = char.y + offsetY;
+    overlay.zIndex = char.zIndex + 1;
+  }
+
+  activeSpriteSheetOverlays.set(characterId, {
+    overlay,
+    frameTextures,
+    frameAspect,
+    preserveAspect,
+    offsetX,
+    offsetY,
+    startTime,
+    durationPerFrame,
+    totalDuration,
+  });
+  charSprite.visible = false;
+  app.stage.addChild(overlay);
 
   return new Promise((resolve) => {
-    const startTime = performance.now();
-
     function tick() {
+      const entry = activeSpriteSheetOverlays.get(characterId);
+      if (!entry || entry.overlay !== overlay) {
+        resolve();
+        return;
+      }
       const elapsed = performance.now() - startTime;
       if (elapsed >= totalDuration) {
-        charSprite.visible = originalVisible;
-        app.stage.removeChild(overlay);
+        activeSpriteSheetOverlays.delete(characterId);
+        const currentSprite = characterSprites.get(characterId);
+        if (currentSprite) currentSprite.visible = true;
+        if (overlay.parent) app.stage.removeChild(overlay);
         overlay.destroy();
         resolve();
         return;
+      }
+      const char = characterSprites.get(characterId);
+      syncOverlay(char);
+      if (char) char.visible = false;
+      if (!overlay.parent) {
+        app.stage.addChild(overlay);
       }
       const frameIndex = Math.min(Math.floor(elapsed / durationPerFrame), frameTextures.length - 1);
       overlay.texture = frameTextures[frameIndex];
@@ -834,6 +970,102 @@ export function animateMeleeSlash(
   });
 }
 
+/**
+ * Animate a jump movement from one slot to another.
+ * Movement is visual-only until the caller commits combat state at landing.
+ */
+export function animateJumpMovement(
+  characterId: string,
+  fromSlot: number,
+  toSlot: number,
+  app: Application,
+  config?: AnimationConfig['jump']
+): Promise<void> {
+  const sprite = characterSprites.get(characterId);
+  if (!sprite || fromSlot === toSlot) return Promise.resolve();
+
+  // Keep this in sync with renderCharacters lane spacing.
+  const battleSideOverscan = 40;
+  const charSpriteSize = 250;
+  const charCenter = charSpriteSize / 2;
+  const battleLeftBase = -battleSideOverscan;
+  const battleRightBase = app.screen.width - charSpriteSize + battleSideOverscan;
+  const slotSpacing = (battleRightBase - battleLeftBase) / 11;
+
+  const anticipationMs = config?.anticipationMs ?? 140;
+  const arcMs = config?.arcMs ?? 300;
+  const landingMs = config?.landingMs ?? 120;
+  const arcHeight = config?.arcHeight ?? 90;
+  const originalScaleX = sprite.scale.x;
+  const originalScaleY = sprite.scale.y;
+
+  const startX = sprite.x;
+  const startY = sprite.y;
+  const targetX = battleLeftBase + toSlot * slotSpacing + charCenter;
+  const targetY = startY;
+  const jumpTrail = new Graphics();
+  jumpTrail.zIndex = sprite.zIndex - 1;
+  app.stage.addChild(jumpTrail);
+
+  return new Promise((resolve) => {
+    const anticipationStart = performance.now();
+
+    function runAnticipation() {
+      const t = Math.min((performance.now() - anticipationStart) / anticipationMs, 1);
+      const squash = 1 - 0.15 * t;
+      sprite.scale.set(originalScaleX * (1 + 0.05 * t), originalScaleY * squash);
+      if (t >= 1) {
+        const arcStart = performance.now();
+        runArc(arcStart);
+      } else {
+        requestAnimationFrame(runAnticipation);
+      }
+    }
+
+    function runArc(arcStart: number) {
+      const t = Math.min((performance.now() - arcStart) / arcMs, 1);
+      const eased = 1 - Math.pow(1 - t, 3);
+      const x = startX + (targetX - startX) * eased;
+      const yOffset = Math.sin(Math.PI * eased) * arcHeight;
+      sprite.x = x;
+      sprite.y = targetY - yOffset;
+      sprite.scale.set(originalScaleX, originalScaleY);
+
+      jumpTrail.clear();
+      jumpTrail.moveTo(startX, startY)
+        .quadraticCurveTo((startX + targetX) / 2, targetY - arcHeight, x, sprite.y)
+        .stroke({ width: 2, color: 0x8b5cf6, alpha: 0.55 });
+
+      if (t >= 1) {
+        const landingStart = performance.now();
+        runLanding(landingStart);
+      } else {
+        requestAnimationFrame(() => runArc(arcStart));
+      }
+    }
+
+    function runLanding(landingStart: number) {
+      const t = Math.min((performance.now() - landingStart) / landingMs, 1);
+      const bounce = Math.sin(Math.PI * t) * 0.08;
+      sprite.x = targetX;
+      sprite.y = targetY;
+      sprite.scale.set(originalScaleX * (1 + bounce), originalScaleY * (1 - bounce * 0.6));
+      jumpTrail.alpha = 1 - t;
+      if (t >= 1) {
+        sprite.x = targetX;
+        sprite.y = targetY;
+        sprite.scale.set(originalScaleX, originalScaleY);
+        if (jumpTrail.parent) app.stage.removeChild(jumpTrail);
+        resolve();
+      } else {
+        requestAnimationFrame(() => runLanding(landingStart));
+      }
+    }
+
+    runAnticipation();
+  });
+}
+
 export interface PlayDamageAnimationOptions {
   attackerSpriteSheet?: SpriteSheetConfig;
   targetSpriteSheet?: SpriteSheetConfig;
@@ -847,7 +1079,7 @@ export async function playDamageAnimation(
   targetId: string,
   damageAmount: number,
   app: Application,
-  targeting: 'single' | 'aoe' | 'self' | 'ally' | 'enemy' | 'allEnemies' | 'allAllies',
+  targeting: 'single' | 'aoe' | 'self' | 'ally' | 'enemy' | 'allEnemies' | 'allAllies' | 'slot',
   config?: AnimationConfig,
   cardType?: 'attack' | 'skill' | 'power' | 'summon',
   spriteSheets?: PlayDamageAnimationOptions
@@ -859,7 +1091,16 @@ export async function playDamageAnimation(
   if (targeting === 'self') {
     if (attackerSheet || targetSheet) {
       const sheet = attackerSheet ?? targetSheet!;
-      await animateSpriteSheetFrames(attackerId, sheet.path, sheet.layout, app);
+      await animateSpriteSheetFrames(
+        attackerId,
+        sheet.path,
+        sheet.layout,
+        app,
+        !!sheet.preserveAspect,
+        undefined,
+        sheet.offsetX ?? 0,
+        sheet.offsetY ?? 0
+      );
     }
     await animateAttackerShake(attackerId);
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -876,7 +1117,16 @@ export async function playDamageAnimation(
     // Attacker: if configured, play full sprite-sheet transform first (4 frames),
     // then perform attack motion/projectile/slash.
     if (attackerSheet) {
-      await animateSpriteSheetFrames(attackerId, attackerSheet.path, attackerSheet.layout, app);
+      await animateSpriteSheetFrames(
+        attackerId,
+        attackerSheet.path,
+        attackerSheet.layout,
+        app,
+        !!attackerSheet.preserveAspect,
+        undefined,
+        attackerSheet.offsetX ?? 0,
+        attackerSheet.offsetY ?? 0
+      );
     }
 
     const attackerAnims: Promise<void>[] = [animateAttackerShake(attackerId)];
@@ -896,7 +1146,18 @@ export async function playDamageAnimation(
       animateFloatingNumber(targetId, damageAmount, 0xff4444, app)
     ];
     if (targetSheet) {
-      targetAnims.push(animateSpriteSheetFrames(targetId, targetSheet.path, targetSheet.layout, app));
+      targetAnims.push(
+        animateSpriteSheetFrames(
+          targetId,
+          targetSheet.path,
+          targetSheet.layout,
+          app,
+          !!targetSheet.preserveAspect,
+          undefined,
+          targetSheet.offsetX ?? 0,
+          targetSheet.offsetY ?? 0
+        )
+      );
     }
     await Promise.all(targetAnims);
     
@@ -910,7 +1171,16 @@ export async function playDamageAnimation(
   
   // For AOE, just show impact on target (projectile animation skipped for simplicity)
   if (attackerSheet) {
-    await animateSpriteSheetFrames(attackerId, attackerSheet.path, attackerSheet.layout, app);
+    await animateSpriteSheetFrames(
+      attackerId,
+      attackerSheet.path,
+      attackerSheet.layout,
+      app,
+      !!attackerSheet.preserveAspect,
+      undefined,
+      attackerSheet.offsetX ?? 0,
+      attackerSheet.offsetY ?? 0
+    );
   }
   await animateAttackerShake(attackerId);
   await new Promise(resolve => setTimeout(resolve, 100));
@@ -920,7 +1190,18 @@ export async function playDamageAnimation(
     animateFloatingNumber(targetId, damageAmount, 0xff4444, app)
   ];
   if (targetSheet) {
-    targetAnims.push(animateSpriteSheetFrames(targetId, targetSheet.path, targetSheet.layout, app));
+    targetAnims.push(
+      animateSpriteSheetFrames(
+        targetId,
+        targetSheet.path,
+        targetSheet.layout,
+        app,
+        !!targetSheet.preserveAspect,
+        undefined,
+        targetSheet.offsetX ?? 0,
+        targetSheet.offsetY ?? 0
+      )
+    );
   }
   await Promise.all(targetAnims);
 }
@@ -932,7 +1213,7 @@ export async function playHealAnimation(
   targetId: string,
   healAmount: number,
   app: Application,
-  targeting: 'single' | 'aoe' | 'self' | 'ally' | 'enemy' | 'allEnemies' | 'allAllies',
+  targeting: 'single' | 'aoe' | 'self' | 'ally' | 'enemy' | 'allEnemies' | 'allAllies' | 'slot',
   config?: AnimationConfig
 ): Promise<void> {
   // Healing particles, glow, and floating number
@@ -972,6 +1253,48 @@ export function renderActiveCardShowcases(app: Application): void {
       showcase.zIndex = 7000;
       showcase.eventMode = 'none';
       app.stage.addChild(showcase);
+    }
+  }
+}
+
+/**
+ * Re-attach sprite-sheet overlays after a render pass and hide underlying character.
+ * Renderer clears stage children each frame; overlays and character visibility must be restored.
+ */
+export function renderActiveSpriteSheetOverlays(app: Application): void {
+  for (const [characterId, entry] of activeSpriteSheetOverlays) {
+    const char = characterSprites.get(characterId);
+    if (char) {
+      char.visible = false;
+      const charAspect = char.width / char.height;
+      let w: number;
+      let h: number;
+      if (entry.preserveAspect && entry.frameAspect >= charAspect) {
+        h = char.height;
+        w = h * entry.frameAspect;
+      } else {
+        w = char.width;
+        h = char.height;
+      }
+      entry.overlay.anchor.set(char.anchor.x, char.anchor.y);
+      if (entry.preserveAspect) {
+        entry.overlay.width = w;
+        entry.overlay.height = h;
+      } else {
+        entry.overlay.scale.set(char.scale.x, char.scale.y);
+      }
+      entry.overlay.x = char.x + entry.offsetX;
+      entry.overlay.y = char.y + entry.offsetY;
+      entry.overlay.zIndex = char.zIndex + 1;
+      const elapsed = performance.now() - entry.startTime;
+      const frameIndex = Math.min(
+        Math.floor(elapsed / entry.durationPerFrame),
+        entry.frameTextures.length - 1
+      );
+      entry.overlay.texture = entry.frameTextures[frameIndex];
+    }
+    if (!entry.overlay.parent) {
+      app.stage.addChild(entry.overlay);
     }
   }
 }

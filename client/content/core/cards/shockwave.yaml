@@ -2,7 +2,7 @@ schemaVersion: 1
 id: shockwave
 name: "Shockwave"
 type: skill
-rarity: epic
+rarity: rare
 cost: 3
 copies: 2
 targeting: aoe

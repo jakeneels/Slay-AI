@@ -15,7 +15,7 @@ expires_after_turns: 0
 description: "radioactive melee cleave. Deals damage and irradiates exposed targets."
 effects:
   - kind: damage
-    amount: 5
+    amount: 8
   - kind: status
     status: radiation
     stacks: 5

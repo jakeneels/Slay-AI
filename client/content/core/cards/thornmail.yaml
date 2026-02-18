@@ -1,0 +1,19 @@
+schemaVersion: 1
+id: rad_thorn
+name: "Rad Thornmail"
+type: skill
+rarity: rare
+cost: 1
+copies: 3
+targeting: self
+exhaust: false
+expires_after_turns: 0
+description: "Wrap yourself in reactive armor that punishes attackers."
+effects:
+  - kind: thorns
+    stacks: 2
+    duration: 2
+    reflectDamage: 1
+    reflectPerStack: true
+    debuffStatus: radiation
+    debuffStacks: 3

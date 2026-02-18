@@ -95,9 +95,11 @@ export function generateWave(
 
   const reg = getModifierRegistry();
   const acsEnabled = reg.resolve('acs_wave4_boss', 0) >= 1;
-  const spawnKyleBossThisWave = acsEnabled && waveNumber === 4;
-  // Keep secret enemies out of standard play unless ACS is active on wave 4.
-  const availablePool = spawnKyleBossThisWave
+  const acsKyleWave1Enabled = reg.resolve('acs_kyle_wave1', 0) >= 1;
+  const spawnKyleBossWave4 = acsEnabled && waveNumber === 4;
+  const spawnKyleWave1 = acsKyleWave1Enabled && waveNumber === 1;
+  // Keep secret enemies out of standard play unless ACS wave 4 or Kyle Wave 1 is active.
+  const availablePool = (spawnKyleBossWave4 || spawnKyleWave1)
     ? enemyPool
     : enemyPool.filter(def => def.id !== 'actual_kyle');
   if (availablePool.length === 0) return [];
@@ -121,8 +123,8 @@ export function generateWave(
     picked = pickEnemies(availablePool, budget, minEnemies, maxEnemies, cardLibrary);
   }
 
-  // ACS option: force Actual Kyle into wave 4 as a boss.
-  if (spawnKyleBossThisWave) {
+  // ACS option: force Actual Kyle into wave 4 as a boss, or wave 1 via dev toggle.
+  if (spawnKyleBossWave4 || spawnKyleWave1) {
     picked = ensureEnemyInWave(picked, enemyPool, 'actual_kyle', maxEnemies);
   }
 

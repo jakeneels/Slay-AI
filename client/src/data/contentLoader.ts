@@ -50,6 +50,11 @@ function normalizeSlotSize(value: unknown): number {
   return Math.max(1, Math.min(3, whole));
 }
 
+function normalizeAggression(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return 5;
+  return Math.max(0, Math.min(10, value));
+}
+
 function inferPreset(charData: any): CharacterVisualPreset {
   const explicit = charData.visual?.preset ?? charData.spriteVisualPreset;
   if (explicit && VISUAL_PRESET_DEFAULTS[explicit as CharacterVisualPreset]) {
@@ -104,7 +109,7 @@ export async function loadContent(): Promise<LoadedContent> {
         const cardData = jsyaml.load(yamlText) as any;
         // Determine targetSide from targeting
         let targetSide: 'self' | 'ally' | 'enemy' = 'enemy';
-        if (cardData.targeting === 'self') {
+        if (cardData.targeting === 'self' || cardData.targeting === 'slot') {
           targetSide = 'self';
         } else if (cardData.targeting === 'ally' || cardData.targeting === 'allAllies') {
           targetSide = 'ally';
@@ -117,12 +122,17 @@ export async function loadContent(): Promise<LoadedContent> {
         }
         
         // Determine targeting - use YAML value if it's a valid targeting type, otherwise derive from targetSide
-        let targeting: 'single' | 'aoe' | 'self' | 'ally' | 'enemy' | 'allEnemies' | 'allAllies' = 'single';
+        let targeting: 'single' | 'aoe' | 'self' | 'ally' | 'enemy' | 'allEnemies' | 'allAllies' | 'slot' = 'single';
         if (cardData.targeting === 'allEnemies' || cardData.targeting === 'allAllies') {
           targeting = cardData.targeting;
         } else if (cardData.targeting === 'aoe') {
           targeting = 'aoe';
-        } else if (cardData.targeting === 'self' || cardData.targeting === 'ally' || cardData.targeting === 'enemy') {
+        } else if (
+          cardData.targeting === 'self' ||
+          cardData.targeting === 'ally' ||
+          cardData.targeting === 'enemy' ||
+          cardData.targeting === 'slot'
+        ) {
           targeting = cardData.targeting;
         } else {
           // Default to 'single' for backwards compatibility
@@ -155,8 +165,21 @@ export async function loadContent(): Promise<LoadedContent> {
             if (!animationConfig.heal.glowIntensity) delete animationConfig.heal.glowIntensity;
             if (Object.keys(animationConfig.heal).length === 0) delete animationConfig.heal;
           }
+          if (cardData.animation.jump) {
+            animationConfig.jump = {
+              anticipationMs: cardData.animation.jump.anticipationMs,
+              arcMs: cardData.animation.jump.arcMs,
+              landingMs: cardData.animation.jump.landingMs,
+              arcHeight: cardData.animation.jump.arcHeight,
+            };
+            if (!animationConfig.jump.anticipationMs) delete animationConfig.jump.anticipationMs;
+            if (!animationConfig.jump.arcMs) delete animationConfig.jump.arcMs;
+            if (!animationConfig.jump.landingMs) delete animationConfig.jump.landingMs;
+            if (!animationConfig.jump.arcHeight) delete animationConfig.jump.arcHeight;
+            if (Object.keys(animationConfig.jump).length === 0) delete animationConfig.jump;
+          }
           // Remove animationConfig if it's empty
-          if (!animationConfig.damage && !animationConfig.heal) {
+          if (!animationConfig.damage && !animationConfig.heal && !animationConfig.jump) {
             animationConfig = undefined;
           }
         }
@@ -164,6 +187,38 @@ export async function loadContent(): Promise<LoadedContent> {
         // Parse effects with per-effect targeting fields
         const parsedEffects: CardEffect[] = (cardData.effects ?? []).map((e: any) => {
           const parsed: any = { ...e };
+          if (parsed.kind === 'jump') {
+            parsed.amount = typeof parsed.amount === 'number' ? parsed.amount : 0;
+            parsed.destination = parsed.destination === 'anyEmptySlot' ? 'anyEmptySlot' : 'anyEmptySlot';
+            if (parsed.rangeLimit !== undefined && typeof parsed.rangeLimit !== 'number') {
+              delete parsed.rangeLimit;
+            }
+            if (parsed.energyPerEnemyJumped !== undefined && typeof parsed.energyPerEnemyJumped !== 'number') {
+              delete parsed.energyPerEnemyJumped;
+            }
+            if (parsed.energyPerOccupiedSlot !== undefined && typeof parsed.energyPerOccupiedSlot !== 'number') {
+              delete parsed.energyPerOccupiedSlot;
+            }
+          }
+          if (parsed.kind === 'thorns') {
+            parsed.stacks = typeof parsed.stacks === 'number' ? Math.max(1, Math.floor(parsed.stacks)) : 1;
+            parsed.reflectDamage = typeof parsed.reflectDamage === 'number' ? Math.max(0, Math.floor(parsed.reflectDamage)) : 0;
+            if (parsed.duration !== undefined) {
+              parsed.duration = typeof parsed.duration === 'number' ? Math.max(1, Math.floor(parsed.duration)) : undefined;
+            }
+            if (parsed.reflectPerStack !== undefined && typeof parsed.reflectPerStack !== 'boolean') {
+              delete parsed.reflectPerStack;
+            }
+            if (parsed.debuffStatus !== undefined && typeof parsed.debuffStatus !== 'string') {
+              delete parsed.debuffStatus;
+            }
+            if (parsed.debuffStacks !== undefined) {
+              parsed.debuffStacks = typeof parsed.debuffStacks === 'number' ? Math.max(1, Math.floor(parsed.debuffStacks)) : undefined;
+            }
+            if (parsed.debuffDuration !== undefined) {
+              parsed.debuffDuration = typeof parsed.debuffDuration === 'number' ? Math.max(1, Math.floor(parsed.debuffDuration)) : undefined;
+            }
+          }
           // Carry over per-effect targeting if present
           if (e.effectTarget) {
             parsed.effectTarget = e.effectTarget as EffectTarget;
@@ -206,10 +261,15 @@ export async function loadContent(): Promise<LoadedContent> {
     for (const [filePath, yamlText] of Object.entries(characterYamlModules)) {
       try {
         const charData = jsyaml.load(yamlText) as any;
+        if (!charData.stats) {
+          charData.stats = {};
+        }
         // Default speed to 0 (baseline: 1 energy = 1 slot) if not specified
-        if (charData.stats && charData.stats.speed === undefined) {
+        if (charData.stats.speed === undefined) {
           charData.stats.speed = 0;
         }
+        // Default aggression to neutral and clamp to [0, 10].
+        charData.stats.aggression = normalizeAggression(charData.stats.aggression);
         characters[charData.id] = normalizeCharacterVisualConfig(charData);
       } catch (e) {
         console.warn(`Failed to load character ${filePath}:`, e);
@@ -220,10 +280,15 @@ export async function loadContent(): Promise<LoadedContent> {
     for (const [filePath, yamlText] of Object.entries(enemyYamlModules)) {
       try {
         const charData = jsyaml.load(yamlText) as any;
+        if (!charData.stats) {
+          charData.stats = {};
+        }
         // Default speed to 0 (baseline: 1 energy = 1 slot) if not specified
-        if (charData.stats && charData.stats.speed === undefined) {
+        if (charData.stats.speed === undefined) {
           charData.stats.speed = 0;
         }
+        // Default aggression to neutral and clamp to [0, 10].
+        charData.stats.aggression = normalizeAggression(charData.stats.aggression);
         console.log(`Loaded enemy: ${charData.name} (${charData.id})`);
         characters[charData.id] = normalizeCharacterVisualConfig(charData);
       } catch (e) {

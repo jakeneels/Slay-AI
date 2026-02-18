@@ -1,0 +1,18 @@
+schemaVersion: 1
+id: aimed_shot
+name: "Aimed Shot"
+type: attack
+rarity: common
+cost: 1
+copies: 2
+tags: [basic]
+targeting: enemy
+maxRange: 10
+# optimalRange: 1
+exhaust: false
+expires_after_turns: 0
+description: "Aimed shot — best at long range, can reach 10 slots."
+effects:
+  - kind: damage
+    amount: 12
+

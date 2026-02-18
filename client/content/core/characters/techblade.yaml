@@ -14,11 +14,16 @@ role: tank
 theme: "Tank / Bruiser – thrives on blocking and countering."
 isPlayer: true
 sprite: "/assets/game/allies/jacob.png"
+spriteSheet: "/assets/game/allies/ted_attack.png"
+spriteSheetLayout: [2, 2]
+spriteSheetPreserveAspect: true
+spriteSheetOffsetY: 0
+spriteSheetOffsetX: 20
 stats:
-  hp: 90
-  maxHp: 120
-  energy: 7
-  maxEnergy: 7
+  hp: 100
+  maxHp: 100
+  energy: 15
+  maxEnergy: 15
   speed: 1
   suppression: 2
   suppressionResist: 1
@@ -29,8 +34,13 @@ mechanics:
 tags: ["warrior", "tech", "vanguard", "tank"]
 startingDeck:
   - "defend"
-  - "strike"
+  # - "strike"
   - "cleave"
   - "shield_dome"
   - "linebreaker"
+  - "misty_step"
   - "energy_lasso"
+  - "shockwave"
+  # - "thornmail"
+  # - "strike"
+  # - "flank"

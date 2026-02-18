@@ -1,0 +1,21 @@
+schemaVersion: 1
+id: shotgun_blast
+name: "Shotgun Blast"
+type: attack
+rarity: legendary   # common, rare, epic, legendary, mythic.
+cost: 3
+copies: 2
+tags: [radiation, ranged]
+targeting: enemy
+maxRange: 3
+minRange: 1
+exhaust: true
+expires_after_turns: 0
+description: "A slug laced with radioactive material. Deals light damage and irradiates exposed targets."
+effects:
+  - kind: damage
+    amount: 18
+  - kind: status
+    status: speed
+    stacks: -1
+    effectTarget: target

@@ -14,7 +14,7 @@ import { renderCharacterTooltip } from './renderCharacterTooltip.js';
 import { renderDevPanel } from './devPanel.js';
 import { renderVictoryModal } from './renderVictoryModal.js';
 import { renderPlayedCardsStack } from './renderPlayedCards.js';
-import { renderActiveCardShowcases } from '../../animations.js';
+import { renderActiveCardShowcases, renderActiveSpriteSheetOverlays } from '../../animations.js';
 import { renderPreFightModal } from './renderPreFightModal.js';
 import { getNoPreFightSetupSetting } from './preFightDisplaySettings.js';
 import {
@@ -82,6 +82,7 @@ export function render(): void {
   renderBackground(app);
   renderLanes(app, gameState);
   renderCharacters(app, gameState);
+  renderActiveSpriteSheetOverlays(app);
 
   if (gameState.preFight.active) {
     if (getNoPreFightSetupSetting()) {
