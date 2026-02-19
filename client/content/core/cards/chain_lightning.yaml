@@ -7,7 +7,7 @@ cost: 5
 copies: 1
 targeting: aoe
 aoeSlots: 4
-maxRange: 6
+maxRange: 8
 # optimalRange: 3
 exhaust: false
 expires_after_turns: 0

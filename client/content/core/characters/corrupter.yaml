@@ -35,6 +35,7 @@ startingDeck:
   - "rad_bio"
   - "rad_wave"
   - "rad_phase"
-  - "rad_cleave"
+  # - "nanite_repair"
+  # - "rad_cleave"
   - "rad_defend"
   - "rad_thorn"

@@ -244,4 +244,142 @@ describe('enemy pre-round range positioning', () => {
 
     expect(preferredRange).toBeGreaterThanOrEqual(10);
   });
+
+  it('aggression 0 prioritizes leaving hazardous lane', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+
+    const player = createMockCharacter({
+      id: 'player',
+      isPlayer: true,
+      slotIndex: 0,
+      hp: 100,
+      energy: 0,
+    });
+    const enemy = createMockCharacter({
+      id: 'enemy',
+      isPlayer: false,
+      slotIndex: 8,
+      hp: 100,
+      energy: 1,
+      moveCharges: 1,
+      aggression: 0,
+      deck: ['hold_range'],
+    });
+    const holdRange = createMockCard({
+      id: 'hold_range',
+      targeting: 'enemy',
+      minRange: 8,
+      maxRange: 8,
+      rarity: 'common',
+      effects: [{ kind: 'damage', amount: 4 }],
+    });
+
+    setupGameState({
+      characters: [player, enemy],
+      cardLibrary: { hold_range: holdRange },
+      laneHazards: [{ slotIndex: 8, damage: 6, remainingTurns: 2, ownerIsPlayer: true }],
+      currentPlayerId: 'player',
+      turnQueue: ['player', 'enemy'],
+      turnQueueIndex: 0,
+      roundNumber: 0,
+    });
+
+    processRoundStart();
+
+    expect(enemy.slotIndex).not.toBe(8);
+    const preRoundEntry = getGameState().enemyAiDebug.preRound.at(-1);
+    expect(preRoundEntry?.hazardEscapePrioritized).toBe(true);
+  });
+
+  it('aggression 5 has strong bias to leave hazardous lane', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+
+    const player = createMockCharacter({
+      id: 'player',
+      isPlayer: true,
+      slotIndex: 0,
+      hp: 100,
+      energy: 0,
+    });
+    const enemy = createMockCharacter({
+      id: 'enemy',
+      isPlayer: false,
+      slotIndex: 8,
+      hp: 100,
+      energy: 1,
+      moveCharges: 1,
+      aggression: 5,
+      deck: ['hold_range'],
+    });
+    const holdRange = createMockCard({
+      id: 'hold_range',
+      targeting: 'enemy',
+      minRange: 8,
+      maxRange: 8,
+      rarity: 'common',
+      effects: [{ kind: 'damage', amount: 4 }],
+    });
+
+    setupGameState({
+      characters: [player, enemy],
+      cardLibrary: { hold_range: holdRange },
+      laneHazards: [{ slotIndex: 8, damage: 6, remainingTurns: 2, ownerIsPlayer: true }],
+      currentPlayerId: 'player',
+      turnQueue: ['player', 'enemy'],
+      turnQueueIndex: 0,
+      roundNumber: 0,
+    });
+
+    processRoundStart();
+
+    expect(enemy.slotIndex).not.toBe(8);
+    const preRoundEntry = getGameState().enemyAiDebug.preRound.at(-1);
+    expect(preRoundEntry?.hazardEscapePrioritized).toBe(true);
+  });
+
+  it('aggression 10 rarely leaves hazardous lane and keeps aggressive positioning', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+
+    const player = createMockCharacter({
+      id: 'player',
+      isPlayer: true,
+      slotIndex: 0,
+      hp: 100,
+      energy: 0,
+    });
+    const enemy = createMockCharacter({
+      id: 'enemy',
+      isPlayer: false,
+      slotIndex: 8,
+      hp: 100,
+      energy: 1,
+      moveCharges: 1,
+      aggression: 10,
+      deck: ['hold_range'],
+    });
+    const holdRange = createMockCard({
+      id: 'hold_range',
+      targeting: 'enemy',
+      minRange: 8,
+      maxRange: 8,
+      rarity: 'common',
+      effects: [{ kind: 'damage', amount: 4 }],
+    });
+
+    setupGameState({
+      characters: [player, enemy],
+      cardLibrary: { hold_range: holdRange },
+      laneHazards: [{ slotIndex: 8, damage: 6, remainingTurns: 2, ownerIsPlayer: true }],
+      currentPlayerId: 'player',
+      turnQueue: ['player', 'enemy'],
+      turnQueueIndex: 0,
+      roundNumber: 0,
+    });
+
+    processRoundStart();
+
+    expect(enemy.slotIndex).toBe(8);
+    const preRoundEntry = getGameState().enemyAiDebug.preRound.at(-1);
+    expect(preRoundEntry?.hazardEscapePrioritized).toBe(false);
+  });
 });

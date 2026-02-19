@@ -1,0 +1,19 @@
+schemaVersion: 1
+id: heat_sink
+name: "Heat Sink"
+type: skill
+rarity: common
+cost: 1
+copies: 3
+tags: [pyro, defense, overclock]
+targeting: self
+exhaust: false
+expires_after_turns: 0
+description: "Vent pressure into armor plating. Gain strong block at a personal cost."
+effects:
+  - kind: damage
+    amount: 5
+    effectTarget: self
+  - kind: grant_block_layer
+    amount: 15
+    decay_percent: 50

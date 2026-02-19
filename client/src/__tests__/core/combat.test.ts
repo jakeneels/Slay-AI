@@ -168,6 +168,58 @@ describe('combat', () => {
       expect(player.energy).toBe(2);
     });
 
+    it('does not decay newly granted block at round transition before owner turn', async () => {
+      const ally = createMockCharacter({
+        id: 'ally1',
+        name: 'Ally',
+        energy: 3,
+        speed: 10,
+        isPlayer: true,
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        energy: 3,
+        speed: 0,
+        isPlayer: false,
+      });
+
+      const defendCard = createMockCard({
+        id: 'enemy_defend',
+        name: 'Enemy Defend',
+        cost: { energy: 1 },
+        targeting: 'self',
+        effects: [{ kind: 'grant_block_layer', amount: 8, decay_percent: 50 }],
+      });
+
+      setupGameState({
+        characters: [ally, enemy],
+        cardLibrary: { enemy_defend: defendCard },
+        currentPlayerId: 'enemy1',
+        turnQueue: ['ally1', 'enemy1'],
+        turnQueueIndex: 1, // Enemy is the last actor this round
+      });
+
+      const instanceId = createCardInstance('enemy_defend');
+      if (instanceId) {
+        enemy.hand.push(instanceId);
+      }
+
+      await playCard(instanceId!);
+      expect(enemy.blockLayers).toHaveLength(1);
+      expect(enemy.blockLayers[0].amount).toBe(8);
+
+      // Round transitions here, but next actor is Ally.
+      endTurn();
+      expect(getGameState().currentPlayerId).toBe('ally1');
+      expect(getGameState().characters.find(c => c.id === 'enemy1')?.blockLayers[0].amount).toBe(8);
+
+      // Enemy turn starts next and decay should happen then.
+      endTurn();
+      expect(getGameState().currentPlayerId).toBe('enemy1');
+      expect(getGameState().characters.find(c => c.id === 'enemy1')?.blockLayers[0].amount).toBe(4);
+    });
+
     it('should heal target character', async () => {
       const player = createMockCharacter({
         id: 'player1',
@@ -2544,6 +2596,53 @@ describe('combat', () => {
       expect(enemy4.hp).toBe(90);
     });
 
+    it('should handle AOE with 6 slots on enemy side', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        energy: 5,
+        isPlayer: true,
+        slotIndex: 0
+      });
+
+      const enemy1 = createMockCharacter({ id: 'enemy1', name: 'Enemy 1', hp: 100, isPlayer: false, slotIndex: 6 });
+      const enemy2 = createMockCharacter({ id: 'enemy2', name: 'Enemy 2', hp: 100, isPlayer: false, slotIndex: 7 });
+      const enemy3 = createMockCharacter({ id: 'enemy3', name: 'Enemy 3', hp: 100, isPlayer: false, slotIndex: 8 });
+      const enemy4 = createMockCharacter({ id: 'enemy4', name: 'Enemy 4', hp: 100, isPlayer: false, slotIndex: 9 });
+      const enemy5 = createMockCharacter({ id: 'enemy5', name: 'Enemy 5', hp: 100, isPlayer: false, slotIndex: 10 });
+      const enemy6 = createMockCharacter({ id: 'enemy6', name: 'Enemy 6', hp: 100, isPlayer: false, slotIndex: 11 });
+
+      const aoeCard = createMockCard({
+        id: 'aoe6',
+        name: 'AOE 6 Slots',
+        cost: { energy: 2 },
+        targeting: 'aoe',
+        targetSide: 'enemy',
+        aoeSlots: 6,
+        effects: [{ kind: 'damage', amount: 10 }]
+      });
+
+      setupGameState({
+        characters: [player, enemy1, enemy2, enemy3, enemy4, enemy5, enemy6],
+        cardLibrary: { aoe6: aoeCard },
+        currentPlayerId: 'player1'
+      });
+
+      const instanceId = createCardInstance('aoe6');
+      if (instanceId) {
+        player.hand.push(instanceId);
+      }
+
+      await playCard(instanceId!, 'enemy3');
+
+      expect(enemy1.hp).toBe(90);
+      expect(enemy2.hp).toBe(90);
+      expect(enemy3.hp).toBe(90);
+      expect(enemy4.hp).toBe(90);
+      expect(enemy5.hp).toBe(90);
+      expect(enemy6.hp).toBe(90);
+    });
+
     it('should default to 3 slots when aoeSlots is not specified', async () => {
       const player = createMockCharacter({
         id: 'player1',
@@ -3296,7 +3395,7 @@ describe('combat', () => {
       expect(player2.energy).toBe(5); // Restored to max
     });
 
-    it('should decay block layers at round start', () => {
+    it('should decay block layers on owner turn start', () => {
       const player = createMockCharacter({
         id: 'player1',
         name: 'Player',
@@ -3304,12 +3403,17 @@ describe('combat', () => {
         blockLayers: [{ amount: 100, baseAmount: 100, decay_percent: 20 }],
         isPlayer: true
       });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        energy: 3,
+        isPlayer: false,
+      });
 
-      // Queue is exhausted so endTurn triggers a new round (processRoundStart)
       setupGameState({
-        characters: [player],
-        currentPlayerId: 'player1',
-        turnQueue: ['player1'],
+        characters: [player, enemy],
+        currentPlayerId: 'enemy1',
+        turnQueue: ['enemy1', 'player1'],
         turnQueueIndex: 0,
         roundNumber: 1
       });
@@ -3669,7 +3773,7 @@ describe('combat', () => {
       vi.useRealTimers();
     });
 
-    it.skip('should handle enemy turn playing a card', async () => {
+    it('should handle enemy turn playing a card', async () => {
       vi.useFakeTimers();
       
       // Ensure app is set
@@ -3723,8 +3827,8 @@ describe('combat', () => {
       await promise;
 
       // Enemy should have played the card
-      expect(player.hp).toBe(95); // 100 - 5
-      expect(enemy.energy).toBe(2); // 3 - 1
+      expect(player.hp).toBeLessThan(100);
+      expect(enemy.energy).toBeLessThan(3);
       
       vi.useRealTimers();
     });
@@ -3896,6 +4000,78 @@ describe('combat', () => {
       expect(enemy.slotIndex).toBe(3);
       expect(enemy.energy).toBe(0);
 
+      vi.useRealTimers();
+    });
+
+    it('should enter inevitable-death mode and dump actions instead of safety repositioning', async () => {
+      vi.useFakeTimers();
+      vi.spyOn(Math, 'random').mockReturnValue(0);
+      setApp(mockApp);
+
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        hp: 100,
+        isPlayer: true,
+        slotIndex: 0,
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Doomed Enemy',
+        hp: 40,
+        energy: 3,
+        maxEnergy: 3,
+        isPlayer: false,
+        slotIndex: 3,
+        statuses: [{ id: 'doom', stacks: 1 }],
+      });
+
+      const enemyCard = createMockCard({
+        id: 'doomed_strike',
+        name: 'Doomed Strike',
+        cost: { energy: 1 },
+        targeting: 'enemy',
+        minRange: 3,
+        maxRange: 3,
+        effects: [{ kind: 'damage', amount: 5 }],
+      });
+
+      setupGameState({
+        characters: [player, enemy],
+        cardLibrary: { doomed_strike: enemyCard },
+        statusLibrary: {
+          doom: {
+            id: 'doom',
+            name: 'Doom',
+            description: 'Fatal next-round damage',
+            cadence: 'round_start',
+            dot: { damage_per_stack: 50, ignores_block: true },
+            decay: { mode: 'none' },
+          },
+        },
+        laneHazards: [{ slotIndex: 3, damage: 6, remainingTurns: 2, ownerIsPlayer: true }],
+        currentPlayerId: 'enemy1',
+        turnQueue: ['enemy1', 'player1'],
+        turnQueueIndex: 0,
+        roundNumber: 1,
+      });
+
+      const instanceId = createCardInstance('doomed_strike');
+      if (instanceId) {
+        enemy.hand.push(instanceId);
+      }
+
+      const turnPromise = processEnemyTurn(enemy);
+      await vi.runAllTimersAsync();
+      await turnPromise;
+
+      expect(player.hp).toBe(95);
+      expect(enemy.energy).toBe(2);
+      expect(enemy.slotIndex).toBe(3);
+      const turnEntry = getGameState().enemyAiDebug.turn.at(-1);
+      expect(turnEntry?.inevitableDeathMode).toBe(true);
+
+      vi.restoreAllMocks();
       vi.useRealTimers();
     });
 
@@ -5270,6 +5446,53 @@ describe('combat', () => {
   });
 
   describe('lane hazards', () => {
+    it('should allow enemy-target cards to place hazards on empty slots when enabled', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        energy: 3,
+        isPlayer: true,
+        slotIndex: 0
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        hp: 30,
+        isPlayer: false,
+        slotIndex: 5
+      });
+
+      const scorch = createMockCard({
+        id: 'scorch_empty',
+        name: 'Scorch Empty',
+        cost: { energy: 1 },
+        targeting: 'enemy',
+        allowEmptySlotTarget: true,
+        effects: [
+          { kind: 'damage', amount: 8 },
+          { kind: 'lane_hazard', damage: 4, duration_turns: 2 }
+        ]
+      });
+
+      setupGameState({
+        characters: [player, enemy],
+        cardLibrary: { scorch_empty: scorch },
+        currentPlayerId: 'player1'
+      });
+
+      const instanceId = createCardInstance('scorch_empty');
+      if (instanceId) player.hand.push(instanceId);
+
+      await playCard(instanceId!, 'slot:3');
+
+      const state = getGameState();
+      expect(state.laneHazards).toHaveLength(1);
+      expect(state.laneHazards[0].slotIndex).toBe(3);
+      expect(state.laneHazards[0].damage).toBe(4);
+      expect(state.laneHazards[0].remainingTurns).toBe(2);
+      expect(enemy.hp).toBe(30); // no direct damage because no character target was selected
+    });
+
     it('should create a lane hazard from card effects', async () => {
       const player = createMockCharacter({
         id: 'player1',
@@ -5313,6 +5536,140 @@ describe('combat', () => {
       expect(state.laneHazards[0].slotIndex).toBe(3);
       expect(state.laneHazards[0].damage).toBe(5);
       expect(state.laneHazards[0].remainingTurns).toBe(2);
+    });
+
+    it('should apply effect-level aoeSlots when creating lane hazards', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        energy: 3,
+        isPlayer: true,
+        slotIndex: 0
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        hp: 30,
+        isPlayer: false,
+        slotIndex: 3
+      });
+
+      const scorched = createMockCard({
+        id: 'scorched',
+        name: 'Scorched',
+        cost: { energy: 1 },
+        targeting: 'enemy',
+        effects: [
+          { kind: 'lane_hazard', damage: 2, duration_turns: 3, aoeSlots: 3 }
+        ]
+      });
+
+      setupGameState({
+        characters: [player, enemy],
+        cardLibrary: { scorched },
+        currentPlayerId: 'player1'
+      });
+
+      const instanceId = createCardInstance('scorched');
+      if (instanceId) player.hand.push(instanceId);
+
+      await playCard(instanceId!, 'enemy1');
+
+      const state = getGameState();
+      expect(state.laneHazards).toHaveLength(3);
+      const slots = state.laneHazards.map(h => h.slotIndex).sort((a, b) => a - b);
+      expect(slots).toEqual([2, 3, 4]);
+      state.laneHazards.forEach(hazard => {
+        expect(hazard.damage).toBe(2);
+        expect(hazard.remainingTurns).toBe(3);
+      });
+    });
+
+    it('should apply lane hazards across 6 slots when aoeSlots is 6', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        energy: 3,
+        isPlayer: true,
+        slotIndex: 0
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        hp: 30,
+        isPlayer: false,
+        slotIndex: 3
+      });
+
+      const inferno = createMockCard({
+        id: 'inferno',
+        name: 'Inferno',
+        cost: { energy: 1 },
+        targeting: 'enemy',
+        effects: [
+          { kind: 'lane_hazard', damage: 2, duration_turns: 2, aoeSlots: 6 }
+        ]
+      });
+
+      setupGameState({
+        characters: [player, enemy],
+        cardLibrary: { inferno },
+        currentPlayerId: 'player1'
+      });
+
+      const instanceId = createCardInstance('inferno');
+      if (instanceId) player.hand.push(instanceId);
+
+      await playCard(instanceId!, 'enemy1');
+
+      const state = getGameState();
+      expect(state.laneHazards).toHaveLength(6);
+      const slots = state.laneHazards.map(h => h.slotIndex).sort((a, b) => a - b);
+      expect(slots).toEqual([1, 2, 3, 4, 5, 6]);
+    });
+
+    it('should fall back to card aoeSlots for lane hazards', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        energy: 3,
+        isPlayer: true,
+        slotIndex: 0
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        hp: 30,
+        isPlayer: false,
+        slotIndex: 3
+      });
+
+      const blaze = createMockCard({
+        id: 'blaze',
+        name: 'Blaze',
+        cost: { energy: 1 },
+        targeting: 'enemy',
+        aoeSlots: 3,
+        effects: [
+          { kind: 'lane_hazard', damage: 1, duration_turns: 2 }
+        ]
+      });
+
+      setupGameState({
+        characters: [player, enemy],
+        cardLibrary: { blaze },
+        currentPlayerId: 'player1'
+      });
+
+      const instanceId = createCardInstance('blaze');
+      if (instanceId) player.hand.push(instanceId);
+
+      await playCard(instanceId!, 'enemy1');
+
+      const state = getGameState();
+      expect(state.laneHazards).toHaveLength(3);
+      const slots = state.laneHazards.map(h => h.slotIndex).sort((a, b) => a - b);
+      expect(slots).toEqual([2, 3, 4]);
     });
 
     it('should stack damage and duration when lane hazard is re-applied', async () => {

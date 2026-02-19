@@ -9,15 +9,15 @@ targeting: aoe
 aoeSlots: 3
 maxRange: 12
 # optimalRange: 3
-exhaust: false
+exhaust: true
 expires_after_turns: 0
 description: "Fly a drone with a napalm payload for instant impact damage, then ignite the lane. Enemies in that burning lane take fire damage."
 effects:
   - kind: damage
-    amount: 16
+    amount: 12
   - kind: lane_hazard
-    damage: 5
-    duration_turns: 2
+    damage: 4
+    duration_turns: 1
 animation:
   damage:
     projectileColor: 0xff4400  # Bright fire orange-red

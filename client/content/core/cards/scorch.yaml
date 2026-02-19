@@ -1,0 +1,28 @@
+schemaVersion: 1
+id: scorch
+name: "Scorch"
+type: attack
+rarity: rare
+cost: 2
+copies: 3
+tags: [pyro, hazard]
+targeting: enemy
+allowEmptySlotTarget: false
+maxRange: 5
+exhaust: false
+expires_after_turns: 0
+description: "Sear a target and ignite their lane."
+effects:
+  - kind: damage
+    amount: 4
+  - kind: lane_hazard
+    damage: 8
+    duration_turns: 1
+  - kind: speed
+    amount: -1
+    effectTarget: target
+animation:
+  damage:
+    projectileColor: 0xff6a00
+    projectileSpeed: 1300
+    impactSize: 110

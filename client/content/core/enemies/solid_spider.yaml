@@ -4,6 +4,7 @@ name: "Irrachnid"
 title: "Siege Walker"
 description: "A reinforced quadruped weapons platform with thick plating and suppressive fire."
 role: tank
+aggression: 8
 theme: "Frontline fortress - soaks damage and controls lanes."
 sprite: "/assets/game/enemies/solid-spider.png"
 visual:
@@ -18,8 +19,8 @@ slotSize: 2
 stats:
   hp: 90
   maxHp: 90
-  energy: 3
-  maxEnergy: 3
+  energy: 5
+  maxEnergy: 5
   speed: 0
   suppression: 3
   suppressionResist: 2

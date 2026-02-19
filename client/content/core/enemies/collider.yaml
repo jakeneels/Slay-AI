@@ -3,7 +3,8 @@ id: collider
 name: "Collider"
 title: "Impact Juggernaut"
 description: "A compact assault mech built to smash through formations and pin down the front line."
-role: bruiser
+role: tank/dps hybrid
+aggression: 8
 theme: "Lane-breaker - bursts forward and punishes close-range targets."
 sprite: "/assets/game/enemies/collider.png"
 visual:

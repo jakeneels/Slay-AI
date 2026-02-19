@@ -12,8 +12,8 @@ import type {
   GameModifier,
   ModifierTarget,
   ModifierContext,
+  ModifierCondition,
   Character,
-  Card,
 } from './types.js';
 
 // ── ModifierRegistry ─────────────────────────────────────────────────
@@ -208,6 +208,8 @@ function hasTag(character: Character, tag: string): boolean {
   // the character id is the key into characterLibrary which is set on GameState.
   // Since we don't want a circular dep on gameState here, the tag scope
   // is best-effort: we store tags on Character if available, or fall back.
+  void character;
+  void tag;
   return false; // TODO: wire up when character tags are on runtime object
 }
 

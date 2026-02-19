@@ -20,7 +20,7 @@ export interface BaseCardEffect {
   kind: string;
   amount: number;
   effectTarget?: EffectTarget;  // defaults to 'target' when omitted
-  aoeSlots?: number;            // 2/3/4, only relevant when effectTarget is 'aoe'
+  aoeSlots?: number;            // Number of slots to hit (commonly 2-6), only relevant when effectTarget is 'aoe'
   aoePattern?: AoePattern;      // how AOE slots are selected (default 'adjacent')
 }
 
@@ -130,6 +130,7 @@ export interface LaneHazardEffect {
   kind: 'lane_hazard';
   damage: number;
   duration_turns: number;
+  aoeSlots?: number; // Optional spread width around the targeted slot
 }
 
 // Union type for all card effects
@@ -157,7 +158,8 @@ export interface Card {
   effects: CardEffect[];
   targetSide: 'self' | 'ally' | 'enemy';
   targeting: 'single' | 'aoe' | 'self' | 'ally' | 'enemy' | 'allEnemies' | 'allAllies' | 'slot';
-  aoeSlots?: number; // Number of slots to hit with AOE (2, 3, or 4). Defaults to 3 if not specified.
+  aoeSlots?: number; // Number of slots to hit with AOE (commonly 2-6). Defaults to 3 if not specified.
+  allowEmptySlotTarget?: boolean; // If true, cards can target empty slot references (e.g. for lane hazards).
   rarity?: string;
   copies?: number;
   type?: 'attack' | 'skill' | 'power' | 'summon';
@@ -210,6 +212,9 @@ export interface BlockLayer {
   baseAmount: number; // Original amount when block was granted (for decay calculation)
   decay_percent: number; // Percentage to decay each turn (0-100)
   source?: string; // Card ID that created this block (optional)
+  sourceLabel?: string; // Readable source name for tooltips (optional)
+  decayOwnerId?: string; // Character whose turn start triggers this layer's decay
+  nextDecayOwnerTurnStart?: number; // Owner turn-start count when this layer decays next
 }
 
 // Status effect on a character
@@ -425,11 +430,23 @@ export interface EnemyAiPreRoundDebugEntry {
   currentDistanceAfter: number;
   moved: boolean;
   blockedByLaneConflict: boolean;
+  hazardEscapePrioritized?: boolean;
+  inevitableDeathMode?: boolean;
+}
+
+export interface EnemyAiTurnDebugEntry {
+  enemyId: string;
+  enemyName: string;
+  roundNumber: number;
+  aggression: number;
+  hazardEscapePrioritized: boolean;
+  inevitableDeathMode: boolean;
 }
 
 export interface EnemyAiDebugState {
   spawns: EnemyAiSpawnDebugEntry[];
   preRound: EnemyAiPreRoundDebugEntry[];
+  turn: EnemyAiTurnDebugEntry[];
 }
 
 export type RollbackSnapshotReason =
@@ -454,6 +471,7 @@ export interface GameState {
   turnIndex: number;
   turnQueue: string[];         // Ordered character IDs for current round
   turnQueueIndex: number;      // Current position in queue
+  turnStartsByCharacterId?: Record<string, number>; // How many turns each character has started
   roundNumber: number;         // Full round counter
   combatLog: string[];
   isProcessingTurn: boolean;

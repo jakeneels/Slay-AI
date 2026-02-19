@@ -25,7 +25,7 @@ import {
   type AnimationConfig,
   type PlayDamageAnimationOptions 
 } from '../../animations.js';
-import { applyDamageWithBlock, grantBlockLayer, decayBlockLayers } from './block.js';
+import { applyDamageWithBlock, grantBlockLayer, getNextDecayOwnerTurnStart, processBlockDecayForTurnStart } from './block.js';
 import { applyStatus, modifyStatusStacks, processStatusEffects, decayStatusDurations, getStatusStacks } from './status.js';
 import { MAX_SLOTS, SLOTS_PER_SIDE, calculateRangeModifier, getJumpMaxDistance, getJumpOccupiedSlotCost, getSuppressionDistance, getSuppressionRangedThreshold, getSuppressionStackCost } from './constants.js';
 import { getModifierRegistry } from './modifiers.js';
@@ -188,9 +188,8 @@ function updateFacingFromDelta(character: Character, delta: number, reason: stri
   const facing: 'left' | 'right' = delta > 0 ? 'right' : 'left';
   character.facing = facing;
   setCharacterFacing(character.id, facing);
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4a1d9c'},body:JSON.stringify({sessionId:'4a1d9c',runId:'post-fix-2',hypothesisId:'H4',location:'combat.ts:updateFacingFromDelta',message:'Facing updated from gameplay action',data:{characterId:character.id,name:character.name,reason,delta,previousFacing,newFacing:facing,slotIndex:character.slotIndex},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
+  void reason;
+  void previousFacing;
 }
 
 function updateFacingTowardsSlot(character: Character, targetSlot: number, reason: string): void {
@@ -413,7 +412,8 @@ function checkCombatResolutionAfterHazards(): void {
  * @param aoeSlots - Number of slots to hit. Defaults to 3.
  *   2 = center + one adjacent (prefer right)
  *   3 = center ± 1
- *   >= SLOTS_PER_SIDE = all characters on target side
+ *   4/5 = wider centered windows
+ *   >= SLOTS_PER_SIDE = all characters on target side (ally/enemy targeting only)
  */
 export function calculateAoeTargets(centerSlot: number, targetSide: 'enemy' | 'ally' | 'all', aoeSlots: number = 3): Character[] {
   const characters = targetSide === 'all'
@@ -424,8 +424,10 @@ export function calculateAoeTargets(centerSlot: number, targetSide: 'enemy' | 'a
     return [];
   }
 
-  // Side-wide AOE: hit everyone on the target side.
-  if (aoeSlots >= SLOTS_PER_SIDE) {
+  const normalizedSlots = Math.max(1, Math.floor(aoeSlots));
+
+  // Side-wide AOE: only applies for side-targeted resolution.
+  if (targetSide !== 'all' && normalizedSlots >= SLOTS_PER_SIDE) {
     return characters;
   }
 
@@ -436,15 +438,7 @@ export function calculateAoeTargets(centerSlot: number, targetSide: 'enemy' | 'a
     );
   };
 
-  if (aoeSlots === 2) {
-    // 2 slots: center + 1 right; fallback to center + 1 left
-    const inRange = getTargetsForSlots([centerSlot, centerSlot + 1]);
-    if (inRange.length > 0) return inRange;
-    return getTargetsForSlots([centerSlot - 1, centerSlot]);
-  }
-
-  // 3 slots (default): centerSlot ± 1 — only hits characters actually in adjacent slots
-  return getTargetsForSlots([centerSlot - 1, centerSlot, centerSlot + 1]);
+  return getTargetsForSlots(calculateCenteredSlotWindow(centerSlot, normalizedSlots, MAX_SLOTS));
 }
 
 /**
@@ -458,6 +452,41 @@ export function resolveTargetSlot(targetId: string): number | null {
   }
   const char = getGameState().characters.find(c => c.id === targetId);
   return char?.slotIndex ?? null;
+}
+
+function calculateCenteredSlotWindow(centerSlot: number, width: number, totalSlots: number): number[] {
+  const safeTotal = Math.max(1, Math.floor(totalSlots));
+  const clampedCenter = Math.max(0, Math.min(safeTotal - 1, Math.floor(centerSlot)));
+  const normalizedWidth = Math.max(1, Math.floor(width));
+
+  if (normalizedWidth >= safeTotal) {
+    return Array.from({ length: safeTotal }, (_, index) => index);
+  }
+
+  // Even widths stay right-biased to preserve 2-slot behavior (center + right).
+  let start = clampedCenter - Math.floor((normalizedWidth - 1) / 2);
+  let end = start + normalizedWidth - 1;
+
+  if (start < 0) {
+    end += -start;
+    start = 0;
+  }
+  if (end >= safeTotal) {
+    const shift = end - (safeTotal - 1);
+    start = Math.max(0, start - shift);
+    end = safeTotal - 1;
+  }
+
+  return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+}
+
+/**
+ * Calculate board slots affected by an AOE centered on a slot.
+ * Used for slot-based effects (like lane hazards) that should still apply
+ * when target slots are empty.
+ */
+function calculateAoeSlotIndices(centerSlot: number, aoeSlots: number = 3): number[] {
+  return calculateCenteredSlotWindow(centerSlot, aoeSlots, MAX_SLOTS);
 }
 
 /**
@@ -524,7 +553,8 @@ function getResolvedCard(cardId: string): Card | null {
         ...card, 
         targeting: template.targeting, 
         targetSide: template.targetSide,
-        aoeSlots: template.aoeSlots
+        aoeSlots: template.aoeSlots,
+        allowEmptySlotTarget: template.allowEmptySlotTarget,
       };
     }
   }
@@ -581,6 +611,13 @@ export function resolveCardTargets(
 
     case 'enemy': {
       if (!targetId) return null;
+      const targetSlot = resolveTargetSlot(targetId);
+      if (targetSlot !== null && card.allowEmptySlotTarget) {
+        const occupant = gameState.characters.find(
+          c => c.hp > 0 && c.isPlayer !== caster.isPlayer && getOccupiedSlots(c).includes(targetSlot)
+        );
+        return occupant ? [occupant] : [];
+      }
       const target = gameState.characters.find(c => c.id === targetId);
       if (!target) return null;
       if (target.isPlayer === caster.isPlayer) return null;
@@ -606,6 +643,13 @@ export function resolveCardTargets(
       return [target];
     }
   }
+}
+
+function canResolveCardWithoutCharacterTargets(card: Card, targetId: string | undefined): boolean {
+  if (!card.allowEmptySlotTarget) return false;
+  if (!targetId) return false;
+  if (resolveTargetSlot(targetId) === null) return false;
+  return card.effects.some(effect => effect.kind === 'lane_hazard');
 }
 
 /**
@@ -968,34 +1012,19 @@ export function setApp(application: Application): void {
  */
 export async function playCard(cardId: string, targetId?: string, renderCallback?: () => void): Promise<void> {
   if (!app) {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H1',location:'combat.ts:playCard:app-guard',message:'playCard returned early because app is not set',data:{cardId,targetId},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return;
   }
   
   const gameState = getGameState();
   // Block card plays after combat is over
   if (gameState.combatResult !== 'ongoing') {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H3',location:'combat.ts:playCard:combat-ended',message:'playCard returned early because combat ended',data:{cardId,targetId,currentPlayerId:gameState.currentPlayerId,combatResult:gameState.combatResult},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return;
   }
 
   const currentPlayer = gameState.characters.find(c => c.id === gameState.currentPlayerId);
   const card = getResolvedCard(cardId);
-  const handOwners = gameState.characters
-    .filter(c => c.hand.includes(cardId))
-    .map(c => ({ id: c.id, name: c.name, hp: c.hp, isPlayer: c.isPlayer }));
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H1',location:'combat.ts:playCard:entry',message:'playCard validation snapshot',data:{cardId,targetId,currentPlayerId:gameState.currentPlayerId,currentPlayerName:currentPlayer?.name ?? null,currentPlayerIsPlayer:currentPlayer?.isPlayer ?? null,cardFound:Boolean(card),handOwners},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   
   if (!currentPlayer || !card) {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H1',location:'combat.ts:playCard:missing-player-or-card',message:'playCard returned early because player/card missing',data:{cardId,targetId,currentPlayerId:gameState.currentPlayerId,hasCurrentPlayer:Boolean(currentPlayer),hasCard:Boolean(card)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return;
   }
   
@@ -1008,21 +1037,16 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
   const totalEnergyCost = card.cost.energy + suppressionPenalty + jumpMovementEnergyCost + jumpSurcharge;
 
   if (currentPlayer.energy < totalEnergyCost) {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H4',location:'combat.ts:playCard:insufficient-energy',message:'playCard returned early due insufficient energy',data:{cardId,currentPlayerId:currentPlayer.id,currentPlayerName:currentPlayer.name,energy:currentPlayer.energy,totalEnergyCost},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return;
   }
   if (!currentPlayer.hand.includes(cardId)) {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H1',location:'combat.ts:playCard:card-not-in-current-hand',message:'playCard returned early because card is not in current player hand',data:{cardId,currentPlayerId:currentPlayer.id,currentPlayerName:currentPlayer.name,currentPlayerHandSize:currentPlayer.hand.length,handOwners},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return;
   }
   
   // Determine targets based on targeting mode (relative to caster)
   const targets = resolveCardTargets(card, currentPlayer, targetId);
-  if (!targets || targets.length === 0) return;
+  const allowTargetlessResolution = canResolveCardWithoutCharacterTargets(card, targetId);
+  if (!targets || (targets.length === 0 && !allowTargetlessResolution)) return;
 
   // Only directional actions should rotate facing. Non-directional cards (e.g. defend)
   // should not cause "random" turns.
@@ -1182,28 +1206,34 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
     if (effect.kind === 'lane_hazard') {
       if (!targetId) continue;
       const laneHazard = effect as LaneHazardEffect;
-      const slot = resolveTargetSlot(targetId);
-      if (slot === null) continue;
+      const centerSlot = resolveTargetSlot(targetId);
+      if (centerSlot === null) continue;
 
       const damage = Math.max(0, Math.floor(laneHazard.damage));
       const durationTurns = Math.max(1, Math.floor(laneHazard.duration_turns));
-      const existing = gameState.laneHazards.find(h =>
-        h.slotIndex === slot && h.ownerIsPlayer === currentPlayer.isPlayer
-      );
+      const hazardAoeSlotsRaw = laneHazard.aoeSlots ?? card.aoeSlots ?? 1;
+      const hazardAoeSlots = Math.max(1, Math.floor(hazardAoeSlotsRaw));
+      const affectedSlots = calculateAoeSlotIndices(centerSlot, hazardAoeSlots);
 
-      if (existing) {
-        existing.damage += damage;
-        existing.remainingTurns += durationTurns;
-        addToCombatLog(`${card.name} intensifies flames on lane ${slot} (+${damage} dmg, +${durationTurns} turns)`);
-      } else {
-        gameState.laneHazards.push({
-          slotIndex: slot,
-          damage,
-          remainingTurns: durationTurns,
-          ownerIsPlayer: currentPlayer.isPlayer,
-          sourceCardId: card.id,
-        });
-        addToCombatLog(`${card.name} ignites lane ${slot} (${damage} fire, ${durationTurns} turns)`);
+      for (const slot of affectedSlots) {
+        const existing = gameState.laneHazards.find(h =>
+          h.slotIndex === slot && h.ownerIsPlayer === currentPlayer.isPlayer
+        );
+
+        if (existing) {
+          existing.damage += damage;
+          existing.remainingTurns += durationTurns;
+          addToCombatLog(`${card.name} intensifies flames on lane ${slot} (+${damage} dmg, +${durationTurns} turns)`);
+        } else {
+          gameState.laneHazards.push({
+            slotIndex: slot,
+            damage,
+            remainingTurns: durationTurns,
+            ownerIsPlayer: currentPlayer.isPlayer,
+            sourceCardId: card.id,
+          });
+          addToCombatLog(`${card.name} ignites lane ${slot} (${damage} fire, ${durationTurns} turns)`);
+        }
       }
 
       if (renderCallback) {
@@ -1463,7 +1493,12 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
             blockTarget,
             adjustedBlock,
             effect.decay_percent || 50,
-            card.id
+            card.id,
+            {
+              decayOwnerId: blockTarget.id,
+              sourceLabel: card.name,
+              nextDecayOwnerTurnStart: getNextDecayOwnerTurnStart(gameState, blockTarget.id),
+            }
           );
           sparkType = 'heal';
           // Render immediately to show updated block
@@ -1576,14 +1611,17 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
               if (adjacentTargets.length > 0) {
                 addToCombatLog(`${spreadStatusId} spreads to ${adjacentTargets.length} adjacent target${adjacentTargets.length > 1 ? 's' : ''} (${spreadStacks} stacks each)`);
                 sparkType = 'buff';
-                // Animate all adjacent targets
-                const spreadAnims = adjacentTargets.map(adj =>
-                  Promise.all([
-                    animateCharachterSpark(adj.id, 'buff', app),
-                    animateParticles(adj.id, 'shadow', 8, app)
-                  ])
-                );
-                animationPromise = Promise.all(spreadAnims).then(() => undefined);
+                // Animate all adjacent targets when app is available.
+                const activeApp = app;
+                if (activeApp) {
+                  const spreadAnims = adjacentTargets.map(adj =>
+                    Promise.all([
+                      animateCharachterSpark(adj.id, 'buff', activeApp),
+                      animateParticles(adj.id, 'shadow', 8, activeApp)
+                    ])
+                  );
+                  animationPromise = Promise.all(spreadAnims).then(() => undefined);
+                }
               }
             }
           }
@@ -1839,9 +1877,6 @@ export function processRoundStart(renderCallback?: () => void): void {
   );
 
   for (const character of gameState.characters.filter(c => c.hp > 0)) {
-    // Block decay for all living characters
-    decayBlockLayers(character);
-
     // Process all ticking statuses (single unified cadence)
     processStatusEffects(character, 'round_start');
 
@@ -1895,6 +1930,7 @@ export function processRoundStart(renderCallback?: () => void): void {
   // Rebuild queue after deaths (some characters may have died from DoTs)
   if (gameState.combatResult === 'ongoing') {
     gameState.turnQueue = buildTurnQueue();
+    gameState.enemyAiDebug.turn = [];
     applyEnemyPreRoundRangePositioning(renderCallback);
   }
 
@@ -1951,6 +1987,9 @@ export function endTurn(renderCallback?: () => void): void {
 
   gameState.currentPlayerId = nextPlayer.id;
 
+  // Block decay is owner-turn-start based.
+  processBlockDecayForTurnStart(nextPlayer, gameState);
+
   // Start-of-turn environmental damage (standing in hazards).
   const startHazardDamage = applyLaneHazardsToCharacter(nextPlayer, 'turn_start', renderCallback);
   if (startHazardDamage > 0 || nextPlayer.hp <= 0) {
@@ -1989,14 +2028,8 @@ export function endTurn(renderCallback?: () => void): void {
   // If it's an enemy turn, trigger AI after a delay
   if (!nextPlayer.isPlayer) {
     const expectedEpoch = getRollbackEpoch();
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H2',location:'combat.ts:endTurn:enemy-timeout-scheduled',message:'Scheduling enemy turn timeout',data:{nextPlayerId:nextPlayer.id,nextPlayerName:nextPlayer.name,turnIndex:gameState.turnIndex,turnQueueIndex:gameState.turnQueueIndex,isProcessingTurn:gameState.isProcessingTurn},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     setTimeout(() => {
       if (isRollbackEpochStale(expectedEpoch)) return;
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H2',location:'combat.ts:endTurn:enemy-timeout-fired',message:'Enemy turn timeout fired',data:{nextPlayerId:nextPlayer.id,nextPlayerName:nextPlayer.name,turnIndex:gameState.turnIndex,turnQueueIndex:gameState.turnQueueIndex,isProcessingTurn:gameState.isProcessingTurn},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       processEnemyTurn(nextPlayer!, renderCallback);
     }, 1000);
   }
@@ -2232,6 +2265,127 @@ function getModeTargetRange(mode: EnemyRangeMode, profile: EnemyRangeProfile): n
   }
 }
 
+function getHazardEscapeChance(aggressionRaw: number): number {
+  const aggression = clampAggression(aggressionRaw);
+  const normalized = aggression / 10;
+  const percent = 100 - 98 * Math.pow(normalized, 1.71);
+  return Math.max(0, Math.min(1, percent / 100));
+}
+
+function shouldPrioritizeHazardEscape(aggressionRaw: number): boolean {
+  return Math.random() < getHazardEscapeChance(aggressionRaw);
+}
+
+function getHazardDamageForFrontSlot(character: Character, frontSlot: number): number {
+  const gameState = getGameState();
+  const slotSize = getCharacterSlotSize(character);
+  const occupied = getOccupiedSlotsForFrontSlot(frontSlot, slotSize);
+  let totalDamage = 0;
+  for (const hazard of gameState.laneHazards) {
+    if (hazard.remainingTurns <= 0) continue;
+    if (hazard.ownerIsPlayer === character.isPlayer) continue;
+    if (!occupied.includes(hazard.slotIndex)) continue;
+    totalDamage += Math.max(0, Math.floor(hazard.damage));
+  }
+  return totalDamage;
+}
+
+function getExpectedStatusTickDamage(character: Character): number {
+  const gameState = getGameState();
+  const statuses = [...character.statuses];
+  if (statuses.length === 0) return 0;
+
+  let expectedDamage = 0;
+  let remainingBlock = character.blockLayers.reduce((sum, layer) => sum + Math.max(0, layer.amount), 0);
+
+  for (const status of statuses) {
+    const def = gameState.statusLibrary[status.id];
+    if (!def?.dot) continue;
+    const totalDamage = Math.max(0, status.stacks * def.dot.damage_per_stack);
+    if (totalDamage <= 0) continue;
+    if (def.dot.ignores_block) {
+      expectedDamage += totalDamage;
+      continue;
+    }
+    const absorbed = Math.min(remainingBlock, totalDamage);
+    remainingBlock -= absorbed;
+    expectedDamage += totalDamage - absorbed;
+  }
+  return expectedDamage;
+}
+
+function getPredictedDamageByNextRoundForSlot(character: Character, frontSlot: number): number {
+  const roundEndHazard = getHazardDamageForFrontSlot(character, frontSlot);
+  const nextTurnStartHazard = getHazardDamageForFrontSlot(character, frontSlot);
+  const statusTickDamage = getExpectedStatusTickDamage(character);
+  return roundEndHazard + nextTurnStartHazard + statusTickDamage;
+}
+
+function getReachableEnemyFrontSlots(enemy: Character, maxMoves: number): number[] {
+  const gameState = getGameState();
+  const slots: number[] = [];
+  const minSlot = Math.max(0, enemy.slotIndex - maxMoves);
+  const maxSlot = Math.min(MAX_SLOTS - getCharacterSlotSize(enemy), enemy.slotIndex + maxMoves);
+  for (let slot = minSlot; slot <= maxSlot; slot++) {
+    if (canOccupyRange(slot, getCharacterSlotSize(enemy), enemy.isPlayer, gameState.characters, enemy.id)) {
+      slots.push(slot);
+    }
+  }
+  if (!slots.includes(enemy.slotIndex)) {
+    slots.push(enemy.slotIndex);
+  }
+  return slots.sort((a, b) => a - b);
+}
+
+function isEnemyInevitableDeathByNextRound(enemy: Character): boolean {
+  if (enemy.hp <= 0) return true;
+  const maxMoves = getMaxMoves(enemy);
+  const reachable = getReachableEnemyFrontSlots(enemy, maxMoves);
+  let bestPredictedDamage = Number.POSITIVE_INFINITY;
+  for (const slot of reachable) {
+    const predicted = getPredictedDamageByNextRoundForSlot(enemy, slot);
+    if (predicted < bestPredictedDamage) bestPredictedDamage = predicted;
+  }
+  return bestPredictedDamage >= enemy.hp;
+}
+
+function getSafestReachablePreRoundSlot(
+  enemy: Character,
+  targetRange: number,
+  livingPlayers: Character[],
+  livingEnemies: Character[],
+  reservedSlots: Set<number>,
+): number {
+  const maxMoves = getMaxMoves(enemy);
+  const reachable = getReachableEnemyFrontSlots(enemy, maxMoves);
+  let bestSlot = enemy.slotIndex;
+  const currentPredictedDamage = getPredictedDamageByNextRoundForSlot(enemy, enemy.slotIndex);
+  let bestKey: [number, number, number] = [
+    currentPredictedDamage >= enemy.hp ? 1 : 0,
+    currentPredictedDamage,
+    Math.abs(getNearestDistanceFromSlot(enemy.slotIndex, livingPlayers) - targetRange),
+  ];
+
+  for (const slot of reachable) {
+    if (slot !== enemy.slotIndex && (isReservedConflict(enemy, slot, reservedSlots) || isFriendlyOccupiedAtFrontSlot(enemy, slot, livingEnemies))) {
+      continue;
+    }
+    const predictedDamage = getPredictedDamageByNextRoundForSlot(enemy, slot);
+    const lethal = predictedDamage >= enemy.hp ? 1 : 0;
+    const rangeError = Math.abs(getNearestDistanceFromSlot(slot, livingPlayers) - targetRange);
+    const key: [number, number, number] = [lethal, predictedDamage, rangeError];
+    const isBetter = key[0] < bestKey[0]
+      || (key[0] === bestKey[0] && key[1] < bestKey[1])
+      || (key[0] === bestKey[0] && key[1] === bestKey[1] && key[2] < bestKey[2]);
+    if (isBetter) {
+      bestKey = key;
+      bestSlot = slot;
+    }
+  }
+
+  return bestSlot;
+}
+
 export function getEnemyPreferredRangeDecisionForCardIds(
   cardIds: string[],
   aggressionRaw: number,
@@ -2274,17 +2428,25 @@ function tryEnemyPreRoundRangeMove(
   const profile = computeEnemyRangeProfile(enemy);
   const mode = selectEnemyRangeMode(enemy.aggression);
   const targetRange = getModeTargetRange(mode, profile);
+  const inevitableDeathMode = isEnemyInevitableDeathByNextRound(enemy);
   const nearestPlayer = getNearestLivingPlayer(enemy, livingPlayers);
   if (!nearestPlayer) {
     reserveEnemySlots(enemy, reservedSlots);
     return false;
   }
 
-  const desiredSlot = Math.max(0, Math.min(MAX_SLOTS - 1, nearestPlayer.slotIndex + targetRange));
+  let desiredSlot = Math.max(0, Math.min(MAX_SLOTS - getCharacterSlotSize(enemy), nearestPlayer.slotIndex + targetRange));
+  const currentLaneHazardous = getPredictedDamageByNextRoundForSlot(enemy, enemy.slotIndex) > 0;
+  const hazardEscapePrioritized = !inevitableDeathMode
+    && currentLaneHazardous
+    && shouldPrioritizeHazardEscape(enemy.aggression);
+  if (hazardEscapePrioritized) {
+    desiredSlot = getSafestReachablePreRoundSlot(enemy, targetRange, livingPlayers, livingEnemies, reservedSlots);
+  }
   const currentDist = getNearestDistanceFromSlot(enemy.slotIndex, livingPlayers);
   const currentDistanceBefore = currentDist;
   let blockedByLaneConflict = false;
-  if (Math.abs(currentDist - targetRange) <= PRE_ROUND_RANGE_TOLERANCE) {
+  if (!hazardEscapePrioritized && Math.abs(currentDist - targetRange) <= PRE_ROUND_RANGE_TOLERANCE) {
     gameState.enemyAiDebug.preRound.push({
       enemyId: enemy.id,
       enemyName: enemy.name,
@@ -2296,11 +2458,13 @@ function tryEnemyPreRoundRangeMove(
       currentDistanceAfter: currentDist,
       moved: false,
       blockedByLaneConflict,
+      hazardEscapePrioritized,
+      inevitableDeathMode,
     });
     reserveEnemySlots(enemy, reservedSlots);
     return false;
   }
-  if (enemy.slotIndex === desiredSlot) {
+  if (!hazardEscapePrioritized && enemy.slotIndex === desiredSlot) {
     gameState.enemyAiDebug.preRound.push({
       enemyId: enemy.id,
       enemyName: enemy.name,
@@ -2312,6 +2476,8 @@ function tryEnemyPreRoundRangeMove(
       currentDistanceAfter: currentDist,
       moved: false,
       blockedByLaneConflict,
+      hazardEscapePrioritized,
+      inevitableDeathMode,
     });
     reserveEnemySlots(enemy, reservedSlots);
     return false;
@@ -2325,7 +2491,7 @@ function tryEnemyPreRoundRangeMove(
     const nextSlot = needsForward ? enemy.slotIndex - 1 : enemy.slotIndex + 1;
     const currentError = Math.abs(getNearestDistanceFromSlot(enemy.slotIndex, livingPlayers) - targetRange);
     const nextError = Math.abs(getNearestDistanceFromSlot(nextSlot, livingPlayers) - targetRange);
-    if (nextError > currentError) {
+    if (!hazardEscapePrioritized && nextError > currentError) {
       break;
     }
 
@@ -2354,6 +2520,8 @@ function tryEnemyPreRoundRangeMove(
     currentDistanceAfter: getNearestDistanceFromSlot(enemy.slotIndex, livingPlayers),
     moved: movedAny,
     blockedByLaneConflict,
+    hazardEscapePrioritized,
+    inevitableDeathMode,
   });
   reserveEnemySlots(enemy, reservedSlots);
   return movedAny;
@@ -2388,6 +2556,7 @@ function scoreSlot(
   candidateSlot: number,
   livingPlayers: Character[],
   livingEnemies: Character[],
+  options?: { prioritizeHazardSafety?: boolean },
 ): number {
   const gameState = getGameState();
 
@@ -2458,7 +2627,18 @@ function scoreSlot(
   ).length;
   safetyScore = Math.max(0, safetyScore - adjacentPlayers * 2);
 
-  return cardScore + suppressionScore + frontlineScore + safetyScore;
+  let hazardPenalty = 0;
+  if (options?.prioritizeHazardSafety) {
+    const movementHazardDamage = getHazardDamageForFrontSlot(enemy, candidateSlot);
+    const predictedDamage = getPredictedDamageByNextRoundForSlot(enemy, candidateSlot);
+    hazardPenalty += movementHazardDamage * 5;
+    hazardPenalty += predictedDamage * 9;
+    if (predictedDamage >= enemy.hp) {
+      hazardPenalty += 40;
+    }
+  }
+
+  return cardScore + suppressionScore + frontlineScore + safetyScore - hazardPenalty;
 }
 
 /**
@@ -2471,7 +2651,11 @@ function scoreSlot(
  *  3. Pick the best slot (stay put if current slot already wins).
  *  4. Step toward it one slot at a time.
  */
-function tryEnemyOptimalMove(enemy: Character, renderCallback?: () => void): boolean {
+function tryEnemyOptimalMove(
+  enemy: Character,
+  renderCallback?: () => void,
+  options?: { prioritizeHazardSafety?: boolean },
+): boolean {
   const gameState = getGameState();
   const livingPlayers = gameState.characters.filter(c => c.isPlayer && c.hp > 0);
   if (livingPlayers.length === 0) return false;
@@ -2485,11 +2669,11 @@ function tryEnemyOptimalMove(enemy: Character, renderCallback?: () => void): boo
   const maxSlot = Math.min(MAX_SLOTS - 1, enemy.slotIndex + maxMoves);
 
   let bestSlot = enemy.slotIndex;
-  let bestScore = scoreSlot(enemy, enemy.slotIndex, livingPlayers, livingEnemies);
+  let bestScore = scoreSlot(enemy, enemy.slotIndex, livingPlayers, livingEnemies, options);
 
   for (let slot = minSlot; slot <= maxSlot; slot++) {
     if (slot === enemy.slotIndex) continue;
-    const score = scoreSlot(enemy, slot, livingPlayers, livingEnemies);
+    const score = scoreSlot(enemy, slot, livingPlayers, livingEnemies, options);
     if (score > bestScore) {
       bestScore = score;
       bestSlot = slot;
@@ -2527,9 +2711,6 @@ export async function processEnemyTurn(enemy: Character, renderCallback?: () => 
   const gameState = getGameState();
   const expectedEpoch = getRollbackEpoch();
   if (isRollbackEpochStale(expectedEpoch)) return;
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H3',location:'combat.ts:processEnemyTurn:entry',message:'Entered processEnemyTurn',data:{enemyId:enemy.id,enemyName:enemy.name,currentPlayerId:gameState.currentPlayerId,isProcessingTurn:gameState.isProcessingTurn,enemyEnergy:enemy.energy,enemyHandSize:enemy.hand.length},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   if (gameState.isProcessingTurn) return;
   pushHistorySnapshot('enemy_turn_start');
   gameState.isProcessingTurn = true;
@@ -2541,7 +2722,25 @@ export async function processEnemyTurn(enemy: Character, renderCallback?: () => 
 
   // Check if combat should end (all player characters dead)
   const livingPlayers = gameState.characters.filter(c => c.isPlayer && c.hp > 0);
+  const inevitableDeathMode = isEnemyInevitableDeathByNextRound(enemy);
+  let hazardEscapePrioritized = false;
+  const maybePrioritizeHazardEscape = (hazardRelevant: boolean): boolean => {
+    if (!hazardRelevant || inevitableDeathMode) return false;
+    const rollTriggered = shouldPrioritizeHazardEscape(enemy.aggression);
+    if (rollTriggered) {
+      hazardEscapePrioritized = true;
+    }
+    return rollTriggered;
+  };
   if (livingPlayers.length === 0) {
+    gameState.enemyAiDebug.turn.push({
+      enemyId: enemy.id,
+      enemyName: enemy.name,
+      roundNumber: gameState.roundNumber,
+      aggression: enemy.aggression,
+      hazardEscapePrioritized: false,
+      inevitableDeathMode,
+    });
     logAllAlliesDead();
     addToCombatLog(`${enemy.name} has no targets!`);
     gameState.isProcessingTurn = false;
@@ -2561,11 +2760,6 @@ export async function processEnemyTurn(enemy: Character, renderCallback?: () => 
   // ── Card-play loop ──────────────────────────────────────────────────
   while (true) {
     aiLoopIteration++;
-    if (aiLoopIteration <= 12) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H4',location:'combat.ts:processEnemyTurn:loop-start',message:'Enemy AI loop iteration',data:{enemyId:enemy.id,enemyName:enemy.name,currentPlayerId:gameState.currentPlayerId,iteration:aiLoopIteration,cardsPlayed,enemyEnergy:enemy.energy,enemyHandSize:enemy.hand.length,isProcessingTurn:gameState.isProcessingTurn},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
-    }
     // Re-check living players (a previous card may have killed everyone)
     const alivePlayers = gameState.characters.filter(c => c.isPlayer && c.hp > 0);
     if (alivePlayers.length === 0) break;
@@ -2611,6 +2805,14 @@ export async function processEnemyTurn(enemy: Character, renderCallback?: () => 
             const gainsOpponentHit = forwardPlan.opponentHits > currentPlan.opponentHits;
             const gainsScore = forwardPlan.score > currentPlan.score + 0.75;
             if (forwardPlan.targetId && (gainsOpponentHit || gainsScore)) {
+              const currentPredictedHazard = getPredictedDamageByNextRoundForSlot(enemy, enemy.slotIndex);
+              const forwardPredictedHazard = getPredictedDamageByNextRoundForSlot(enemy, forwardSlot);
+              const shouldAvoidRiskyForward = maybePrioritizeHazardEscape(
+                currentPredictedHazard > 0 || forwardPredictedHazard > 0,
+              ) && forwardPredictedHazard > currentPredictedHazard;
+              if (shouldAvoidRiskyForward) {
+                continue;
+              }
               const moved = moveCharacterForward(enemy.id, renderCallback);
               if (moved) {
                 consecutiveMoveAttempts++;
@@ -2659,6 +2861,24 @@ export async function processEnemyTurn(enemy: Character, renderCallback?: () => 
 
       const aiMoveCost = getMoveCost(enemy);
       if (aiMoveCost.usesCharge || enemy.energy >= aiMoveCost.energyCost) {
+        const forwardSlot = enemy.isPlayer ? enemy.slotIndex + 1 : enemy.slotIndex - 1;
+        const currentPredictedHazard = getPredictedDamageByNextRoundForSlot(enemy, enemy.slotIndex);
+        const forwardPredictedHazard = getPredictedDamageByNextRoundForSlot(enemy, forwardSlot);
+        const prioritizeHazardSafety = maybePrioritizeHazardEscape(
+          currentPredictedHazard > 0 || forwardPredictedHazard > 0,
+        );
+        if (prioritizeHazardSafety) {
+          const movedSafely = tryEnemyOptimalMove(enemy, renderCallback, { prioritizeHazardSafety: true });
+          if (movedSafely) {
+            consecutiveMoveAttempts++;
+            await delay(600);
+            if (isRollbackEpochStale(expectedEpoch)) return;
+            continue;
+          }
+          if (forwardPredictedHazard > currentPredictedHazard) {
+            break;
+          }
+        }
         const moved = moveCharacterForward(enemy.id, renderCallback);
         if (moved) {
           consecutiveMoveAttempts++;
@@ -2691,13 +2911,9 @@ export async function processEnemyTurn(enemy: Character, renderCallback?: () => 
     try {
       const energyBeforePlay = enemy.energy;
       const handBeforePlay = enemy.hand.length;
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H5',location:'combat.ts:processEnemyTurn:before-playCard',message:'About to call playCard',data:{enemyId:enemy.id,chosenCardId,chosenTargetId,energyBeforePlay,handBeforePlay},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       await playCard(chosenCardId!, chosenTargetId!, renderCallback);
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H5',location:'combat.ts:processEnemyTurn:after-playCard',message:'Returned from playCard',data:{enemyId:enemy.id,chosenCardId,chosenTargetId,energyBeforePlay,energyAfterPlay:enemy.energy,handBeforePlay,handAfterPlay:enemy.hand.length},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
+      void energyBeforePlay;
+      void handBeforePlay;
     } catch (err: any) {
       break;
     }
@@ -2713,13 +2929,25 @@ export async function processEnemyTurn(enemy: Character, renderCallback?: () => 
   }
 
   // ── Post-card positioning ───────────────────────────────────────────
-  if (enemy.hp > 0 && (enemy.energy > 0 || enemy.moveCharges > 0)) {
-    const moved = tryEnemyOptimalMove(enemy, renderCallback);
+  if (!inevitableDeathMode && enemy.hp > 0 && (enemy.energy > 0 || enemy.moveCharges > 0)) {
+    const prioritizePostCardHazards = maybePrioritizeHazardEscape(
+      getPredictedDamageByNextRoundForSlot(enemy, enemy.slotIndex) > 0,
+    );
+    const moved = tryEnemyOptimalMove(enemy, renderCallback, { prioritizeHazardSafety: prioritizePostCardHazards });
     if (moved) {
       await delay(600);
       if (isRollbackEpochStale(expectedEpoch)) return;
     }
   }
+
+  gameState.enemyAiDebug.turn.push({
+    enemyId: enemy.id,
+    enemyName: enemy.name,
+    roundNumber: gameState.roundNumber,
+    aggression: enemy.aggression,
+    hazardEscapePrioritized,
+    inevitableDeathMode,
+  });
 
   // ── End turn ────────────────────────────────────────────────────────
   await delay(cardsPlayed > 0 ? 500 : 1500);

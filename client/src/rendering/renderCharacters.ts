@@ -8,7 +8,7 @@ import { playCard, calculateAoeTargets, getOccupiedSlots, getCharacterSlotSize, 
 import { getSuppressionStackCost } from '../core/constants.js';
 import { render as renderCallback } from './renderer.js';
 import { registerCharacterSprite, hasActiveSpriteSheetOverlay } from '../../animations.js';
-import { getTotalBlock } from '../core/block.js';
+import { getNearestBlockDecayTurns, getTotalBlock } from '../core/block.js';
 import { MAX_SLOTS, WIDTH, HEIGHT, calculateRangeModifier } from '../core/constants.js';
 import { createEnergyIcon } from './icons/energyIcon.js';
 import { createHealIcon } from './icons/healIcon.js';
@@ -220,6 +220,14 @@ function getSlotSpacing(): number {
   return MAX_SLOTS > 1 ? availableWidth / (MAX_SLOTS - 1) : 0;
 }
 
+function getBlockDecayBucketColor(turnsUntilDecay: number | null): number {
+  if (turnsUntilDecay === null) return 0x22d3ee;
+  if (turnsUntilDecay <= 1) return 0xef4444;
+  if (turnsUntilDecay === 2) return 0xf97316;
+  if (turnsUntilDecay === 3) return 0xfacc15;
+  return 0x22d3ee;
+}
+
 function getSlotCenterX(slotIndex: number): number {
   return BATTLE_LEFT_BASE + slotIndex * getSlotSpacing() + CHAR_CENTER;
 }
@@ -292,7 +300,8 @@ export function renderCharacters(app: Application, gameState: GameState): void {
       return inst ? gsForCard.cardLibrary[inst.templateId] : null;
     })();
 
-    if (card && (card.targeting === 'aoe' || card.targeting === 'slot')) {
+    const supportsEmptyLaneTarget = card?.allowEmptySlotTarget === true && card.targeting === 'enemy';
+    if (card && (card.targeting === 'aoe' || card.targeting === 'slot' || supportsEmptyLaneTarget)) {
       const caster = gsForCard.characters.find(c => c.id === gsForCard.currentPlayerId);
       if (caster) {
         // Collect occupied slot indices (any living character)
@@ -314,8 +323,8 @@ export function renderCharacters(app: Application, gameState: GameState): void {
           if (occupiedSlots.has(slot)) continue; // character already renders a clickable sprite
           if (card.targeting === 'slot' && validJumpSlots && !validJumpSlots.has(slot)) continue;
 
-          // Range check (AOE cards only; jump uses getValidJumpSlots)
-          if (card.targeting === 'aoe' && (card.maxRange || card.minRange)) {
+          // Range check (jump uses getValidJumpSlots)
+          if ((card.targeting === 'aoe' || supportsEmptyLaneTarget) && (card.maxRange || card.minRange)) {
             const dist = Math.abs(caster.slotIndex - slot);
             if (card.maxRange && dist > card.maxRange) continue;
             if (card.minRange && dist < card.minRange) continue;
@@ -917,10 +926,10 @@ function renderCharacter(
   const totalBlock = getTotalBlock(char);
 
   if (totalBlock > 0) {
-    const shieldX = slotCenterX + totalBarRowW / 2 + 14;
+    const shieldX = slotCenterX + totalBarRowW / 2 + 11;
     const shieldY = hpBarY + BAR_HEIGHT / 2;
-    const shieldWidth = 32;
-    const shieldHeight = 38;
+    const shieldWidth = 24;
+    const shieldHeight = 29;
 
     const shield = new Graphics();
     const halfWidth = shieldWidth / 2;
@@ -928,15 +937,13 @@ function renderCharacter(
 
     shield.moveTo(-halfWidth, -shieldHeight/2 + topArcRadius)
       .arc(0, -shieldHeight/2 + topArcRadius, topArcRadius, Math.PI, 0, false)
-      .lineTo(halfWidth * 0.7, shieldHeight/2 * 0.5)
-      .lineTo(halfWidth * 0.55, shieldHeight/2 * 0.75)
-      .lineTo(0, shieldHeight/2)
-      .lineTo(-halfWidth * 0.55, shieldHeight/2 * 0.75)
-      .lineTo(-halfWidth * 0.7, shieldHeight/2 * 0.5)
+      .lineTo(halfWidth * 0.62, shieldHeight/2 * 0.36)
+      .lineTo(0, shieldHeight/2 * 0.68)
+      .lineTo(-halfWidth * 0.62, shieldHeight/2 * 0.36)
       .closePath();
 
-    shield.fill(0x60a5fa);
-    shield.stroke({ width: 2.5, color: 0x1e40af });
+    shield.fill(0x4f8fd8);
+    shield.stroke({ width: 1.8, color: 0x1e3a8a });
     shield.x = shieldX; shield.y = shieldY;
     shield.eventMode = 'none';
     shield.zIndex = Z_BLOCK;
@@ -944,13 +951,60 @@ function renderCharacter(
 
     const blockText = new Text({
       text: totalBlock.toString(),
-      style: { fill: 0xffffff, fontSize: 16, fontWeight: 'bold', stroke: { color: 0x000000, width: 4 } }
+      style: { fill: 0xffffff, fontSize: 12, fontWeight: 'bold', stroke: { color: 0x000000, width: 3 } }
     });
     blockText.x = shieldX - blockText.width / 2;
-    blockText.y = shieldY - blockText.height / 2 + 2;
+    blockText.y = shieldY - blockText.height / 2 + 1;
     blockText.eventMode = 'none';
     blockText.zIndex = Z_BLOCK + 1;
     app.stage.addChild(blockText);
+
+    const nearestDecayTurns = getNearestBlockDecayTurns(char, gameState);
+    const decayColor = getBlockDecayBucketColor(nearestDecayTurns);
+    const hourglassX = shieldX + 7;
+    const hourglassY = shieldY - 12;
+
+    const badgeBg = new Graphics();
+    badgeBg.circle(0, 0, 6)
+      .fill({ color: 0x111827, alpha: 0.94 })
+      .stroke({ width: 1.25, color: decayColor, alpha: 0.92 });
+    badgeBg.x = hourglassX;
+    badgeBg.y = hourglassY;
+    badgeBg.eventMode = 'none';
+    badgeBg.zIndex = Z_BLOCK + 2;
+    app.stage.addChild(badgeBg);
+
+    const hourglass = new Graphics();
+    hourglass
+      .moveTo(-2.3, -3.4)
+      .lineTo(2.3, -3.4)
+      .lineTo(0, -0.7)
+      .closePath()
+      .fill({ color: 0xe5e7eb, alpha: 0.95 })
+      .moveTo(-2.3, 3.4)
+      .lineTo(2.3, 3.4)
+      .lineTo(0, 0.7)
+      .closePath()
+      .fill({ color: 0xe5e7eb, alpha: 0.95 });
+    hourglass.stroke({ width: 0.85, color: decayColor, alpha: 0.85 });
+    hourglass.x = hourglassX;
+    hourglass.y = hourglassY;
+    hourglass.eventMode = 'none';
+    hourglass.zIndex = Z_BLOCK + 3;
+    app.stage.addChild(hourglass);
+
+    const blockHoverLeft = shieldX - shieldWidth / 2 - 4;
+    const blockHoverTop = shieldY - shieldHeight / 2 - 8;
+    const blockHoverW = shieldWidth + 28;
+    const blockHoverH = shieldHeight + 18;
+    registerCharacterHoverRegion(char.id, blockHoverLeft, blockHoverTop, blockHoverW, blockHoverH);
+    const blockHoverZone = new Graphics();
+    blockHoverZone.roundRect(0, 0, blockHoverW, blockHoverH, 8).fill({ color: 0xffffff, alpha: 0.001 });
+    blockHoverZone.x = blockHoverLeft;
+    blockHoverZone.y = blockHoverTop;
+    blockHoverZone.zIndex = Z_BLOCK + 5;
+    bindCharacterHover(blockHoverZone);
+    app.stage.addChild(blockHoverZone);
   }
 
   // Keep the turn arrow near the character, above the sprite HUD.

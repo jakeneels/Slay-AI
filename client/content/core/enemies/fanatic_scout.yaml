@@ -4,6 +4,7 @@ name: "Fanatic Scout"
 title: "Fanatic Scout"
 description: "A nimble scavenger armed with makeshift weapons and crude armor."
 role: dps
+aggression: 1
 theme: "Fast, low-HP enemy that excels at ranged damage and containment."
 sprite: "/assets/game/enemies/fanatic-scout.png"
 visual:

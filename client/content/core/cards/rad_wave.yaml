@@ -2,9 +2,9 @@ schemaVersion: 1
 id: rad_wave
 name: "Rad Wave"
 type: attack
-rarity: rare
+rarity: epic
 cost: 2
-copies: 1
+copies: 2
 tags: [radiation, ranged, aoe]
 targeting: enemy
 maxRange: 7

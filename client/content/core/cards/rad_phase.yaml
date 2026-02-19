@@ -3,8 +3,8 @@ id: rad_phase
 name: "Ionic Phase"
 type: attack
 rarity: epic   # common, rare, epic, legendary, mythic.
-cost: 3
-copies: 2
+cost: 2
+copies: 3
 tags: [radiation, ranged]
 targeting: enemy
 maxRange: 9
@@ -13,7 +13,7 @@ expires_after_turns: 0
 description: "A slug laced with radioactive material. Deals light damage and irradiates exposed targets."
 effects:
   - kind: damage
-    amount: 6
+    amount: 4
   - kind: status
     status: radiation
     stacks: 9

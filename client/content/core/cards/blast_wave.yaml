@@ -1,0 +1,23 @@
+schemaVersion: 1
+id: blast_wave
+name: "Blast Wave"
+type: attack
+rarity: rare
+cost: 2
+copies: 2
+tags: [pyro, control]
+targeting: enemy
+maxRange: 4
+exhaust: false
+expires_after_turns: 0
+description: "A concussive thermal burst that drives enemies back."
+effects:
+  - kind: damage
+    amount: 6
+  - kind: knockback
+    amount: 2
+animation:
+  damage:
+    projectileColor: 0xff3b1f
+    projectileSpeed: 1200
+    impactSize: 150

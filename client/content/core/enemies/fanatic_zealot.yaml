@@ -4,6 +4,7 @@ name: "Fanatic Zealot"
 title: "AI Worshipper"
 description: "Human worshipper of AI overlords, armed with stolen tech relics."
 role: dps
+aggression: 3
 theme: "Aggressive Frontliner – reckless but high damage."
 sprite: "/assets/game/enemies/fanatic-zealot.png"
 visual:

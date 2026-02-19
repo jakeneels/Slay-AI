@@ -7,14 +7,14 @@ cost: 5
 copies: 1
 targeting: aoe
 aoeSlots: 4
-maxRange: 6
+maxRange: 8
 # optimalRange: 3
 exhaust: false
 expires_after_turns: 0
 description: "Lightning arcs across the battlefield, striking all enemies in range."
 effects:
   - kind: damage
-    amount: 12
+    amount: 10
   - kind: speed 
     amount: -1
     effectTarget: target

@@ -121,6 +121,38 @@ Nobody knows what Nyx was before the radiation took her. She doesn't remember, o
 
 ---
 
+### 5. Sable — Ashborn Pyroclast
+
+**Role:** Burst DPS / Battlefield Hazard Controller
+
+#### Lore
+
+Sable was a salvage runner for a caravan guild based out of a nameless settlement on the western edge of the Rustlands -- a place the locals called Kindletown, built unknowingly on top of **the Crucible**: a buried pre-war AI thermal weapons proving ground where prototype plasma projectors were tested at impossible temperatures. For decades the residual thermal energy bled up through the bedrock, warming homes and letting people survive winter. They thought it was luck.
+
+It was contamination.
+
+The heat seeped into everyone, but Sable took the worst of it. She spent years crawling the Crucible's collapsed test chambers for rare alloys and heat-shield composites. By twenty, her baseline body temperature was well past survivable, water boiled in her canteen, and metal softened in her hands. When Fanatics attacked Kindletown to claim the Crucible as a sacred relic, Sable came up from below to find her home burning. The pressure she'd contained for years detonated in one thermal shockwave, turning sand to glass and the front assault line to ash.
+
+She's not radioactive like Nyx -- she's **thermally anomalous**. Her body is a furnace she can barely contain. She can ignite air, superheat ground, and weaponize her own blood as incendiary fuel, but every outburst burns her from the inside. She now hunts the Fanatics across the wastes in salvaged heat-resistant armor from the Crucible, determined to burn out every cult nest before her own fire consumes her.
+
+#### Visual Description
+
+- **Build:** Medium height, athletic-to-wiry. Compact, coiled, explosive movement profile.
+- **Skin:** Deep brown with cracked **molten amber** thermal fissures along forearms, collarbone, and neck. The cracks brighten when channeling power; nearby skin is charred and hardened.
+- **Hair:** Jet black, short on the sides and swept back on top, with ember-orange singed tips and faint heat-haze shimmer.
+- **Eyes:** Bright amber-gold; they flare crimson during power surges.
+- **Outfit:** Heat-resistant scavenger gear -- dark ceramic chest plate with stress cracks glowing amber, asbestos-weave wraps on forearms and hands, tattered heat-scorched shoulder drape, reinforced pants and heavy heat-scarred boots.
+- **Weapon:** A salvaged **Crucible Igniter** in the right hand (matte-black cylinder with exposed orange coils), chained to a wrist cuff. Her left hand channels raw thermal distortion.
+- **Effects:** Constant heat shimmer, drifting embers, subtle scorch marks near her feet.
+- **Pose (idle):** Leaning forward with weight on one leg, Igniter low at her side, off-hand open and radiating heat. Controlled fury.
+- **Color Palette:** Charcoal black, scorched brown, dirty off-white wraps, with **molten amber/gold** and **burning crimson** accents.
+
+#### AI Sprite Prompt
+
+> Full-body front-facing character sprite, post-apocalyptic female thermal mutant pyroclast, medium athletic compact build with aggressive forward posture, deep brown skin with cracked molten amber-orange glowing thermal fissures on forearms collarbone and neck pulsing like cooling lava, cropped jet-black hair swept back with ember-orange smoldering tips and heat-haze shimmer, intense glowing amber-gold eyes, dark charcoal ceramic composite chest armor cracked with amber glow bleeding through from Crucible plasma projector housing, dirty singed asbestos-weave bandages wrapped around forearms and hands with one hand partially unwrapped showing glowing thermal fissures, dark tattered heat-scorched half-cape from left shoulder, reinforced pants with ceramic knee plates heavy heat-scarred boots, holding cylindrical matte black Crucible Igniter device with exposed orange-glowing coils connected by chain to wrist-cuff in right hand, left hand open with heat-haze radiating from palm, faint embers drifting upward from shoulders and hair heat shimmer distortion aura, ground beneath feet heat-darkened, gritty sci-fi post-apocalyptic thermal warrior style, charcoal black and scorched brown with molten amber-gold and burning crimson neon accents, transparent background, game sprite, painterly card-game art
+
+---
+
 ## ENEMIES
 
 ---
@@ -320,6 +352,31 @@ If Nyx represents what radiation can create when it *refines*, the Mutant Brute 
 
 ---
 
+### 13. Bombaras — Tesla Collider
+
+**Role:** DPS / Electrical Bombarder / Elite
+
+#### Lore
+
+In the ruins of Sector 7-G, the AI weapons division built more than targeting systems and drones. They built the BOMBARAS-class assault mechs: walking power stations designed to overload and destroy enemy formations with overwhelming electrical discharge. Each unit mounts dual Tesla colliders—heavy barrel cannons packed with orange-coiled capacitors that generate spheres of crackling blue energy. When a Bombaras fires, the colliders project arcing lightning across the battlefield, frying circuits, melting armor, and turning flesh to ash. After the fall, a handful of these mechs remain operational, their combat programming degraded but their weapons still lethal. They move deliberately, conserving charge between devastating salvos. Up close, their secondary arms—metallic claws—can tear through anyone foolish enough to close the gap.
+
+#### Visual Description
+
+- **Build:** Large bipedal humanoid mech, heavily armored, wide combat stance. Robust, bulky physique with thick armored legs.
+- **Body:** Dark metallic gray and brown plating, heavy industrial armor. Chest displays prominent glowing blue circular core elements.
+- **Head:** Helmet-like, angular, predatory. Glowing blue optical sensors or "eyes."
+- **Upper Arms (Tesla Colliders):** Two large, heavily armored upper arms, each culminating in a cylindrical barrel housing visible orange-coiled mechanisms (Tesla coils/capacitors). Bright glowing blue spheres of electrical energy actively radiating at the barrel ends—the signature "Tesla collider" weapon.
+- **Lower Arms:** Two additional armored arms below the main weapon arms. End in metallic claws or pincers for close-quarters combat.
+- **Energy Effects:** Glowing blue energy scattered across the body—Tesla collider spheres, head accent, chest core, joints.
+- **Pose (idle):** Wide, ready-for-combat stance, colliders charged and radiating.
+- **Color Palette:** Dark textured grays and browns for metallic body, **electric blue** and **plasma cyan** for energy effects, subtle **orange** accents on coils.
+
+#### AI Sprite Prompt
+
+> Full-body front-facing enemy sprite, post-apocalyptic heavy assault mech with Tesla colliders, large bipedal humanoid heavily armored robotic build with dark metallic gray and brown plating, wide combat stance, helmet-like angular predatory head with glowing blue optical sensors, two large upper arms each with cylindrical Tesla collider barrels housing orange-coiled capacitor mechanisms and bright glowing blue spheres of electrical energy radiating at barrel ends, two smaller armored lower arms with metallic claws or pincers, glowing blue energy on chest core head and joints, gritty sci-fi post-apocalyptic military mech style, dark gray and brown metal with electric blue and orange coil accents, transparent background, game enemy sprite, painterly card-game art
+
+---
+
 ## Quick Reference — Color Identity
 
 | Character/Enemy       | Primary Tones              | Accent Glow Colors              |
@@ -328,6 +385,7 @@ If Nyx represents what radiation can create when it *refines*, the Mutant Brute 
 | Jacob (Techblade)     | Matte black, ceramic white | Plasma blue, electric cyan      |
 | Kael (Tactician)      | Olive drab, charcoal       | Warning orange, terminal green  |
 | Nyx (Corrupter)       | Ash gray, bone white       | Radioactive green (dominant)    |
+| Sable (Ashborn)       | Charcoal, scorched brown   | Molten amber, burning crimson   |
 | Wasteland Scout       | Dirt brown, rust, dull gray| None (analog)                   |
 | Fanatic Zealot        | Charcoal, gunmetal         | Erratic red, unstable orange    |
 | Fanatic Sprinter      | Dark gray, black metal     | Corrupt purple, electric white  |
@@ -336,6 +394,7 @@ If Nyx represents what radiation can create when it *refines*, the Mutant Brute 
 | Neural Stalker        | Near-black matte           | Cold violet/purple              |
 | Rustbeast Quadruped   | Rust orange, corroded brown| Toxic green, hydraulic yellow   |
 | Mutant Brute          | Gray-green, bone white     | Toxic yellow-green              |
+| Bombaras              | Dark gray, brown metal     | Electric blue, orange coils    |
 
 ---
 

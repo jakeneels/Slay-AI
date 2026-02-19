@@ -1,0 +1,18 @@
+schemaVersion: 1
+id: flashpoint
+name: "Flashpoint"
+type: skill
+rarity: epic
+cost: 0
+copies: 2
+tags: [pyro, overclock]
+targeting: self
+exhaust: false
+expires_after_turns: 0
+description: "Convert blood heat to immediate output. Hurt yourself to surge energy."
+effects:
+  - kind: damage
+    amount: 8
+    effectTarget: self
+  - kind: energy
+    amount: 2

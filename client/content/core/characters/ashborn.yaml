@@ -1,0 +1,39 @@
+schemaVersion: 1
+id: ashborn
+name: "Sable"
+title: "Ashborn Pyroclast"
+description: "Thermal mutant skirmisher who shapes the battlefield with fire and reckless overclocking."
+role: dps
+theme: "Burst DPS / Hazard Control - creates burning lanes and repositions enemies."
+isPlayer: true
+sprite: "/assets/game/allies/sable.png"
+visual:
+  preset: humanoid
+  scale: 0.65
+  anchorX: 0.5
+  anchorY: 1
+  offsetX: 0
+  offsetY: 0
+stats:
+  hp: 75
+  maxHp: 75
+  energy: 7
+  maxEnergy: 7
+  speed: 1
+  suppression: 0
+  suppressionResist: 1
+mechanics:
+  - "Creates and extends lane fire hazards"
+  - "Uses HP as a resource for burst turns"
+  - "Pushes enemies into hazard zones"
+  - "Retaliates with ember thorns"
+tags: ["pyro", "ashborn", "hazard", "melee", "berserker"]
+startingDeck:
+  - "scorch"
+  - "blast_wave"
+  - "heat_sink"
+  - "flashpoint"
+  - "scorched_earth"
+  - "ember_guard"
+  - "flank"
+  - "immolate"

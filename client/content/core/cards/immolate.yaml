@@ -1,0 +1,30 @@
+schemaVersion: 1
+id: immolate
+name: "Immolate"
+type: attack
+rarity: mythic
+cost: 5
+copies: 1
+tags: [pyro, hazard, finisher]
+targeting: aoe
+aoeSlots: 6
+allowEmptySlotTarget: true
+maxRange: 12
+exhaust: true
+expires_after_turns: 0
+description: "Incinerate a wide front. Leaves long-burning lanes at twice normal duration."
+effects:
+  - kind: damage
+    amount: 4
+  - kind: lane_hazard
+    damage: 1
+    duration_turns: 4
+    aoeSlots: 6
+  - kind: damage
+    amount: 10
+    effectTarget: self
+animation:
+  damage:
+    projectileColor: 0xff2200
+    projectileSpeed: 1000
+    impactSize: 240

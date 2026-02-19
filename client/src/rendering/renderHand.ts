@@ -2,11 +2,11 @@
 
 import type { Application } from 'pixi.js';
 import { Graphics, Text, Rectangle } from 'pixi.js';
-import type { GameState, Character, Card, CardEffect, BaseCardEffect, StatusEffect, StatusModifyEffect, StatusSpreadEffect, LaneHazardEffect } from '../core/types.js';
+import type { GameState, Character, Card, CardEffect, BaseCardEffect, StatusEffect, StatusModifyEffect, StatusSpreadEffect, LaneHazardEffect, ThornsEffect } from '../core/types.js';
 import { WIDTH } from '../core/constants.js';
 
 /** Max slots shown on card position indicators (largest AOE in the game). */
-const MAX_INDICATOR_SLOTS = 4;
+const MAX_INDICATOR_SLOTS = 6;
 import { getCard } from '../core/card.js';
 import { getSelectedCardId, setSelectedCardId } from '../core/gameState.js';
 import { render as renderCallback } from './renderer.js';
@@ -21,6 +21,7 @@ import { createExhaustIcon } from './icons/exhaustIcon.js';
 import { createShieldIcon } from './icons/shieldIcon.js';
 import { createRangeIcon } from './icons/rangeIcon.js';
 import { createLaneHazardIcon } from './icons/laneHazardIcon.js';
+import { createThornsIcon } from './icons/thornsIcon.js';
 import { registerCardHoverRegion, setHoveredCard } from './tooltipState.js';
 import { getStatusDisplay } from './statusConfig.js';
 import { renderCardTile } from './cardTileRenderer.js';
@@ -149,6 +150,7 @@ function createEffectIcon(kind: string, size: number): Graphics | null {
     case 'knockback': return createKnockbackIcon(size);
     case 'jump': return createSpeedIcon(size);
     case 'lane_hazard': return createLaneHazardIcon(size);
+    case 'thorns': return createThornsIcon(size);
     default: return null;
   }
 }
@@ -164,6 +166,7 @@ function effectColor(kind: string): number {
     case 'knockback':                 return 0xef4444;   // red-orange
     case 'jump':                      return 0x8b5cf6;   // violet
     case 'lane_hazard':               return 0xf97316;   // orange (fire)
+    case 'thorns':                    return 0xf59e0b;   // amber (thorns)
     default:                          return 0xd1d5db;   // gray fallback
   }
 }
@@ -256,6 +259,27 @@ function renderSingleEffect(
       const text = new Text({
         text: `${lh.damage}×${lh.duration_turns}t`,
         style: { fill: effectColor('lane_hazard'), fontSize, fontWeight: 'bold' }
+      });
+      text.x = ex; text.y = rowY; text.eventMode = 'none';
+      app.stage.addChild(text);
+      ex += text.width;
+    }
+    return ex;
+  }
+
+  // Thorns: show thorns icon + stacks
+  if (effect.kind === 'thorns') {
+    const th = effect as ThornsEffect;
+    const stacks = Math.max(1, Math.floor(th.stacks ?? 1));
+    const icon = createEffectIcon('thorns', iconSize);
+    let ex = startX;
+    if (icon) {
+      icon.x = ex; icon.y = rowY;
+      app.stage.addChild(icon);
+      ex += iconSize + 1;
+      const text = new Text({
+        text: `${stacks}`,
+        style: { fill: effectColor('thorns'), fontSize, fontWeight: 'bold' }
       });
       text.x = ex; text.y = rowY; text.eventMode = 'none';
       app.stage.addChild(text);
@@ -545,7 +569,7 @@ function renderEnemyHand(app: Application, _gameState: GameState, currentPlayer:
           const aoeTargetSide = key.startsWith('aoe_') ? (card.targetSide === 'ally' ? 'ally' : 'enemy') : undefined;
           const noEmptySlots = key === 'self' || key.startsWith('aoe_');
           const rangeForIndicator = key !== 'self' ? reachableSlots : undefined;
-          indicatorWidth = renderPositionIndicator(app, ex, curY, lbl.filledCount, lbl.targetType, Math.floor(effectIconSize * 0.65), aoeTargetSide, noEmptySlots, rangeForIndicator);
+          indicatorWidth = renderPositionIndicator(app, ex, curY, lbl.filledCount, lbl.targetType, Math.floor(effectIconSize * 0.72), aoeTargetSide, noEmptySlots, rangeForIndicator);
           ex += indicatorWidth + 2;
         } else if (lbl.usePositionIndicator) {
           ex += indicatorWidth + 2;

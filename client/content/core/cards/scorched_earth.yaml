@@ -1,0 +1,28 @@
+schemaVersion: 1
+id: scorched_earth
+name: "Scorched Earth"
+type: skill
+rarity: legendary
+cost: 3
+copies: 2
+tags: [pyro, hazard]
+targeting: aoe
+aoeSlots: 3
+allowEmptySlotTarget: true
+maxRange: 6
+exhaust: true
+expires_after_turns: 0
+description: "Ignite a whole lane section, then pay the burn tax."
+effects:
+  - kind: lane_hazard
+    damage: 3
+    duration_turns: 3
+    aoeSlots: 3
+  - kind: damage
+    amount: 5
+    effectTarget: self
+animation:
+  damage:
+    projectileColor: 0xff5500
+    projectileSpeed: 900
+    impactSize: 190

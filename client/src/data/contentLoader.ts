@@ -239,7 +239,8 @@ export async function loadContent(): Promise<LoadedContent> {
           effects: parsedEffects,
           targetSide: targetSide,
           targeting: targeting,
-          aoeSlots: cardData.aoeSlots, // Optional: number of slots for AOE targeting (2, 3, or 4)
+          aoeSlots: cardData.aoeSlots, // Optional: number of slots for AOE targeting (commonly 2-6)
+          allowEmptySlotTarget: cardData.allowEmptySlotTarget === true,
           copies: cardData.copies || 1,
           type: cardData.type,
           tags: cardData.tags || [],

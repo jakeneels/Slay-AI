@@ -7,6 +7,7 @@ import type {
   StatusModifyEffect,
   StatusSpreadEffect,
   LaneHazardEffect,
+  ThornsEffect,
 } from '../core/types.js';
 import { createEnergyIcon } from './icons/energyIcon.js';
 import { createDamageIcon } from './icons/damageIcon.js';
@@ -18,11 +19,12 @@ import { createExhaustIcon } from './icons/exhaustIcon.js';
 import { createShieldIcon } from './icons/shieldIcon.js';
 import { createRangeIcon } from './icons/rangeIcon.js';
 import { createLaneHazardIcon } from './icons/laneHazardIcon.js';
+import { createThornsIcon } from './icons/thornsIcon.js';
 import { getStatusDisplay } from './statusConfig.js';
 import { registerCardHoverRegion } from './tooltipState.js';
 
 /** Max slots shown on card position indicators (largest AOE in the game). */
-const MAX_INDICATOR_SLOTS = 4;
+const MAX_INDICATOR_SLOTS = 6;
 const DEFAULT_TITLE_SIZE = 13;
 const MIN_TITLE_SIZE = 11;
 
@@ -105,6 +107,8 @@ function createEffectIcon(kind: string, size: number): Graphics | null {
       return createSpeedIcon(size);
     case 'lane_hazard':
       return createLaneHazardIcon(size);
+    case 'thorns':
+      return createThornsIcon(size);
     default:
       return null;
   }
@@ -130,6 +134,8 @@ function effectColor(kind: string): number {
       return 0x8b5cf6;
     case 'lane_hazard':
       return 0xf97316;
+    case 'thorns':
+      return 0xf59e0b;
     default:
       return 0xd1d5db;
   }
@@ -275,6 +281,29 @@ function renderSingleEffect(
       const text = new Text({
         text: `${lh.damage}×${lh.duration_turns}t`,
         style: { fill: effectColor('lane_hazard'), fontSize, fontWeight: 'bold' },
+      });
+      text.x = ex;
+      text.y = rowY;
+      text.eventMode = 'none';
+      parent.addChild(text);
+      ex += text.width;
+    }
+    return ex;
+  }
+
+  if (effect.kind === 'thorns') {
+    const th = effect as ThornsEffect;
+    const stacks = Math.max(1, Math.floor(th.stacks ?? 1));
+    const icon = createEffectIcon('thorns', iconSize);
+    let ex = startX;
+    if (icon) {
+      icon.x = ex;
+      icon.y = rowY;
+      parent.addChild(icon);
+      ex += iconSize + 1;
+      const text = new Text({
+        text: `${stacks}`,
+        style: { fill: effectColor('thorns'), fontSize, fontWeight: 'bold' },
       });
       text.x = ex;
       text.y = rowY;
@@ -579,7 +608,7 @@ export function renderCardTile(
           curY,
           lbl.filledCount,
           lbl.targetType,
-          Math.floor(effectIconSize * 0.65),
+          Math.floor(effectIconSize * 0.72),
           aoeTargetSide,
           noEmptySlots,
           rangeForIndicator,

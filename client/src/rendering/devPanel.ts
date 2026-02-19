@@ -400,7 +400,8 @@ function renderCombatLogBody(gameState: GameState): string {
 function renderEnemyAiDebugBody(gameState: GameState): string {
   const spawnEntries = gameState.enemyAiDebug.spawns;
   const preRoundEntries = gameState.enemyAiDebug.preRound;
-  if (spawnEntries.length === 0 && preRoundEntries.length === 0) {
+  const turnEntries = gameState.enemyAiDebug.turn;
+  if (spawnEntries.length === 0 && preRoundEntries.length === 0 && turnEntries.length === 0) {
     return `<div class="dev-log-entry" style="color:#4b5563;font-style:italic;">No AI debug data yet</div>`;
   }
 
@@ -425,8 +426,23 @@ function renderEnemyAiDebugBody(gameState: GameState): string {
     for (const entry of [...preRoundEntries].reverse()) {
       const conflict = entry.blockedByLaneConflict ? ' lane-conflict' : '';
       const moved = entry.moved ? 'moved' : 'held';
+      const hazardRoll = entry.hazardEscapePrioritized ? ' hazard-escape' : '';
+      const inevitable = entry.inevitableDeathMode ? ' inevitable-death' : '';
       html += `<div class="dev-log-entry">`;
-      html += `${escapeHtml(entry.enemyName)} R${entry.roundNumber} ${moved}${conflict} mode=${entry.mode} range=${entry.targetRange} d:${entry.currentDistanceBefore}->${entry.currentDistanceAfter} aggr=${entry.aggression}`;
+      html += `${escapeHtml(entry.enemyName)} R${entry.roundNumber} ${moved}${conflict}${hazardRoll}${inevitable} mode=${entry.mode} range=${entry.targetRange} d:${entry.currentDistanceBefore}->${entry.currentDistanceAfter} aggr=${entry.aggression}`;
+      html += `</div>`;
+    }
+  }
+
+  html += `<div style="color:#9ca3af;font-size:10px;text-transform:uppercase;margin:8px 0 4px;">Turn Decisions</div>`;
+  if (turnEntries.length === 0) {
+    html += `<div class="dev-log-entry" style="color:#6b7280;">None</div>`;
+  } else {
+    for (const entry of [...turnEntries].reverse()) {
+      const hazardRoll = entry.hazardEscapePrioritized ? 'hazard-escape' : 'aggressive';
+      const inevitable = entry.inevitableDeathMode ? 'inevitable-death' : 'survivable';
+      html += `<div class="dev-log-entry">`;
+      html += `${escapeHtml(entry.enemyName)} R${entry.roundNumber} ${hazardRoll} ${inevitable} aggr=${entry.aggression}`;
       html += `</div>`;
     }
   }

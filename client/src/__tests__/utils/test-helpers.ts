@@ -120,6 +120,7 @@ export function createMockGameState(overrides?: Partial<GameState>): GameState {
     enemyAiDebug: overrides?.enemyAiDebug ?? {
       spawns: [],
       preRound: [],
+      turn: [],
     },
     preFight: overrides?.preFight ?? {
       active: false,

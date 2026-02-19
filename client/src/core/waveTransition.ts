@@ -307,9 +307,6 @@ export function startNextWave(): void {
       facing: 'left',
       gear: { weapon: null, armor: null, accessory: null },
     };
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4a1d9c'},body:JSON.stringify({sessionId:'4a1d9c',runId:'facing-debug-1',hypothesisId:'H1',location:'waveTransition.ts:spawnWave:spawn-enemy',message:'Spawned wave enemy with default facing',data:{characterId:character.id,name:character.name,isPlayer:character.isPlayer,slotIndex:character.slotIndex,facing:character.facing,waveNumber:gameState.waveNumber},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
 
     // Register cloned enemies in library so sprite lookup works
     if (character.id !== charDef.id) {

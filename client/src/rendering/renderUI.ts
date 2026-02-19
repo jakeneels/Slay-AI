@@ -3,7 +3,7 @@
 import type { Application } from 'pixi.js';
 import { Graphics, Text, Rectangle } from 'pixi.js';
 import type { GameState } from '../core/types.js';
-import { WIDTH } from '../core/constants.js';
+import { WIDTH, SLOTS_PER_SIDE } from '../core/constants.js';
 import { getCard } from '../core/card.js';
 import { canRollbackTurn, getSelectedCardId, rollbackTurn } from '../core/gameState.js';
 import { endTurn, moveCharacterForward, moveCharacterBack, getMoveCost, getSuppressionCostPenalty, canSwapCurrentTurnWithNextAlly, swapCurrentTurnWithNextAlly, getJumpTotalEnergyCostForSlot, getValidJumpSlots } from '../core/combat.js';
@@ -170,7 +170,7 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
       if (card.targeting === 'aoe') {
         const aoeSlots = card.aoeSlots ?? 3;
         const sideLabel = card.targetSide === 'ally' ? 'allies' : 'enemies';
-        if (aoeSlots === 4) {
+        if (aoeSlots >= SLOTS_PER_SIDE) {
           instructionText = `Click target - hits all ${sideLabel}!`;
         } else {
           instructionText = `Click target - hits ${aoeSlots} ${sideLabel} slots!`;
@@ -180,7 +180,7 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
       } else if (card.targeting === 'self') {
         instructionText = 'Click card again to use!';
       } else if (card.targeting === 'enemy') {
-        instructionText = 'Click enemy to target!';
+        instructionText = card.allowEmptySlotTarget ? 'Click enemy or empty lane to target!' : 'Click enemy to target!';
       } else if (card.targeting === 'slot') {
         instructionText = 'Click an empty slot to jump!';
       }

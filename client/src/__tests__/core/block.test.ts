@@ -1,6 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { getTotalBlock, applyDamageWithBlock, grantBlockLayer, decayBlockLayers } from '../../core/block.js';
+import {
+  getTotalBlock,
+  applyDamageWithBlock,
+  grantBlockLayer,
+  decayBlockLayers,
+  getBlockDecaySchedule,
+  getNextDecayOwnerTurnStart,
+  processBlockDecayForTurnStart,
+} from '../../core/block.js';
 import { resetGameState, createMockCharacter } from '../utils/test-helpers.js';
+import { getGameState } from '../../core/gameState.js';
 
 describe('block', () => {
   beforeEach(() => {
@@ -368,6 +377,70 @@ describe('block', () => {
       // So 25 - 4 = 21
       expect(character.blockLayers[0].amount).toBe(21);
       expect(character.blockLayers[0].baseAmount).toBe(33);
+    });
+  });
+
+  describe('owner-turn decay scheduling', () => {
+    it('computes independent upcoming decay times per layer', () => {
+      const ally = createMockCharacter({ id: 'ally', name: 'Ally', isPlayer: true });
+      const enemy = createMockCharacter({
+        id: 'enemy',
+        name: 'Enemy',
+        isPlayer: false,
+        blockLayers: [
+          {
+            amount: 10,
+            baseAmount: 10,
+            decay_percent: 50,
+            source: 'shield_dome',
+            sourceLabel: 'Shield Dome',
+            decayOwnerId: 'enemy',
+            nextDecayOwnerTurnStart: 3,
+          },
+          {
+            amount: 6,
+            baseAmount: 6,
+            decay_percent: 50,
+            source: 'heat_sink',
+            sourceLabel: 'Heat Sink',
+            decayOwnerId: 'enemy',
+            nextDecayOwnerTurnStart: 4,
+          },
+        ],
+      });
+      const support = createMockCharacter({ id: 'support', name: 'Support', isPlayer: true });
+      const gameState = getGameState();
+      gameState.characters = [ally, enemy, support];
+      gameState.turnQueue = ['ally', 'enemy', 'support'];
+      gameState.turnQueueIndex = 0; // Ally is currently active
+      gameState.turnStartsByCharacterId = { enemy: 2 };
+
+      const schedule = getBlockDecaySchedule(enemy, gameState);
+      expect(schedule[0].turnsUntilDecay).toBe(1);
+      expect(schedule[1].turnsUntilDecay).toBe(4);
+    });
+
+    it('decays only when the owner starts a turn', () => {
+      const ally = createMockCharacter({ id: 'ally', name: 'Ally', isPlayer: true });
+      const enemy = createMockCharacter({ id: 'enemy', name: 'Enemy', isPlayer: false, blockLayers: [] });
+      const gameState = getGameState();
+      gameState.characters = [ally, enemy];
+      gameState.turnQueue = ['ally', 'enemy'];
+      gameState.turnQueueIndex = 0;
+      gameState.turnStartsByCharacterId = {};
+
+      grantBlockLayer(enemy, 10, 50, 'shield_dome', {
+        decayOwnerId: enemy.id,
+        sourceLabel: 'Shield Dome',
+        nextDecayOwnerTurnStart: getNextDecayOwnerTurnStart(gameState, enemy.id),
+      });
+
+      processBlockDecayForTurnStart(ally, gameState);
+      expect(enemy.blockLayers[0].amount).toBe(10);
+
+      processBlockDecayForTurnStart(enemy, gameState);
+      expect(enemy.blockLayers[0].amount).toBe(5);
+      expect(enemy.blockLayers[0].nextDecayOwnerTurnStart).toBe(2);
     });
   });
 });

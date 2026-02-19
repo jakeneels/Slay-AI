@@ -21,6 +21,7 @@ import { createRangeIcon } from './icons/rangeIcon.js';
 import { createKnockbackIcon } from './icons/knockbackIcon.js';
 import { createPullIcon } from './icons/pullIcon.js';
 import { createLaneHazardIcon } from './icons/laneHazardIcon.js';
+import { createThornsIcon } from './icons/thornsIcon.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -58,6 +59,7 @@ function createIconForKey(key: string, size: number): Graphics | null {
     case 'range': return createRangeIcon(size);
     case 'knockback': return createKnockbackIcon(size);
     case 'pull': return createPullIcon(size);
+    case 'thorns': return createThornsIcon(size);
     default: return null;
   }
 }

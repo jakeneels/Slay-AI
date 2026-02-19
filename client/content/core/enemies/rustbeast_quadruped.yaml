@@ -3,7 +3,8 @@ id: rustbeast_quadruped
 name: "Rustbeast"
 title: "Scrap-Mutant Beast"
 description: "Scrap-mutant machine-beast, glowing green targeting core."
-role: tank
+role: dps
+aggression: 10
 theme: "Bruiser / Pressure – advances relentlessly."
 sprite: "/assets/game/enemies/rustbeast-quadruped.png"
 visual:

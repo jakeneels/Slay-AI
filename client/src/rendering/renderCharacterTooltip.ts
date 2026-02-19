@@ -2,7 +2,7 @@ import type { Application } from 'pixi.js';
 import { Graphics, Text } from 'pixi.js';
 import { getHoveredCharacter } from './tooltipState.js';
 import { getGameState, getSelectedCardId } from '../core/gameState.js';
-import { getTotalBlock } from '../core/block.js';
+import { getBlockDecaySchedule, getTotalBlock } from '../core/block.js';
 import { getStatusDisplay } from './statusConfig.js';
 import { WIDTH, HEIGHT } from '../core/constants.js';
 
@@ -53,9 +53,41 @@ export function renderCharacterTooltip(app: Application): void {
   });
 
   const block = getTotalBlock(character);
+  const blockDecaySchedule = getBlockDecaySchedule(character, gameState)
+    .sort((a, b) => {
+      const aTurns = a.turnsUntilDecay ?? Number.POSITIVE_INFINITY;
+      const bTurns = b.turnsUntilDecay ?? Number.POSITIVE_INFINITY;
+      return aTurns - bTurns;
+    });
+
+  const groupedDecayItems = new Map<string, typeof blockDecaySchedule>();
+  for (const entry of blockDecaySchedule) {
+    const key = entry.turnsUntilDecay === null ? 'unknown' : `${entry.turnsUntilDecay}`;
+    if (!groupedDecayItems.has(key)) groupedDecayItems.set(key, []);
+    groupedDecayItems.get(key)!.push(entry);
+  }
+  const blockDecayItems: string[] = [];
+  for (const [groupKey, entries] of groupedDecayItems) {
+    if (groupKey === 'unknown') {
+      blockDecayItems.push('Unknown timing');
+    } else {
+      const turns = Number(groupKey);
+      blockDecayItems.push(`In ${turns} turn${turns === 1 ? '' : 's'}`);
+    }
+    for (const entry of entries) {
+      const ownerText = entry.ownerId === character.id
+        ? 'owner turn'
+        : `next: ${entry.ownerName}`;
+      blockDecayItems.push(`  - ${entry.sourceLabel}: ${entry.amount} block (${ownerText})`);
+    }
+  }
+
   let estimatedH = PAD + 20 + 4 * 16 + PAD;
   if (statusItems.length > 0) {
     estimatedH += 16 + statusItems.length * 14;
+  }
+  if (blockDecayItems.length > 0) {
+    estimatedH += 16 + blockDecayItems.length * 14;
   }
 
   let tx = anchorX - TOOLTIP_W / 2;
@@ -89,6 +121,13 @@ export function renderCharacterTooltip(app: Application): void {
   cy = addLine(app, `HP ${character.hp}/${character.maxHp}`, tx + PAD, cy);
   cy = addLine(app, `Energy ${character.energy}/${character.maxEnergy}`, tx + PAD, cy);
   cy = addLine(app, `Block ${block}   Speed ${character.speed}`, tx + PAD, cy, 0x9ca3af);
+
+  if (blockDecayItems.length > 0) {
+    cy = addLine(app, 'Block Decay Schedule', tx + PAD, cy + 2, 0x9ca3af, 10, true);
+    for (const item of blockDecayItems) {
+      cy = addLine(app, item, tx + PAD, cy, 0xd1d5db, 10);
+    }
+  }
 
   if (statusItems.length > 0) {
     cy = addLine(app, 'Statuses', tx + PAD, cy + 2, 0x9ca3af, 10, true);

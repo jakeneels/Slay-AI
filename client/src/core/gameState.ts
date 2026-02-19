@@ -33,6 +33,7 @@ let gameState: GameState = {
   enemyAiDebug: {
     spawns: [],
     preRound: [],
+    turn: [],
   },
   preFight: {
     active: false,

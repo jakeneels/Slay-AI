@@ -240,6 +240,30 @@ function drawBlockUpIcon(g: Graphics, size: number): void {
     .stroke({ width: 1.2 * s, color: 0xffffff });
 }
 
+/** Thorns — spiky burst (retaliation damage) */
+function drawThornsIcon(g: Graphics, size: number): void {
+  const s = size / 14;
+  const cx = 7 * s;
+  const cy = 7 * s;
+  const innerR = 2.5 * s;
+  const outerR = 6 * s;
+
+  for (let i = 0; i < 6; i++) {
+    const angle = (i * 60 - 90) * Math.PI / 180;
+    const nextAngle = ((i + 1) * 60 - 90) * Math.PI / 180;
+    const tipX = cx + Math.cos(angle) * outerR;
+    const tipY = cy + Math.sin(angle) * outerR;
+    const baseX = cx + Math.cos(nextAngle) * innerR;
+    const baseY = cy + Math.sin(nextAngle) * innerR;
+    g.moveTo(cx, cy)
+      .lineTo(tipX, tipY)
+      .lineTo(baseX, baseY)
+      .closePath();
+  }
+  g.fill(0xf59e0b)
+    .stroke({ width: Math.max(1, size / 14), color: 0xb45309, alignment: 1 });
+}
+
 /** Speed up — right-pointing arrow (teal, matches existing speed icon) */
 function drawSpeedUpIcon(g: Graphics, size: number): void {
   const s = size / 14;
@@ -345,6 +369,14 @@ export const STATUS_DISPLAY: Record<string, StatusDisplayConfig> = {
     borderColor: 0x7f1d1d,
     drawIcons: [drawDamageUpIcon],
   },
+  thorns: {
+    label: 'Thorns',
+    description: 'When hit by unblocked attack damage, retaliates against the attacker.',
+    iconColor: 0xf59e0b,
+    bgColor: 0x3b250f,
+    borderColor: 0xb45309,
+    drawIcons: [drawThornsIcon],
+  },
 };
 
 // ── Icon draw function registry (keyed by icon name from YAML) ───────
@@ -361,6 +393,7 @@ const ICON_DRAW_REGISTRY: Record<string, IconDrawFn[]> = {
   speed_down: [drawSpeedDownIcon],
   block_up: [drawBlockUpIcon],
   damage_up: [drawDamageUpIcon],
+  thorns: [drawThornsIcon],
 };
 
 /**

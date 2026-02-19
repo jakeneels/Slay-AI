@@ -300,7 +300,7 @@ function describeEffect(effect: CardEffect, card: Card): TooltipEffectLine {
         subLines.push(`Lasts ${th.duration} turn${th.duration !== 1 ? 's' : ''}`);
       }
       return {
-        icon: 'shield',
+        icon: 'thorns',
         text: `Grants ${stacks} Thorns`,
         subLines,
         targetLabel,
@@ -335,9 +335,11 @@ function describeEffect(effect: CardEffect, card: Card): TooltipEffectLine {
 
     case 'lane_hazard': {
       const lh = effect as LaneHazardEffect;
+      const slots = Math.max(1, Math.floor((lh as BaseCardEffect).aoeSlots ?? card.aoeSlots ?? 1));
+      const laneLabel = slots > 1 ? ` (${slots} slots)` : '';
       return {
         icon: 'lane_hazard',
-        text: `Ignites lane: ${lh.damage} damage/turn for ${lh.duration_turns} turn${lh.duration_turns !== 1 ? 's' : ''}`,
+        text: `Ignites lane${laneLabel}: ${lh.damage} damage/turn for ${lh.duration_turns} turn${lh.duration_turns !== 1 ? 's' : ''}`,
         subLines: ['Creates a hazard on the target\'s lane. Enemies in that lane take damage each turn.'],
         targetLabel,
       };

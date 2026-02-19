@@ -4,6 +4,7 @@ name: "Actual Kyle"
 title: "Golden Monolith"
 description: "A towering zealot wrapped in radiant metal, advancing as an immovable wall."
 role: tank
+aggression: 10
 theme: "Large frontliner that controls space and shrugs off pressure."
 sprite: "/assets/game/enemies/actual-kyle.png"
 spriteSheet: "/assets/game/enemies/actual_kyle_attack.png"

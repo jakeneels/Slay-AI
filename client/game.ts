@@ -204,8 +204,8 @@ async function initGame(): Promise<void> {
   gameState.waveNumber = 1;
   setGameState(gameState);
 
-  // Initialize characters from YAML — explicit party roster
-  const partyIds = ['sharpshooter', 'tactician', 'corrupter', 'techblade'];
+  // Initialize characters from YAML — explicit party roster (back to front: Kael > Didi > Sable > Ted)
+  const partyIds = ['tactician', 'corrupter', 'ashborn', 'techblade'];
   const playerCharacters = partyIds
     .map(id => characters[id])
     .filter((c): c is typeof characters[string] => !!c && c.isPlayer);

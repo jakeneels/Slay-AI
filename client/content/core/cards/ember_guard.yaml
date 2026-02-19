@@ -1,0 +1,18 @@
+schemaVersion: 1
+id: ember_guard
+name: "Ember Guard"
+type: skill
+rarity: rare
+cost: 1
+copies: 2
+tags: [pyro, defense, thorns]
+targeting: self
+exhaust: false
+expires_after_turns: 0
+description: "Sheathe yourself in ember armor that burns attackers."
+effects:
+  - kind: thorns
+    stacks: 1
+    duration: 2
+    reflectDamage: 3
+    reflectPerStack: true
