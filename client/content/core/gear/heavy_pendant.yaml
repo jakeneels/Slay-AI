@@ -1,0 +1,10 @@
+schemaVersion: 1
+id: heavy_pendant
+name: "Heavy Pendant"
+description: "Heavy pendant. +10% damage dealt."
+slot: weapon
+rarity: uncommon
+modifiers:
+  - target: damage_dealt
+    op: multiply
+    value: 1.10

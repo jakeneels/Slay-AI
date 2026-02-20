@@ -1,0 +1,13 @@
+schemaVersion: 1
+id: edict_of_atom
+name: "Edict of Atom"
+description: "Edict of Atom. +10% damage dealt, +1 suppression."
+slot: weapon
+rarity: epic
+modifiers:
+  - target: damage_dealt
+    op: multiply
+    value: 0.15
+  - target: suppression
+    op: add
+    value: 1

@@ -5,7 +5,7 @@ title: "Scrap-Mutant Beast"
 description: "Scrap-mutant machine-beast, glowing green targeting core."
 role: dps
 aggression: 10
-theme: "Bruiser / Pressure – advances relentlessly."
+theme: "Pressure – advances relentlessly."
 sprite: "/assets/game/enemies/rustbeast-quadruped.png"
 visual:
   preset: beast
@@ -16,11 +16,11 @@ visual:
   offsetY: 0
 isPlayer: false
 stats:
-  hp: 65
-  maxHp: 65
-  energy: 3
-  maxEnergy: 3
-  speed: 0
+  hp: 40
+  maxHp: 40
+  energy: 5
+  maxEnergy: 5
+  speed: 2
   suppression: 2
   suppressionResist: 1
 mechanics:
@@ -30,5 +30,6 @@ mechanics:
 tags: ["beast", "machine", "elite", "enemy", "bruiser"]
 startingDeck:
   - "strike"
-  - "strike"
-  - "defend"
+  - "shred"
+  - "flank"
+  - "rad_thorn"

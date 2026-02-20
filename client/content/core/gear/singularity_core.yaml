@@ -1,0 +1,13 @@
+schemaVersion: 1
+id: singularity_core
+name: "Singularity Core"
+description: "Support core - friendly direct heals and HoT ticks gain +1, then +15%."
+slot: armor
+rarity: rare
+modifiers:
+  - target: friendly_heal_outgoing
+    op: add
+    value: 1
+  - target: friendly_heal_outgoing
+    op: multiply
+    value: 1.15

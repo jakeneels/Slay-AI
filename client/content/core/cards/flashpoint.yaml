@@ -4,7 +4,7 @@ name: "Flashpoint"
 type: skill
 rarity: epic
 cost: 0
-copies: 2
+copies: 1
 tags: [pyro, overclock]
 targeting: self
 exhaust: false

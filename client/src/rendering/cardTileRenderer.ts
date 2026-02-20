@@ -505,15 +505,9 @@ export function renderCardTile(
       ri.hitArea = new Rectangle(-8, -8, 24, 24);
       registerCardHoverRegion(card.id, x + riX - 8, y + riY - 8, 24, 24, x + riX, y + riY + 16);
       ri.on('pointerenter', () => {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre1',hypothesisId:'H5',location:'cardTileRenderer.ts:rarityIcon:pointerenter',message:'rarity_pointerenter',data:{cardId:card.id,anchorX:x+riX,anchorY:y+riY+16},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         options.onRarityHover?.(card.id, x + riX, y + riY + 16);
       });
       ri.on('pointerout', () => {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre1',hypothesisId:'H5',location:'cardTileRenderer.ts:rarityIcon:pointerout',message:'rarity_pointerout',data:{cardId:card.id},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         options.onRarityHover?.(null);
       });
     }

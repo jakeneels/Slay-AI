@@ -1,0 +1,10 @@
+schemaVersion: 1
+id: synapse_burner
+name: "Synapse Burner"
+description: "Synapse burner. speed +2"
+slot: accessory
+rarity: epic
+modifiers:
+  - target: speed
+    op: add
+    value: 2

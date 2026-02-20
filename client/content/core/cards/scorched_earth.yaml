@@ -16,10 +16,10 @@ description: "Ignite a whole lane section, then pay the burn tax."
 effects:
   - kind: lane_hazard
     damage: 3
-    duration_turns: 3
+    duration_turns: 2
     aoeSlots: 3
   - kind: damage
-    amount: 5
+    amount: 6
     effectTarget: self
 animation:
   damage:

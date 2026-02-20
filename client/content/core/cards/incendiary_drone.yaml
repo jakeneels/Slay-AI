@@ -4,7 +4,7 @@ name: "Incendiary Drone"
 type: skill
 rarity: legendary    #common, rare, epic, legendary, mythic.
 cost: 3
-copies: 2
+copies: 1
 targeting: aoe
 aoeSlots: 3
 maxRange: 12
@@ -14,7 +14,7 @@ expires_after_turns: 0
 description: "Fly a drone with a napalm payload for instant impact damage, then ignite the lane. Enemies in that burning lane take fire damage."
 effects:
   - kind: damage
-    amount: 12
+    amount: 10
   - kind: lane_hazard
     damage: 4
     duration_turns: 1

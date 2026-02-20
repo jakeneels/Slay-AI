@@ -1,12 +1,12 @@
 id: flank
 name: Flank
 cost: 0
-copies: 2
+copies: 1
 type: skill
-rarity: Legendary
+rarity: epic
 exhaust: true
 targeting: slot
-description: Blink to any empty slot. Costs extra for each occupied slot crossed. This costs alot of energy!
+description: flank past an enemy.
 effects:
   - kind: jump
     amount: 0

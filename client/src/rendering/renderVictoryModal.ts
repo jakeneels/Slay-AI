@@ -337,6 +337,31 @@ function makeHitRect() {
 
 // ── Equip logic ─────────────────────────────────────────────────────
 
+function applyDirectAddModifier(character: Character, target: string, delta: number): void {
+  if (target === 'maxHp') {
+    character.maxHp += delta;
+    if (delta > 0) {
+      character.hp += delta; // Preserve current behavior: bonus max HP grants immediate HP.
+    }
+    character.hp = Math.min(character.hp, character.maxHp);
+    return;
+  }
+
+  if (target === 'maxEnergy') {
+    character.maxEnergy += delta;
+    if (delta > 0) {
+      character.energy += delta; // Preserve current behavior: bonus max energy grants immediate energy.
+    }
+    character.energy = Math.min(character.energy, character.maxEnergy);
+    return;
+  }
+
+  const statBag = character as unknown as Record<string, unknown>;
+  const currentValue = statBag[target];
+  if (typeof currentValue !== 'number') return;
+  (statBag as Record<string, number>)[target] = currentValue + delta;
+}
+
 function equipGear(character: Character, gear: GearDefinition, gameState: GameState): void {
   const registry = getModifierRegistry();
   const slot = gear.slot;
@@ -350,15 +375,7 @@ function equipGear(character: Character, gear: GearDefinition, gameState: GameSt
     // Revert direct stat changes from old gear
     for (const mod of oldGear.modifiers) {
       if (mod.op === 'add') {
-        if (mod.target === 'maxHp') {
-          character.maxHp -= mod.value;
-          character.hp = Math.min(character.hp, character.maxHp);
-        } else if (mod.target === 'maxEnergy') {
-          character.maxEnergy -= mod.value;
-          character.energy = Math.min(character.energy, character.maxEnergy);
-        } else if (mod.target === 'speed') {
-          character.speed -= mod.value;
-        }
+        applyDirectAddModifier(character, mod.target, -mod.value);
       }
     }
   }
@@ -381,15 +398,7 @@ function equipGear(character: Character, gear: GearDefinition, gameState: GameSt
 
     // Apply direct stat changes for add modifiers on base stats
     if (mod.op === 'add') {
-      if (mod.target === 'maxHp') {
-        character.maxHp += mod.value;
-        character.hp += mod.value; // Also increase current HP
-      } else if (mod.target === 'maxEnergy') {
-        character.maxEnergy += mod.value;
-        character.energy += mod.value; // Also increase current energy
-      } else if (mod.target === 'speed') {
-        character.speed += mod.value;
-      }
+      applyDirectAddModifier(character, mod.target, mod.value);
     }
   }
 

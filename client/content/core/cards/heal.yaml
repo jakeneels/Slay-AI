@@ -4,15 +4,15 @@ name: "Heal"
 type: skill
 rarity: rare        #common, rare, epic, legendary, mythic.
 cost: 2
-copies: 2
+copies: 3
 tags: [heal]
 targeting: ally
-exhaust: false
+exhaust: true
 expires_after_turns: 0
 description: "Channel restorative energy to mend an ally's wounds."
 effects:
   - kind: heal
-    amount: 8
+    amount: 10
 animation:
   heal:
     particleColor: 0x22c55e  # Bright green healing particles

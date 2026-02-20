@@ -1,7 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { applyStatus, removeStatusStacks, hasStatus, getStatusStacks, processStatusEffects, decayStatusDurations } from '../../core/status.js';
+import { applyStatus, removeStatusStacks, hasStatus, getStatusStacks, processStatusEffectsWithContext, processStatusEffects, decayStatusDurations } from '../../core/status.js';
 import { resetGameState, createMockCharacter, setupGameState } from '../utils/test-helpers.js';
 import { getTotalBlock } from '../../core/block.js';
+import { getModifierRegistry } from '../../core/modifiers.js';
+import { getGameState } from '../../core/gameState.js';
 import type { StatusDefinition } from '../../core/types.js';
 
 // ── Test status definitions (mirrors the YAML files) ─────────────────
@@ -70,6 +72,7 @@ describe('status', () => {
   beforeEach(() => {
     resetGameState();
     setupWithStatuses();
+    getModifierRegistry().clearAll();
   });
 
   describe('applyStatus', () => {
@@ -379,6 +382,54 @@ describe('status', () => {
 
       expect(character.hp).toBe(95);
       expect(getStatusStacks(character, 'regeneration_decay')).toBe(3);
+    });
+
+    it('should boost regeneration HoT when sourced from friendly caster with outgoing heal modifier', () => {
+      const registry = getModifierRegistry();
+      const source = createMockCharacter({
+        id: 'ally_source',
+        name: 'Ally Source',
+        isPlayer: true,
+      });
+      const target = createMockCharacter({
+        id: 'ally_target',
+        name: 'Ally Target',
+        hp: 80,
+        maxHp: 100,
+        isPlayer: true,
+        statuses: [{ id: 'regeneration', stacks: 2, metadata: { sourceCharacterId: 'ally_source' } }],
+      });
+
+      setupGameState({
+        characters: [source, target],
+        statusLibrary: ALL_STATUS_DEFS,
+      });
+      registry.add({
+        id: 'status-test-friendly-hot-add',
+        target: 'friendly_heal_outgoing',
+        op: 'add',
+        value: 1,
+        source: 'test',
+        scope: { kind: 'character', characterId: 'ally_source' },
+      });
+      registry.add({
+        id: 'status-test-friendly-hot-multiply',
+        target: 'friendly_heal_outgoing',
+        op: 'multiply',
+        value: 2,
+        source: 'test',
+        scope: { kind: 'character', characterId: 'ally_source' },
+      });
+
+      processStatusEffectsWithContext(target, 'round_start', {
+        resolveHotSourceCharacter: (_target, status) => {
+          const sourceCharacterId = status.metadata?.sourceCharacterId;
+          if (typeof sourceCharacterId !== 'string') return undefined;
+          return getGameState().characters.find(c => c.id === sourceCharacterId);
+        },
+      });
+
+      expect(target.hp).toBe(86); // base 2 -> (2 + 1) * 2 = 6
     });
   });
 

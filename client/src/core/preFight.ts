@@ -333,6 +333,7 @@ export function startCombatFromCurrentState(onRender: () => void): void {
   if (threatScore !== null) {
     const threatText = Math.round(threatScore);
     addToCombatLog(`--- Wave ${gameState.waveNumber} --- (Threat: ${threatText})`);
+    addToCombatLog(`Total threat: ${threatText}`);
     addToCombatLog(`── Round 1 ── (Threat: ${threatText})`);
   } else {
     addToCombatLog('── Round 1 ──');

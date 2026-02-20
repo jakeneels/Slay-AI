@@ -28,11 +28,7 @@ function setSpriteFacingInternal(
 
   // No X compensation here: render step computes canonical slot position each frame.
   // Compensating on flip caused lateral drift for non-centered anchors.
-  const xBefore = sprite.x;
   sprite.scale.x = absScaleX * desiredSign;
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4a1d9c'},body:JSON.stringify({sessionId:'4a1d9c',runId:'post-fix-3',hypothesisId:'H3',location:'animations.ts:setSpriteFacingInternal',message:'Sprite flipped via setCharacterFacing',data:{facing,authoredFacing,currentSign,desiredSign,anchorX:sprite.anchor.x,spriteWidth:sprite.width,xBefore,xAfter:sprite.x,appliedScaleX:sprite.scale.x},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
 }
 
 // Active card showcase graphics that must survive stage re-renders.

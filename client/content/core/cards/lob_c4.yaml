@@ -14,7 +14,7 @@ expires_after_turns: 0
 description: "Lob a C4 bomb for explosive area damage."
 effects:
   - kind: damage
-    amount: 15
+    amount: 20
   - kind: knockback
     amount: 2
 

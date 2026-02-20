@@ -13,6 +13,7 @@ vi.mock('../../../animations.js', () => ({
   animateEnhancedScreenShake: vi.fn().mockResolvedValue(undefined),
   animateCameraZoom: vi.fn().mockResolvedValue(undefined),
   animateParticles: vi.fn().mockResolvedValue(undefined),
+  animateCardPlayShowcase: vi.fn().mockResolvedValue(undefined),
   setCharacterFacing: vi.fn(),
   registerCharacterSprite: vi.fn(),
 }));
@@ -74,6 +75,54 @@ describe('status_spread', () => {
     expect(getStatusStacks(enemyRight, 'radiation')).toBe(5);
     expect(getStatusStacks(enemyFar, 'radiation')).toBe(0);
     expect(getStatusStacks(allyNear, 'radiation')).toBe(0);
+  });
+
+  it('spreads to adjacent enemies based on occupied slots for multi-slot units', async () => {
+    const player = createMockCharacter({ id: 'player1', isPlayer: true, slotIndex: 0, energy: 3 });
+    const sourceEnemy = createMockCharacter({
+      id: 'enemy_source',
+      isPlayer: false,
+      slotIndex: 2,
+      slotSize: 3,
+      statuses: [{ id: 'radiation', stacks: 10 }],
+    });
+    const adjacentWideEnemy = createMockCharacter({
+      id: 'enemy_adjacent_wide',
+      isPlayer: false,
+      slotIndex: 5,
+      slotSize: 2,
+      statuses: [],
+    });
+    const farEnemy = createMockCharacter({
+      id: 'enemy_far',
+      isPlayer: false,
+      slotIndex: 8,
+      statuses: [],
+    });
+
+    const spreadCard = createMockCard({
+      id: 'spread_multislot_adjacency',
+      name: 'Spread Multi-slot Adjacency',
+      cost: { energy: 1 },
+      targeting: 'enemy',
+      effects: [
+        { kind: 'status_spread', status: 'radiation', fraction: 0.5, round: 'floor', spreadRange: 1, amount: 0 },
+      ],
+    });
+
+    setupGameState({
+      characters: [player, sourceEnemy, adjacentWideEnemy, farEnemy],
+      cardLibrary: { spread_multislot_adjacency: spreadCard },
+      currentPlayerId: 'player1',
+    });
+
+    const instanceId = createCardInstance('spread_multislot_adjacency');
+    player.hand.push(instanceId!);
+
+    await playCard(instanceId!, 'enemy_source');
+
+    expect(getStatusStacks(adjacentWideEnemy, 'radiation')).toBe(5);
+    expect(getStatusStacks(farEnemy, 'radiation')).toBe(0);
   });
 
   it('uses configured spreadRange for farther targets', async () => {

@@ -3,7 +3,7 @@ id: nanite_repair
 name: "Nanite Repair"
 type: skill
 rarity: rare
-cost: 2
+cost: 1
 copies: 2
 tags: [heal, regeneration, support]
 targeting: ally
@@ -13,8 +13,8 @@ description: "Deploy restorative nanites that knit damaged systems over time."
 effects:
   - kind: status
     status: regeneration
-    stacks: 4
-    duration: 4
+    stacks: 3
+    duration: 3
     effectTarget: target
 animation:
   heal:

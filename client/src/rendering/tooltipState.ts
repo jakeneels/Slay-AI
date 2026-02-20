@@ -47,23 +47,13 @@ export function setHoveredCard(cardId: string | null, x: number = 0, y: number =
     if (cardId !== null && (hoveredCardX !== x || hoveredCardY !== y)) {
       hoveredCardX = x;
       hoveredCardY = y;
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-post2',hypothesisId:'N5',location:'tooltipState.ts:setHoveredCard',message:'setHoveredCard_same_id_anchor_update',data:{cardId,x,y},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       return true;
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre1',hypothesisId:'H3',location:'tooltipState.ts:setHoveredCard',message:'setHoveredCard_no_change',data:{cardId,x,y},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return false; // no change — prevent re-render loops
   }
-  const prevCardId = hoveredCardId;
   hoveredCardId = cardId;
   hoveredCardX = x;
   hoveredCardY = y;
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre1',hypothesisId:'H3',location:'tooltipState.ts:setHoveredCard',message:'setHoveredCard_changed',data:{prevCardId,nextCardId:cardId,x,y},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   return true;
 }
 
@@ -106,11 +96,6 @@ export function registerCardHoverRegion(
     anchorX,
     anchorY,
   });
-  if (hoveredCardId && hoveredCardId === cardId) {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre1',hypothesisId:'H2',location:'tooltipState.ts:registerCardHoverRegion',message:'registered_region_for_hovered_card',data:{cardId,left:x,top:y,width,height,anchorX,anchorY},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-  }
 }
 
 export function registerCharacterHoverRegion(
@@ -162,20 +147,11 @@ export function reconcileHoveredCardState(): boolean {
   if (!hoveredCardId) return false;
 
   const hoveredRegions = activeCardHoverRegions.filter(r => r.cardId === hoveredCardId);
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre1',hypothesisId:'H1',location:'tooltipState.ts:reconcileHoveredCardState',message:'reconcile_start',data:{hoveredCardId,pointerCanvasX,pointerCanvasY,matchingRegionCount:hoveredRegions.length,totalRegionCount:activeCardHoverRegions.length},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   if (hoveredRegions.length === 0) {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre1',hypothesisId:'H2',location:'tooltipState.ts:reconcileHoveredCardState',message:'reconcile_clear_no_regions',data:{hoveredCardId},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return setHoveredCard(null);
   }
 
   if (pointerCanvasX === null || pointerCanvasY === null) {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre1',hypothesisId:'H1',location:'tooltipState.ts:reconcileHoveredCardState',message:'reconcile_pointer_missing',data:{hoveredCardId},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return false;
   }
   const pointerX = pointerCanvasX;
@@ -188,15 +164,9 @@ export function reconcileHoveredCardState(): boolean {
     && pointerY <= r.bottom,
   );
   if (isInsideHoveredRegion) {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre1',hypothesisId:'H4',location:'tooltipState.ts:reconcileHoveredCardState',message:'reconcile_keep_inside_region',data:{hoveredCardId,pointerX,pointerY},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return false;
   }
 
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre1',hypothesisId:'H4',location:'tooltipState.ts:reconcileHoveredCardState',message:'reconcile_clear_pointer_outside',data:{hoveredCardId,pointerX,pointerY},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   return setHoveredCard(null);
 }
 
@@ -214,9 +184,6 @@ export function reconcileHoveredCharacterState(): boolean {
     && pointerY <= r.bottom,
   );
   if (isInside) return false;
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-post3',hypothesisId:'N10',location:'tooltipState.ts:reconcileHoveredCharacterState',message:'reconcile_clear_character_pointer_outside',data:{hoveredCharacterId,pointerX,pointerY,regionCount:regions.length},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   return setHoveredCharacter(null, 0, 0);
 }
 
@@ -234,9 +201,6 @@ export function reconcileHoveredStatusState(): boolean {
     && pointerY <= r.bottom,
   );
   if (isInside) return false;
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-post3',hypothesisId:'N11',location:'tooltipState.ts:reconcileHoveredStatusState',message:'reconcile_clear_status_pointer_outside',data:{hoveredStatusId,pointerX,pointerY,regionCount:regions.length},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   return setHoveredStatus(null, 0, 0, 0);
 }
 
@@ -257,18 +221,12 @@ let hoveredStatusY: number = 0;
  */
 export function setHoveredStatus(statusId: string | null, stacks: number = 0, x: number = 0, y: number = 0): boolean {
   if (hoveredStatusId === statusId) {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre3',hypothesisId:'N6',location:'tooltipState.ts:setHoveredStatus',message:'setHoveredStatus_no_change',data:{statusId,stacks,x,y},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return false;
   }
   hoveredStatusId = statusId;
   hoveredStatusStacks = stacks;
   hoveredStatusX = x;
   hoveredStatusY = y;
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre3',hypothesisId:'N6',location:'tooltipState.ts:setHoveredStatus',message:'setHoveredStatus_changed',data:{statusId,stacks,x,y},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   return true;
 }
 
@@ -291,17 +249,11 @@ let hoveredCharacterY: number = 0;
  */
 export function setHoveredCharacter(characterId: string | null, x: number = 0, y: number = 0): boolean {
   if (hoveredCharacterId === characterId) {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre3',hypothesisId:'N7',location:'tooltipState.ts:setHoveredCharacter',message:'setHoveredCharacter_no_change',data:{characterId,x,y},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return false;
   }
   hoveredCharacterId = characterId;
   hoveredCharacterX = x;
   hoveredCharacterY = y;
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre3',hypothesisId:'N7',location:'tooltipState.ts:setHoveredCharacter',message:'setHoveredCharacter_changed',data:{characterId,x,y},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   return true;
 }
 

@@ -10,7 +10,13 @@ import { drawCards } from './src/core/deck.js';
 import { shuffleArray } from './src/utils/shuffle.js';
 import { loadContent } from './src/data/contentLoader.js';
 import { render, setApp } from './src/rendering/renderer.js';
-import { clearAllHoverStates, getHoveredCard, getHoveredCharacter, getHoveredStatus } from './src/rendering/tooltipState.js';
+import {
+  clearAllHoverStates,
+  getHoveredCard,
+  getHoveredCharacter,
+  getHoveredStatus,
+  setCardHoverPointerPosition,
+} from './src/rendering/tooltipState.js';
 import { getEnemyPreferredRangeDecisionForCardIds, setApp as setCombatApp } from './src/core/combat.js';
 import { WIDTH, HEIGHT, ENEMY_SLOT_START, ALLY_SLOT_END, MAX_SLOTS, ENEMY_OPTIMAL_SPAWN_CHANCE } from './src/core/constants.js';
 import { initDevPanel, restoreDevPanelOverridesFromStorage } from './src/rendering/devPanel.js';
@@ -20,6 +26,53 @@ import { beginPreFightSetup } from './src/core/preFight.js';
 
 let currentApp: Application | null = null;
 let initPromise: Promise<void> | null = null;
+let responsiveLayoutCleanup: (() => void) | null = null;
+
+function setupResponsiveCanvasScaling(app: Application, container: HTMLElement): () => void {
+  const canvas = app.canvas as HTMLCanvasElement;
+  let rafId: number | null = null;
+
+  const applyScale = (): void => {
+    rafId = null;
+    const bounds = container.getBoundingClientRect();
+    const availableWidth = Math.max(1, container.clientWidth);
+    const availableHeight = Math.max(1, window.innerHeight - bounds.top);
+    const scale = Math.min(availableWidth / WIDTH, availableHeight / HEIGHT);
+
+    canvas.style.width = `${Math.round(WIDTH * scale)}px`;
+    canvas.style.height = `${Math.round(HEIGHT * scale)}px`;
+  };
+
+  const queueScaleUpdate = (): void => {
+    if (rafId !== null) return;
+    rafId = requestAnimationFrame(applyScale);
+  };
+
+  const resizeObserver = new ResizeObserver(() => {
+    queueScaleUpdate();
+  });
+
+  resizeObserver.observe(container);
+  if (container.parentElement) {
+    resizeObserver.observe(container.parentElement);
+  }
+  const devPanel = document.getElementById('devPanel');
+  if (devPanel) {
+    resizeObserver.observe(devPanel);
+  }
+
+  window.addEventListener('resize', queueScaleUpdate);
+  queueScaleUpdate();
+
+  return () => {
+    window.removeEventListener('resize', queueScaleUpdate);
+    resizeObserver.disconnect();
+    if (rafId !== null) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+  };
+}
 
 function getOccupiedSlotsForPlacement(slotIndex: number, slotSize: number): number[] {
   return Array.from({ length: slotSize }, (_, i) => slotIndex + i);
@@ -83,6 +136,11 @@ function findAvailableNearestSlot(
  * Clean up existing PIXI app
  */
 function cleanup(): void {
+  if (responsiveLayoutCleanup) {
+    responsiveLayoutCleanup();
+    responsiveLayoutCleanup = null;
+  }
+
   if (currentApp) {
     // Destroy the PIXI app
     currentApp.destroy(true, { children: true, texture: true, baseTexture: true });
@@ -143,9 +201,15 @@ async function initGame(): Promise<void> {
   const canvas = app.canvas as HTMLCanvasElement;
   canvas.style.pointerEvents = 'auto';
   container.appendChild(canvas);
+  responsiveLayoutCleanup = setupResponsiveCanvasScaling(app, container);
   let lastHoverMoveLogAt = 0;
   let hoverMoveRenderQueued = false;
-  canvas.addEventListener('pointermove', (ev: PointerEvent) => {
+  canvas.addEventListener('pointermove', (event) => {
+    const rect = canvas.getBoundingClientRect();
+    const canvasX = rect.width > 0 ? ((event.clientX - rect.left) / rect.width) * WIDTH : null;
+    const canvasY = rect.height > 0 ? ((event.clientY - rect.top) / rect.height) * HEIGHT : null;
+    setCardHoverPointerPosition(canvasX, canvasY);
+
     const hovered = getHoveredCard();
     const hoveredCharacter = getHoveredCharacter();
     const hoveredStatus = getHoveredStatus();
@@ -154,31 +218,16 @@ async function initGame(): Promise<void> {
     const now = Date.now();
     if (now - lastHoverMoveLogAt < 120) return;
     lastHoverMoveLogAt = now;
-    const rect = canvas.getBoundingClientRect();
-    const canvasX = ev.clientX - rect.left;
-    const canvasY = ev.clientY - rect.top;
-    if (hovered.cardId) {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre2',hypothesisId:'N2',location:'game.ts:canvas:pointermove',message:'pointermove_while_hover_active',data:{hoveredCardId:hovered.cardId,canvasX,canvasY},timestamp:now})}).catch(()=>{});
-      // #endregion
-    } else {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre3',hypothesisId:'N8',location:'game.ts:canvas:pointermove',message:'pointermove_noncard_hover_active',data:{hoveredCharacterId:hoveredCharacter.characterId,hoveredStatusId:hoveredStatus.statusId,canvasX,canvasY},timestamp:now})}).catch(()=>{});
-      // #endregion
-    }
     if (!hoverMoveRenderQueued) {
       hoverMoveRenderQueued = true;
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-post3',hypothesisId:'N12',location:'game.ts:canvas:pointermove',message:'queue_render_for_any_hover_reconcile',data:{hoveredCardId:hovered.cardId,hoveredCharacterId:hoveredCharacter.characterId,hoveredStatusId:hoveredStatus.statusId},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       requestAnimationFrame(() => {
         hoverMoveRenderQueued = false;
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-post3',hypothesisId:'N12',location:'game.ts:requestAnimationFrame',message:'run_render_for_any_hover_reconcile',data:{},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         render();
       });
     }
+  });
+  canvas.addEventListener('pointerleave', () => {
+    setCardHoverPointerPosition(null, null);
   });
   // Use 'passive' so the stage passes events to children instead of capturing them
   app.stage.eventMode = 'passive';
@@ -280,9 +329,6 @@ async function initGame(): Promise<void> {
       facing: 'right',
       gear: { weapon: null, armor: null, accessory: null },
     };
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4a1d9c'},body:JSON.stringify({sessionId:'4a1d9c',runId:'facing-debug-1',hypothesisId:'H1',location:'game.ts:initGame:spawn-ally',message:'Spawned ally with default facing',data:{characterId:character.id,name:character.name,isPlayer:character.isPlayer,slotIndex:character.slotIndex,facing:character.facing},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
 
     // Draw initial hand
     drawCards(character, character.drawCount);
@@ -375,9 +421,6 @@ async function initGame(): Promise<void> {
       facing: 'left',
       gear: { weapon: null, armor: null, accessory: null },
     };
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4a1d9c'},body:JSON.stringify({sessionId:'4a1d9c',runId:'facing-debug-1',hypothesisId:'H1',location:'game.ts:initGame:spawn-enemy',message:'Spawned enemy with default facing',data:{characterId:character.id,name:character.name,isPlayer:character.isPlayer,slotIndex:character.slotIndex,facing:character.facing},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
 
     // Register cloned enemies in library so sprite lookup works
     if (character.id !== charDef.id) {

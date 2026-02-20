@@ -1,0 +1,10 @@
+schemaVersion: 1
+id: flux_multiplier
+name: "Flux Multiplier"
+description: "Flux multiplier. +20% healing dealt."
+slot: armor
+rarity: rare
+modifiers:
+  - target: heal_amount
+    op: multiply
+    value: 1.20

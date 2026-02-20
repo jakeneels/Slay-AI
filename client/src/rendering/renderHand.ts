@@ -487,15 +487,9 @@ function renderEnemyHand(app: Application, _gameState: GameState, currentPlayer:
       const templateId = card.id;
       registerCardHoverRegion(templateId, riX - 6, riY - 6, 20, 20, riX, riY + 14);
       ri.on('pointerenter', () => {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre2',hypothesisId:'N1',location:'renderHand.ts:enemyRarity:pointerenter',message:'enemy_rarity_pointerenter',data:{templateId,riX,riY},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         if (setHoveredCard(templateId, riX, riY + 14)) renderCallback();
       });
       ri.on('pointerout', () => {
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre2',hypothesisId:'N1',location:'renderHand.ts:enemyRarity:pointerout',message:'enemy_rarity_pointerout',data:{templateId},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         if (setHoveredCard(null)) renderCallback();
       });
       app.stage.addChild(ri);

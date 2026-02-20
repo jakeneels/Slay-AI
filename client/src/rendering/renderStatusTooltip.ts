@@ -35,9 +35,6 @@ const BG_ALPHA = 0.96;
 export function renderStatusTooltip(app: Application): void {
   const { statusId, stacks, x: anchorX, y: anchorY } = getHoveredStatus();
   if (!statusId) return;
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre3',hypothesisId:'N6',location:'renderStatusTooltip.ts:renderStatusTooltip',message:'status_tooltip_render_attempt',data:{statusId,stacks,anchorX,anchorY},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
 
   const config = getStatusDisplay(statusId);
   if (!config) return;

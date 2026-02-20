@@ -19,11 +19,9 @@ import { renderPreFightModal } from './renderPreFightModal.js';
 import { getNoPreFightSetupSetting } from './preFightDisplaySettings.js';
 import {
   beginCardHoverFrame,
-  getHoveredCard,
   reconcileHoveredCardState,
   reconcileHoveredCharacterState,
   reconcileHoveredStatusState,
-  setCardHoverPointerPosition,
 } from './tooltipState.js';
 
 let app: Application | null = null;
@@ -49,14 +47,6 @@ export function render(): void {
   if (!app) return;
 
   const gameState = getGameState();
-  const pointer = (app.renderer as any)?.events?.pointer;
-  const pointerX = Number.isFinite(pointer?.x) ? pointer.x : null;
-  const pointerY = Number.isFinite(pointer?.y) ? pointer.y : null;
-  const hovered = getHoveredCard();
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre1',hypothesisId:'H5',location:'renderer.ts:render',message:'render_frame_start',data:{pointerX,pointerY,hoveredCardId:hovered.cardId},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
-  setCardHoverPointerPosition(pointerX, pointerY);
   beginCardHoverFrame();
   cleanupLaneAnimations();
   app.stage.removeChildren();

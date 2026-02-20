@@ -37,10 +37,6 @@ export function renderCharacterTooltip(app: Application): void {
   const { characterId, x: anchorX, y: anchorY } = getHoveredCharacter();
   if (selectedCardId) return;
   if (!characterId) return;
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre3',hypothesisId:'N7',location:'renderCharacterTooltip.ts:renderCharacterTooltip',message:'character_tooltip_render_attempt',data:{characterId,anchorX,anchorY},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
-
   const gameState = getGameState();
   const character = gameState.characters.find((c) => c.id === characterId);
   if (!character || character.hp <= 0) return;

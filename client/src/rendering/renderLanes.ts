@@ -66,8 +66,8 @@ export function renderLanes(app: Application, gameState: GameState): void {
   const availableWidth = rightBase - leftBase;
   const slotSpacing = MAX_SLOTS > 1 ? availableWidth / (MAX_SLOTS - 1) : 0;
 
-  // Lane strip — from above character sprites down past the info rows
-  const laneTop = battleY - 50;
+  // Lane strip — from above character sprites down past the info rows (extended higher so tall enemies don't block hazard info)
+  const laneTop = battleY - 120;
   const laneBottom = battleY + 250;
   const laneHeight = laneBottom - laneTop;
   const halfLane = slotSpacing / 2;
@@ -180,7 +180,7 @@ export function renderLanes(app: Application, gameState: GameState): void {
       },
     });
     hazardText.x = visualCenter - hazardText.width / 2;
-    hazardText.y = laneTop + 22;
+    hazardText.y = laneTop + 8;
     hazardText.alpha = 0.9;
     hazardText.eventMode = 'none';
     hazardText.zIndex = -349;

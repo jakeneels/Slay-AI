@@ -436,9 +436,6 @@ function measureTooltipHeight(data: TooltipData): number {
 export function renderCardTooltip(app: Application): void {
   const { cardId, x: anchorX, y: anchorY } = getHoveredCard();
   if (!cardId) return;
-  // #region agent log
-  fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre2',hypothesisId:'N3',location:'renderCardTooltip.ts:renderCardTooltip',message:'tooltip_render_attempt',data:{cardId,anchorX,anchorY},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
 
   // Resolve the card template (not instance)
   const gameState = getGameState();

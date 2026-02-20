@@ -18,8 +18,8 @@ isPlayer: false
 stats:
   hp: 30
   maxHp: 30
-  energy: 3
-  maxEnergy: 3
+  energy: 4
+  maxEnergy: 4
   speed: 0
   suppression: 2
   suppressionResist: 0
@@ -30,5 +30,8 @@ mechanics:
 tags: ["human", "fanatic", "normal", "enemy", "aggressive"]
 startingDeck:
   - "heal"
+  - "rad_regen"
+  - "shockwave"
+  - "sidearm"
   
 

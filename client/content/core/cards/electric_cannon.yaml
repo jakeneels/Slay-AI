@@ -1,0 +1,24 @@
+schemaVersion: 1
+id: electric_cannon
+name: "Tesla Cannon"
+type: attack
+rarity: rare
+cost: 2
+copies: 2
+targeting: enemy
+maxRange: 12
+minRange: 8
+# optimalRange: 4
+exhaust: false
+expires_after_turns: 0
+description: "Long-range single-target nuke — best at medium-far distance."
+effects:
+  - kind: damage
+    amount: 22
+animation:
+  damage:
+    projectileColor: 0x00ffff  # blue lightning
+    projectileSpeed: 1000      # Fast but visible explosion
+    impactSize: 60             # Large explosive impact
+# Long-range single-target nuke - best at medium-far distance
+

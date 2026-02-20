@@ -14,9 +14,9 @@ expires_after_turns: 0
 description: "Sear a target and ignite their lane."
 effects:
   - kind: damage
-    amount: 4
+    amount: 2
   - kind: lane_hazard
-    damage: 8
+    damage: 6
     duration_turns: 1
   - kind: speed
     amount: -1

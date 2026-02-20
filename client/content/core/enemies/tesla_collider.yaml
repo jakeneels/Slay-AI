@@ -31,6 +31,8 @@ mechanics:
 tags: ["machine", "mech", "elite", "enemy", "dps", "electrical"]
 startingDeck:
   - "chain_lightning"
-  - "blast"
+  - "electric_javalin"
   - "shield_dome"
+  - "tesla_cannon"
 
+# when he gets low he pushes and explodes

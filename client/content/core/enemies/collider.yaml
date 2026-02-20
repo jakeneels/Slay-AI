@@ -21,7 +21,7 @@ stats:
   maxHp: 70
   energy: 5
   maxEnergy: 5
-  speed: 1
+  speed: 2
   suppression: 2
   suppressionResist: 2
 mechanics:

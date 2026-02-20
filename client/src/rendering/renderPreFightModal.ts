@@ -529,15 +529,9 @@ export function renderPreFightModal(app: Application, gameState: GameState): voi
         registerCardHoverRegion(card?.id ?? cardId, rarityIcon.x - 8, rarityIcon.y - 8, 24, 24, rarityIcon.x, rarityIcon.y + 14);
         rarityIcon.on('pointerenter', () => {
           const templateId = card?.id ?? cardId;
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre2',hypothesisId:'N1',location:'renderPreFightModal.ts:loadoutRarity:pointerenter',message:'prefight_loadout_rarity_pointerenter',data:{templateId,x:rarityIcon.x,y:rarityIcon.y},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
           if (setHoveredCard(templateId, rarityIcon.x, rarityIcon.y + 14)) render();
         });
         rarityIcon.on('pointerout', () => {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre2',hypothesisId:'N1',location:'renderPreFightModal.ts:loadoutRarity:pointerout',message:'prefight_loadout_rarity_pointerout',data:{templateId:card?.id ?? cardId},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
           if (setHoveredCard(null)) render();
         });
         loadoutSlots.addChild(rarityIcon);

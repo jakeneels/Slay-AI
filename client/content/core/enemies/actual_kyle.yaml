@@ -23,9 +23,9 @@ stats:
   maxHp: 130
   energy: 20
   maxEnergy: 20
-  speed: 0
-  suppression: 3
-  suppressionResist: 3
+  speed: 4
+  suppression: 4
+  suppressionResist: 4
 mechanics:
   - "Occupies 3 enemy slots"
   - "High durability and suppression pressure"

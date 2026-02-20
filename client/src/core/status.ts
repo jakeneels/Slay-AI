@@ -3,6 +3,7 @@
 import type { Character, Status, StatusCadence, StatusDefinition } from './types.js';
 import { addToCombatLog, getGameState } from './gameState.js';
 import { getTotalBlock } from './block.js';
+import { getModifierRegistry } from './modifiers.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -181,11 +182,15 @@ function applyDot(character: Character, statusId: string, stacks: number, def: S
  * Apply HoT healing for a single status based on its definition.
  * Returns the actual HP restored (after maxHp clamp).
  */
-function applyHot(character: Character, stacks: number, def: StatusDefinition): number {
+function applyHot(character: Character, stacks: number, def: StatusDefinition, sourceCharacter?: Character): number {
   if (!def.hot) return 0;
 
-  const totalHeal = stacks * def.hot.heal_per_stack;
+  let totalHeal = stacks * def.hot.heal_per_stack;
   if (totalHeal <= 0) return 0;
+  if (sourceCharacter && sourceCharacter.isPlayer === character.isPlayer) {
+    const registry = getModifierRegistry();
+    totalHeal = registry.resolve('friendly_heal_outgoing', totalHeal, { character: sourceCharacter });
+  }
 
   const hpBefore = character.hp;
   character.hp = Math.min(character.maxHp, character.hp + totalHeal);
@@ -243,6 +248,18 @@ function applyDecay(character: Character, statusId: string, currentStacks: numbe
  * Statuses without a definition default to 'round_start' cadence with no DoT.
  */
 export function processStatusEffects(character: Character, cadence: StatusCadence): void {
+  processStatusEffectsWithContext(character, cadence);
+}
+
+export interface StatusTickContext {
+  resolveHotSourceCharacter?: (target: Character, status: Status) => Character | undefined;
+}
+
+export function processStatusEffectsWithContext(
+  character: Character,
+  cadence: StatusCadence,
+  context: StatusTickContext = {},
+): void {
   // Snapshot status ids to avoid mutation issues during iteration
   const statusSnapshot = [...character.statuses];
 
@@ -263,7 +280,8 @@ export function processStatusEffects(character: Character, cadence: StatusCadenc
 
     // Apply HoT healing if defined
     if (def?.hot) {
-      applyHot(character, status.stacks, def);
+      const sourceCharacter = context.resolveHotSourceCharacter?.(character, status);
+      applyHot(character, status.stacks, def, sourceCharacter);
     }
 
     // Apply decay if defined
@@ -278,7 +296,7 @@ export function processStatusEffects(character: Character, cadence: StatusCadenc
  * @deprecated Use processStatusEffects(character, 'round_start') instead.
  */
 export function processDoTs(character: Character): void {
-  processStatusEffects(character, 'round_start');
+  processStatusEffectsWithContext(character, 'round_start');
 }
 
 // ── Duration decay ───────────────────────────────────────────────────

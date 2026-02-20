@@ -17,8 +17,8 @@ visual:
 isPlayer: false
 slotSize: 2
 stats:
-  hp: 80
-  maxHp: 80
+  hp: 120
+  maxHp: 120
   energy: 4
   maxEnergy: 4
   speed: 0

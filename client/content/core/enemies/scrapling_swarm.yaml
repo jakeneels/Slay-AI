@@ -4,6 +4,7 @@ name: "Scrapling Swarm"
 title: "Feral Scrap Machines"
 description: "Small, feral machines cobbled from rusted parts, glowing erratic cores."
 role: dps
+aggression: 1
 theme: "Swarm DPS – weak individually, dangerous in numbers."
 sprite: "/assets/game/enemies/swarm.png"
 visual:
@@ -15,11 +16,11 @@ visual:
   offsetY: 0
 isPlayer: false
 stats:
-  hp: 15
-  maxHp: 15
+  hp: 20
+  maxHp: 20
   energy: 5
   maxEnergy: 5
-  speed: 2
+  speed: 0
   suppression: 0
   suppressionResist: 0
 mechanics:
@@ -29,5 +30,6 @@ mechanics:
 tags: ["machine", "swarm", "normal", "enemy", "dps"]
 startingDeck:
   - "chain_lightning"
-  - "strike"
   - "overclock"
+  - "electric_javalin"
+  

@@ -4,8 +4,8 @@ name: "Rad Thornmail"
 type: skill
 rarity: rare
 cost: 1
-copies: 3
-targeting: self
+copies: 2
+targeting: ally
 exhaust: false
 expires_after_turns: 0
 description: "Wrap yourself in reactive armor that punishes attackers."

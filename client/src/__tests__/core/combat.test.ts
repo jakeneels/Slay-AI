@@ -4,6 +4,7 @@ import { resetGameState, createMockCharacter, createMockCard, createMockCharacte
 import { canRollbackTurn, getGameState, rollbackTurn } from '../../core/gameState.js';
 import { createCardInstance } from '../../core/card.js';
 import { SLOTS_PER_SIDE } from '../../core/constants.js';
+import { getModifierRegistry } from '../../core/modifiers.js';
 import type { Application } from 'pixi.js';
 
 // Mock PixiJS Application
@@ -40,6 +41,7 @@ describe('combat', () => {
 
   beforeEach(() => {
     resetGameState();
+    getModifierRegistry().clearAll();
     mockApp = createMockApp();
     setApp(mockApp);
   });
@@ -253,6 +255,147 @@ describe('combat', () => {
 
       expect(player.hp).toBe(70); // 50 + 20 heal
       expect(player.energy).toBe(1); // 3 - 2 cost
+    });
+
+    it('applies friendly outgoing heal modifiers from caster on direct heals', async () => {
+      const registry = getModifierRegistry();
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        energy: 3,
+        hp: 50,
+        maxHp: 100,
+        isPlayer: true,
+      });
+
+      const healCard = createMockCard({
+        id: 'heal',
+        name: 'Heal',
+        cost: { energy: 1 },
+        targeting: 'self',
+        effects: [{ kind: 'heal', amount: 10 }],
+      });
+
+      setupGameState({
+        characters: [player],
+        cardLibrary: { heal: healCard },
+        currentPlayerId: 'player1',
+      });
+      registry.add({
+        id: 'test-friendly-heal-add',
+        target: 'friendly_heal_outgoing',
+        op: 'add',
+        value: 5,
+        source: 'test',
+        scope: { kind: 'character', characterId: 'player1' },
+      });
+      registry.add({
+        id: 'test-friendly-heal-multiply',
+        target: 'friendly_heal_outgoing',
+        op: 'multiply',
+        value: 1.2,
+        source: 'test',
+        scope: { kind: 'character', characterId: 'player1' },
+      });
+
+      const instanceId = createCardInstance('heal');
+      if (instanceId) {
+        player.hand.push(instanceId);
+      }
+
+      await playCard(instanceId!);
+
+      expect(player.hp).toBe(68); // (10 + 5) * 1.2 = 18
+    });
+
+    it('does not apply friendly outgoing heal modifiers to enemy-side heal targets', async () => {
+      const registry = getModifierRegistry();
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        energy: 3,
+        isPlayer: true,
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        hp: 50,
+        maxHp: 100,
+        isPlayer: false,
+      });
+
+      const enemyHealCard = createMockCard({
+        id: 'enemy_heal',
+        name: 'Enemy Heal',
+        cost: { energy: 1 },
+        targeting: 'enemy',
+        effects: [{ kind: 'heal', amount: 10 }],
+      });
+
+      setupGameState({
+        characters: [player, enemy],
+        cardLibrary: { enemy_heal: enemyHealCard },
+        currentPlayerId: 'player1',
+      });
+      registry.add({
+        id: 'test-friendly-heal-enemy-check',
+        target: 'friendly_heal_outgoing',
+        op: 'multiply',
+        value: 2,
+        source: 'test',
+        scope: { kind: 'character', characterId: 'player1' },
+      });
+
+      const instanceId = createCardInstance('enemy_heal');
+      if (instanceId) {
+        player.hand.push(instanceId);
+      }
+
+      await playCard(instanceId!, 'enemy1');
+
+      expect(enemy.hp).toBe(60);
+    });
+
+    it('keeps grant_block_layer unaffected by friendly outgoing heal modifiers', async () => {
+      const registry = getModifierRegistry();
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        energy: 3,
+        isPlayer: true,
+      });
+
+      const defendCard = createMockCard({
+        id: 'defend',
+        name: 'Defend',
+        cost: { energy: 1 },
+        targeting: 'self',
+        effects: [{ kind: 'grant_block_layer', amount: 10, decay_percent: 20 }],
+      });
+
+      setupGameState({
+        characters: [player],
+        cardLibrary: { defend: defendCard },
+        currentPlayerId: 'player1',
+      });
+      registry.add({
+        id: 'test-friendly-heal-block-check',
+        target: 'friendly_heal_outgoing',
+        op: 'multiply',
+        value: 3,
+        source: 'test',
+        scope: { kind: 'character', characterId: 'player1' },
+      });
+
+      const instanceId = createCardInstance('defend');
+      if (instanceId) {
+        player.hand.push(instanceId);
+      }
+
+      await playCard(instanceId!);
+
+      expect(player.blockLayers).toHaveLength(1);
+      expect(player.blockLayers[0].amount).toBe(10);
     });
 
     it('should not allow playing card without enough energy', async () => {
@@ -3999,6 +4142,83 @@ describe('combat', () => {
 
       expect(enemy.slotIndex).toBe(3);
       expect(enemy.energy).toBe(0);
+
+      vi.useRealTimers();
+    });
+
+    it('should target enemy-side allies for ally-targeted aoe support cards', async () => {
+      vi.useFakeTimers();
+      setApp(mockApp);
+
+      const player1 = createMockCharacter({
+        id: 'player1',
+        name: 'Player 1',
+        hp: 100,
+        isPlayer: true,
+        slotIndex: 0,
+      });
+      const player2 = createMockCharacter({
+        id: 'player2',
+        name: 'Player 2',
+        hp: 100,
+        isPlayer: true,
+        slotIndex: 1,
+      });
+      const enemyCaster = createMockCharacter({
+        id: 'enemy_caster',
+        name: 'Enemy Caster',
+        hp: 100,
+        energy: 3,
+        maxEnergy: 3,
+        isPlayer: false,
+        slotIndex: 7,
+      });
+      const enemyAlly = createMockCharacter({
+        id: 'enemy_ally',
+        name: 'Enemy Ally',
+        hp: 100,
+        isPlayer: false,
+        slotIndex: 8,
+      });
+
+      const shieldDome = createMockCard({
+        id: 'shield_dome_test',
+        name: 'Shield Dome Test',
+        cost: { energy: 3 },
+        targeting: 'aoe',
+        targetSide: 'ally',
+        aoeSlots: 3,
+        maxRange: 8,
+        effects: [{ kind: 'grant_block_layer', amount: 8, decay_percent: 100 }],
+      });
+
+      setupGameState({
+        characters: [player1, player2, enemyCaster, enemyAlly],
+        cardLibrary: { shield_dome_test: shieldDome },
+        currentPlayerId: 'enemy_caster',
+        turnQueue: ['enemy_caster', 'player1', 'player2', 'enemy_ally'],
+        turnQueueIndex: 0,
+        roundNumber: 1,
+      });
+
+      const instanceId = createCardInstance('shield_dome_test');
+      if (instanceId) {
+        enemyCaster.hand.push(instanceId);
+      }
+
+      const turnPromise = processEnemyTurn(enemyCaster);
+      await vi.runAllTimersAsync();
+      await turnPromise;
+
+      const state = getGameState();
+      const p1 = state.characters.find(c => c.id === 'player1')!;
+      const p2 = state.characters.find(c => c.id === 'player2')!;
+      const caster = state.characters.find(c => c.id === 'enemy_caster')!;
+      const ally = state.characters.find(c => c.id === 'enemy_ally')!;
+
+      expect(p1.blockLayers).toHaveLength(0);
+      expect(p2.blockLayers).toHaveLength(0);
+      expect(caster.blockLayers.length + ally.blockLayers.length).toBeGreaterThan(0);
 
       vi.useRealTimers();
     });

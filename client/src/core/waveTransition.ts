@@ -17,7 +17,7 @@ import { buildTurnQueue, getEnemyPreferredRangeDecisionForCardIds, processEnemyT
 // ── Default tuning (overridable via modifier registry / dev panel) ───
 
 /** Fraction of missing HP recovered between waves (0-1). */
-export const WAVE_HEAL_FRACTION = 0.5;
+export const WAVE_HEAL_FRACTION = 0;
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -115,7 +115,7 @@ function findAvailableNearestSlot(
 /**
  * Transition to the next wave:
  *  1. Increment wave counter
- *  2. Partially heal living allies (50% of missing HP)
+ *  2. No healing between waves
  *  3. Clear ally combat state (statuses, block, energy)
  *  4. Reshuffle ally decks (hand + discard -> deck, shuffle)
  *  5. Remove all enemy characters
@@ -229,6 +229,7 @@ export function startNextWave(): void {
     0,
   );
   addToCombatLog(`--- Wave ${gameState.waveNumber} --- (Threat: ${Math.round(threatScore)})`);
+  addToCombatLog(`Total threat: ${Math.round(threatScore)}`);
 
   gameState.enemyAiDebug.spawns = [];
   const enemyOptimalSpawnChance = Math.max(

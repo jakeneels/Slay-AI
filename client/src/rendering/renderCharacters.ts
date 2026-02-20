@@ -77,8 +77,6 @@ type TargetingFeedback = {
 
 let activeTargetingFeedback: TargetingFeedback | null = null;
 let targetingFeedbackTimeout: ReturnType<typeof setTimeout> | null = null;
-const facingDebugLastLogAt = new Map<string, number>();
-
 export type ResolvedVisualProfile = {
   scale: number;
   anchorX: number;
@@ -510,14 +508,6 @@ function renderCharacter(
       sprite.x = slotCenterX + visual.offsetX + (visual.anchorX - 0.5) * sprite.width * facingSign;
       sprite.y = placement.y;
       sprite.zIndex = Z_SPRITE;
-      const now = Date.now();
-      const lastAt = facingDebugLastLogAt.get(char.id) ?? 0;
-      if (now - lastAt > 800) {
-        facingDebugLastLogAt.set(char.id, now);
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'4a1d9c'},body:JSON.stringify({sessionId:'4a1d9c',runId:'post-fix-3',hypothesisId:'H2',location:'renderCharacters.ts:renderCharacter:facing-apply',message:'Applied facing at render',data:{characterId:char.id,name:char.name,isPlayer:char.isPlayer,authoredFacing,storedFacing:char.facing ?? null,effectiveFacing:facing,facingSign,slotIndex:char.slotIndex,slotCenterX,anchorX:visual.anchorX,spriteWidth:sprite.width,computedX:sprite.x,computedY:sprite.y,scaleX:sprite.scale.x},timestamp:now})}).catch(()=>{});
-        // #endregion
-      }
 
       if (showPositionDebug) {
         drawPositionDebugOverlay(app, slotCenterX, groundY, visual);
@@ -727,9 +717,6 @@ function renderCharacter(
     target.eventMode = 'static';
     target.cursor = 'help';
     target.on('pointerenter', () => {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre3',hypothesisId:'N7',location:'renderCharacters.ts:bindCharacterHover:pointerenter',message:'character_hover_pointerenter',data:{characterId:char.id},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       const selectedCardId = getSelectedCardId();
       if (selectedCardId) {
         if (setHoveredCharacter(null, 0, 0)) {
@@ -745,9 +732,6 @@ function renderCharacter(
     // recreated on every render; pointerleave can be missed when a hovered
     // object is replaced during a re-render.
     target.on('pointerout', () => {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre3',hypothesisId:'N7',location:'renderCharacters.ts:bindCharacterHover:pointerout',message:'character_hover_pointerout',data:{characterId:char.id},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       if (setHoveredCharacter(null, 0, 0)) {
         renderCallback();
       }
@@ -1214,17 +1198,11 @@ function renderStatusBadges(
       if (!isOverflow) {
         registerStatusHoverRegion(statusId, badgeX, currentRowTopY, badgeW, BADGE_H);
         bg.on('pointerenter', () => {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre3',hypothesisId:'N6',location:'renderCharacters.ts:statusBadge:pointerenter',message:'status_badge_pointerenter',data:{statusId,characterId:char.id},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
           if (setHoveredStatus(statusId, stacks, tooltipX, tooltipY)) {
             renderCallback();
           }
         });
         bg.on('pointerout', () => {
-          // #region agent log
-          fetch('http://127.0.0.1:7242/ingest/70be47a7-7d53-429c-b1ba-9ecb4592d85b',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'hover-stuck-pre3',hypothesisId:'N6',location:'renderCharacters.ts:statusBadge:pointerout',message:'status_badge_pointerout',data:{statusId,characterId:char.id},timestamp:Date.now()})}).catch(()=>{});
-          // #endregion
           if (setHoveredStatus(null, 0)) {
             renderCallback();
           }

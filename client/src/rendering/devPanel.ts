@@ -9,6 +9,7 @@ import {
 } from '../core/constants.js';
 import {
   WAVE_BASE_BUDGET, WAVE_BUDGET_INCREMENT, WAVE_BUDGET_JITTER, WAVE_MIN_ENEMIES, WAVE_MAX_ENEMIES,
+  computeDifficulty,
 } from '../core/waveGenerator.js';
 import { WAVE_HEAL_FRACTION } from '../core/waveTransition.js';
 import { getShowLanesSetting, setShowLanesSetting } from './renderLanes.js';
@@ -62,7 +63,7 @@ const GLOBAL_TWEAKS: TweakDef[] = [
   { target: 'jump_landing_ms',           label: 'Jump Landing (ms)',      defaultValue: 120, step: 10, min: 0, max: 800 },
   { target: 'jump_arc_height',           label: 'Jump Arc Height',        defaultValue: 90, step: 5, min: 20, max: 300 },
   // Wave generation tuning
-  { target: 'wave_base_budget',          label: 'Wave Base Budget',       defaultValue: WAVE_BASE_BUDGET,          step: 10, min: 20, max: 500 },
+  { target: 'wave_base_budget',          label: 'Wave Base Budget',       defaultValue: WAVE_BASE_BUDGET,          step: 5, min: 0, max: 500 },
   { target: 'wave_budget_increment',     label: 'Wave Budget Incr.',      defaultValue: WAVE_BUDGET_INCREMENT,     step: 5,  min: 0,  max: 100 },
   { target: 'wave_budget_jitter',        label: 'Wave Budget Jitter',     defaultValue: WAVE_BUDGET_JITTER,        step: 0.05, min: 0, max: 1 },
   { target: 'wave_min_enemies',          label: 'Wave Min Enemies',       defaultValue: WAVE_MIN_ENEMIES,          step: 1, min: 1, max: 4 },
@@ -294,6 +295,18 @@ export function renderDevPanel(gameState: GameState): void {
     return inner;
   });
 
+  // ── Gear loadouts section ──
+  html += renderCollapsibleSection('gear-loadouts', 'Gear Loadouts', () => {
+    let inner = '';
+    for (const char of players) {
+      inner += renderCharacterGear(char, false);
+    }
+    for (const char of enemies) {
+      inner += renderCharacterGear(char, true);
+    }
+    return inner;
+  });
+
   container.innerHTML = html;
 }
 
@@ -381,13 +394,37 @@ function renderCharacterDiscard(char: Character, gameState: GameState, isEnemy: 
   return html;
 }
 
+function renderCharacterGear(char: Character, isEnemy: boolean): string {
+  const enemyClass = isEnemy ? ' enemy' : '';
+  const alive = char.hp > 0;
+  const nameStyle = alive ? '' : ' style="opacity:0.4; text-decoration:line-through;"';
+  const weaponName = char.gear.weapon?.name ?? 'Empty';
+  const armorName = char.gear.armor?.name ?? 'Empty';
+  const accessoryName = char.gear.accessory?.name ?? 'Empty';
+
+  let html = `<div class="dev-character-name${enemyClass}"${nameStyle}>${escapeHtml(char.name)}</div>`;
+  html += `<div class="dev-log-entry"><span style="color:#9ca3af;">Weapon:</span> ${escapeHtml(weaponName)}</div>`;
+  html += `<div class="dev-log-entry"><span style="color:#9ca3af;">Armor:</span> ${escapeHtml(armorName)}</div>`;
+  html += `<div class="dev-log-entry"><span style="color:#9ca3af;">Accessory:</span> ${escapeHtml(accessoryName)}</div>`;
+  return html;
+}
+
 function renderCombatLogBody(gameState: GameState): string {
-  const entries = gameState.combatLog;
-  if (entries.length === 0) {
-    return `<div class="dev-log-entry" style="color:#4b5563;font-style:italic;">No entries yet</div>`;
-  }
+  const livingEnemies = gameState.characters.filter(c => !c.isPlayer && c.hp > 0);
+  const cumulativeThreat = livingEnemies.reduce((sum, char) => {
+    const def = gameState.characterLibrary[char.id];
+    return def ? sum + computeDifficulty(def, gameState.cardLibrary) : sum;
+  }, 0);
 
   let html = '';
+  html += `<div class="dev-log-entry" style="color:#4ade80;font-weight:bold;margin-bottom:6px;">Cumulative threat: ${Math.round(cumulativeThreat)}</div>`;
+
+  const entries = gameState.combatLog;
+  if (entries.length === 0) {
+    html += `<div class="dev-log-entry" style="color:#4b5563;font-style:italic;">No entries yet</div>`;
+    return html;
+  }
+
   // Show all entries, newest at top
   const reversed = [...entries].reverse();
   for (let i = 0; i < reversed.length; i++) {

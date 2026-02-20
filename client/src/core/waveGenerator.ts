@@ -10,10 +10,10 @@ import { getModifierRegistry } from './modifiers.js';
 // ── Default tuning constants (overridable via modifier registry / dev panel) ──
 
 /** Difficulty budget for wave 1. */
-export const WAVE_BASE_BUDGET = 200;
+export const WAVE_BASE_BUDGET = 120;
 
 /** Extra budget added per wave after the first. */
-export const WAVE_BUDGET_INCREMENT = 40;
+export const WAVE_BUDGET_INCREMENT = 35;
 
 /** +/- jitter applied to the budget (fraction, e.g. 0.20 = 20%). */
 export const WAVE_BUDGET_JITTER = 0.2;
@@ -116,7 +116,16 @@ export function generateWave(
   const jitter = 1 + (Math.random() * 2 - 1) * jitterFrac;
   const budget = Math.round(rawBudget * jitter);
 
+  const BUDGET_RETRIES = 10;
   let picked = pickEnemies(availablePool, budget, minEnemies, maxEnemies, cardLibrary);
+  for (let i = 0; i < BUDGET_RETRIES; i++) {
+    const totalThreat = picked.reduce(
+      (sum, def) => sum + computeDifficulty(def, cardLibrary),
+      0,
+    );
+    if (totalThreat <= budget) break;
+    picked = pickEnemies(availablePool, budget, minEnemies, maxEnemies, cardLibrary);
+  }
 
   // Re-roll once if we got the exact same composition as last wave
   if (previousIds && isSameComposition(picked, previousIds) && availablePool.length > 1) {

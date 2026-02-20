@@ -4,7 +4,7 @@ name: "Ember Guard"
 type: skill
 rarity: rare
 cost: 1
-copies: 2
+copies: 1
 tags: [pyro, defense, thorns]
 targeting: self
 exhaust: false

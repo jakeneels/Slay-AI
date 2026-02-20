@@ -1,0 +1,10 @@
+schemaVersion: 1
+id: flux_dampener
+name: "Flux Dampener"
+description: "Flux dampener. +2 suppression."
+slot: weapon
+rarity: common
+modifiers:
+  - target: suppression
+    op: add
+    value: 1

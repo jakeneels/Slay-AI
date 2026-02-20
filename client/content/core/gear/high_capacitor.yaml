@@ -1,0 +1,10 @@
+schemaVersion: 1
+id: high_yield_capacitor
+name: "High Yield Capacitor"
+description: "High yield capacitor. +2 max energy per turn."
+slot: accessory
+rarity: uncommon
+modifiers:
+  - target: maxEnergy
+    op: add
+    value: 2

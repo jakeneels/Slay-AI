@@ -30,5 +30,6 @@ tags: ["tactician", "support", "drones", "traps"]
 startingDeck:
   - "suppressing_fire"
   - "incendiary_drone"
+  - "explosive_drone"
   - "lob_c4"
-  - "sidearm"
+  - "combat_rifle"

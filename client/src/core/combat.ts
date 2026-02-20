@@ -26,7 +26,7 @@ import {
   type PlayDamageAnimationOptions 
 } from '../../animations.js';
 import { applyDamageWithBlock, grantBlockLayer, getNextDecayOwnerTurnStart, processBlockDecayForTurnStart } from './block.js';
-import { applyStatus, modifyStatusStacks, processStatusEffects, decayStatusDurations, getStatusStacks } from './status.js';
+import { applyStatus, modifyStatusStacks, processStatusEffectsWithContext, decayStatusDurations, getStatusStacks } from './status.js';
 import { MAX_SLOTS, SLOTS_PER_SIDE, calculateRangeModifier, getJumpMaxDistance, getJumpOccupiedSlotCost, getSuppressionDistance, getSuppressionRangedThreshold, getSuppressionStackCost } from './constants.js';
 import { getModifierRegistry } from './modifiers.js';
 import { computeDifficulty, RARITY_WEIGHTS } from './waveGenerator.js';
@@ -180,6 +180,16 @@ export function getOccupiedSlots(character: Character): number[] {
 
 function rangesOverlap(a: number[], b: number[]): boolean {
   return a.some(slot => b.includes(slot));
+}
+
+function getSlotDistanceBetweenCharacters(a: Character, b: Character): number {
+  const aStart = a.slotIndex;
+  const aEnd = aStart + getCharacterSlotSize(a) - 1;
+  const bStart = b.slotIndex;
+  const bEnd = bStart + getCharacterSlotSize(b) - 1;
+  if (aEnd < bStart) return bStart - aEnd;
+  if (bEnd < aStart) return aStart - bEnd;
+  return 0;
 }
 
 function updateFacingFromDelta(character: Character, delta: number, reason: string): void {
@@ -683,7 +693,7 @@ function getAITargetCandidates(card: Card, caster: Character): Character[] {
 type AoePlan = {
   targetId: string | null;
   score: number;
-  opponentHits: number;
+  priorityHits: number;
 };
 
 /**
@@ -694,6 +704,7 @@ type AoePlan = {
 function evaluateBestAoePlan(card: Card, caster: Character, casterSlot: number): AoePlan {
   const gameState = getGameState();
   const aoeSlots = card.aoeSlots ?? 3;
+  const favorsAllies = card.targetSide === 'ally';
 
   // Estimate raw damage from the card (sum of all damage / aoe_damage effects)
   let estimatedDamage = 0;
@@ -705,7 +716,7 @@ function evaluateBestAoePlan(card: Card, caster: Character, casterSlot: number):
 
   let bestScore = -Infinity;
   let bestTargetId: string | null = null;
-  let bestOpponentHits = 0;
+  let bestPriorityHits = 0;
 
   const allLiving = gameState.characters.filter(c => c.hp > 0);
 
@@ -723,30 +734,40 @@ function evaluateBestAoePlan(card: Card, caster: Character, casterSlot: number):
     if (targets.length === 0) continue;
 
     let score = 0;
-    let hitsOpponent = false;
-    let opponentHits = 0;
+    let hitsPrioritySide = false;
+    let priorityHits = 0;
 
     for (const t of targets) {
-      if (t.isPlayer !== caster.isPlayer) {
-        // Hitting an opponent — good
+      if (favorsAllies) {
+        if (t.isPlayer === caster.isPlayer) {
+          // Ally-targeted support AOE should prioritize friendly coverage.
+          score += t.id === caster.id ? 1.5 : 2;
+          hitsPrioritySide = true;
+          priorityHits++;
+        } else {
+          // Avoid accidentally buffing opponents.
+          score -= 2;
+        }
+      } else if (t.isPlayer !== caster.isPlayer) {
+        // Offensive AOE should prioritize opponents.
         score += 2;
-        hitsOpponent = true;
-        opponentHits++;
+        hitsPrioritySide = true;
+        priorityHits++;
       } else if (t.id === caster.id) {
-        // Hitting self — very bad, especially if lethal
+        // Hitting self — very bad, especially if lethal.
         score -= (caster.hp <= estimatedDamage) ? 10 : 3;
       } else {
-        // Hitting an ally — bad
+        // Hitting allies is collateral damage.
         score -= 1.5;
       }
     }
 
-    // Must actually hit at least one opponent
-    if (!hitsOpponent) continue;
+    // Must actually hit at least one unit on the priority side.
+    if (!hitsPrioritySide) continue;
 
     if (score > bestScore) {
       bestScore = score;
-      bestOpponentHits = opponentHits;
+      bestPriorityHits = priorityHits;
       // Use the character on that slot (if any) as the target, else a raw slot ref
       const charOnSlot = allLiving.find(c => getOccupiedSlots(c).includes(slot));
       bestTargetId = charOnSlot ? charOnSlot.id : `slot:${slot}`;
@@ -754,9 +775,9 @@ function evaluateBestAoePlan(card: Card, caster: Character, casterSlot: number):
   }
 
   if (bestScore <= 0 || !bestTargetId) {
-    return { targetId: null, score: -Infinity, opponentHits: 0 };
+    return { targetId: null, score: -Infinity, priorityHits: 0 };
   }
-  return { targetId: bestTargetId, score: bestScore, opponentHits: bestOpponentHits };
+  return { targetId: bestTargetId, score: bestScore, priorityHits: bestPriorityHits };
 }
 
 function canMoveForwardForPlanning(char: Character): boolean {
@@ -1433,7 +1454,11 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
         case 'heal':
           // Use the target from targeting logic (already determined correctly)
           const healTarget = target;
-          const adjustedHeal = Math.round(registry.resolve('heal_amount', effect.amount, { character: healTarget, card }));
+          let adjustedHeal = registry.resolve('heal_amount', effect.amount, { character: healTarget, card });
+          if (healTarget.isPlayer === currentPlayer.isPlayer) {
+            adjustedHeal = registry.resolve('friendly_heal_outgoing', adjustedHeal, { character: currentPlayer, card });
+          }
+          adjustedHeal = Math.round(adjustedHeal);
           healTarget.hp = Math.min(healTarget.maxHp, healTarget.hp + adjustedHeal);
           if (!gameState.stats.cumulativeHeal) {
             gameState.stats.cumulativeHeal = 0;
@@ -1518,7 +1543,7 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
             statusId,
             effect.stacks || 1,
             effect.duration,
-            undefined // metadata if needed
+            { sourceCharacterId: currentPlayer.id }
           );
           sparkType = 'buff';
           // Render immediately to show updated status
@@ -1598,7 +1623,7 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
               const adjacentTargets = getGameState().characters.filter(c =>
                 c.hp > 0 &&
                 c.id !== target.id &&
-                Math.abs(c.slotIndex - target.slotIndex) <= spreadRange &&
+                getSlotDistanceBetweenCharacters(c, target) <= spreadRange &&
                 (
                   spreadSide === 'both'
                   || (spreadSide === 'same' && c.isPlayer === target.isPlayer)
@@ -1878,7 +1903,14 @@ export function processRoundStart(renderCallback?: () => void): void {
 
   for (const character of gameState.characters.filter(c => c.hp > 0)) {
     // Process all ticking statuses (single unified cadence)
-    processStatusEffects(character, 'round_start');
+    processStatusEffectsWithContext(character, 'round_start', {
+      resolveHotSourceCharacter: (_target, status) => {
+        const sourceCharacterId = status.metadata?.sourceCharacterId;
+        if (typeof sourceCharacterId !== 'string') return undefined;
+        const sourceCharacter = gameState.characters.find(c => c.id === sourceCharacterId && c.hp > 0);
+        return sourceCharacter;
+      },
+    });
 
     // Decay status durations
     decayStatusDurations(character);
@@ -2802,7 +2834,7 @@ export async function processEnemyTurn(enemy: Character, renderCallback?: () => 
           ) {
             const forwardSlot = enemy.isPlayer ? enemy.slotIndex + 1 : enemy.slotIndex - 1;
             const forwardPlan = evaluateBestAoePlan(candidateCard, enemy, forwardSlot);
-            const gainsOpponentHit = forwardPlan.opponentHits > currentPlan.opponentHits;
+            const gainsOpponentHit = forwardPlan.priorityHits > currentPlan.priorityHits;
             const gainsScore = forwardPlan.score > currentPlan.score + 0.75;
             if (forwardPlan.targetId && (gainsOpponentHit || gainsScore)) {
               const currentPredictedHazard = getPredictedDamageByNextRoundForSlot(enemy, enemy.slotIndex);
