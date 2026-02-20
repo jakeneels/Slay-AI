@@ -21,7 +21,7 @@ effects:
     duration_turns: 4
     aoeSlots: 6
   - kind: damage
-    amount: 10
+    amount: 8
     effectTarget: self
 animation:
   damage:

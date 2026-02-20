@@ -6,15 +6,15 @@ rarity: rare
 cost: 2
 copies: 2
 targeting: enemy
-maxRange: 12
-minRange: 8
+maxRange: 10
+minRange: 6
 # optimalRange: 4
 exhaust: false
 expires_after_turns: 0
 description: "Long-range single-target nuke — best at medium-far distance."
 effects:
   - kind: damage
-    amount: 22
+    amount: 20
 animation:
   damage:
     projectileColor: 0x00ffff  # blue lightning

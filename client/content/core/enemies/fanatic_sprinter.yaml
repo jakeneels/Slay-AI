@@ -3,15 +3,14 @@ id: fanatic_sprinter
 name: "Fanatic Sprinter"
 visual:
   preset: small
-  scale: 0.7
+  scale: 0.8
   anchorX: 0.5
   anchorY: 1
   offsetX: 0
-  offsetY: 0
+  offsetY: 15
 title: "Wrathbound Charger"
 description: "A berserk cultist fused with salvaged tech relics, channeling corrupted energy through dual weapons. Charges headlong into the fray, hurling telekinetic debris before closing to melee range."
 role: dps
-aggression: 9
 theme: "Glass-cannon rusher – closes distance fast and chains rapid strikes."
 sprite: "/assets/game/enemies/fanatic-sprinter.png"
 isPlayer: false
@@ -23,6 +22,7 @@ stats:
   speed: 2
   suppression: 2
   suppressionResist: 0
+  aggression: 9
 mechanics:
   - "Heavy damage pick"
   - "Hurls telekinetic debris at range before charging"

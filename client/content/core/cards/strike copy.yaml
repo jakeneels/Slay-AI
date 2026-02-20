@@ -1,0 +1,18 @@
+schemaVersion: 1
+id: strike
+name: "Pickaxe"
+type: attack
+rarity: common
+cost: 1
+copies: 2
+tags: [basic]
+targeting: enemy
+maxRange: 2
+# optimalRange: 1
+exhaust: false
+expires_after_turns: 0
+description: "Pickaxe attack — best at point-blank, can reach 2 slots."
+effects:
+  - kind: damage
+    amount: 6
+

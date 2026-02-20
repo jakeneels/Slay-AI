@@ -4,7 +4,6 @@ name: "Rustbeast"
 title: "Scrap-Mutant Beast"
 description: "Scrap-mutant machine-beast, glowing green targeting core."
 role: dps
-aggression: 10
 theme: "Pressure – advances relentlessly."
 sprite: "/assets/game/enemies/rustbeast-quadruped.png"
 visual:
@@ -23,6 +22,7 @@ stats:
   speed: 2
   suppression: 2
   suppressionResist: 1
+  aggression: 10
 mechanics:
   - "Ignores slot movement penalties"
   - "Forces backline forward (pressure)"

@@ -1,5 +1,5 @@
 schemaVersion: 1
-id: javalin
+id: electric_javalin
 name: "Electric Javalin"
 type: attack
 rarity: common
@@ -15,4 +15,4 @@ expires_after_turns: 0
 description: "Throw a javelin at an enemy, hitting two adjacent lanes."
 effects:
   - kind: damage
-    amount: 20
+    amount: 15

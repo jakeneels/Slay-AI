@@ -4,7 +4,6 @@ name: "Neural Stalker"
 title: "AI Assassin"
 description: "Nimble AI assassin, skeletal frame with hacking tendrils."
 role: utility
-aggression: 5
 theme: "Debuffer / Harasser – punishes energy usage."
 sprite: "/assets/game/enemies/neural-stalker.png"
 visual:
@@ -24,6 +23,7 @@ stats:
   speed: 1
   suppression: 1
   suppressionResist: 2
+  aggression: 5
 mechanics:
   - "Attacks drain player energy"
   - "Applies 'jammed' debuff (reduces accuracy)"

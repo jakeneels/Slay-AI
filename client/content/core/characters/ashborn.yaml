@@ -15,13 +15,13 @@ visual:
   offsetX: 0
   offsetY: 0
 stats:
-  hp: 75
-  maxHp: 75
+  hp: 80
+  maxHp: 80
   energy: 7
   maxEnergy: 7
   speed: 2
   suppression: 0
-  suppressionResist: 1
+  suppressionResist: 2
 mechanics:
   - "Creates and extends lane fire hazards"
   - "Uses HP as a resource for burst turns"

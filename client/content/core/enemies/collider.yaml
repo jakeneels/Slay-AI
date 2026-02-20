@@ -4,7 +4,6 @@ name: "Collider"
 title: "Impact Juggernaut"
 description: "A compact assault mech built to smash through formations and pin down the front line."
 role: tank/dps hybrid
-aggression: 8
 theme: "Lane-breaker - bursts forward and punishes close-range targets."
 sprite: "/assets/game/enemies/collider.png"
 visual:
@@ -13,7 +12,7 @@ visual:
   anchorX: 0.5
   anchorY: 0.9
   offsetX: 0
-  offsetY: 14
+  offsetY: 20
 isPlayer: false
 slotSize: 2
 stats:
@@ -22,8 +21,9 @@ stats:
   energy: 5
   maxEnergy: 5
   speed: 2
-  suppression: 2
+  suppression: 3
   suppressionResist: 2
+  aggression: 8
 mechanics:
   - "High burst turns with forward pressure"
   - "Uses knockback to break enemy spacing"

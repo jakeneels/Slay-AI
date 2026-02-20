@@ -1,0 +1,14 @@
+schemaVersion: 1
+id: targeting_module
+name: "Targeting Module"
+description: "Precision optics suite. +15% damage dealt, +1 suppression resist."
+slot: weapon
+rarity: legendary
+modifiers:
+  - target: damage_dealt
+    op: multiply
+    value: 1.15
+  - target: suppressionResist
+    op: add
+    value: 1
+

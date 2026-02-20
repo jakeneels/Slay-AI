@@ -38,7 +38,7 @@ export const JUMP_MAX_DISTANCE = MAX_SLOTS;     // Default: can jump to any boar
 export const JUMP_OCCUPIED_SLOT_COST = 1;       // Extra energy per occupied slot crossed
 
 // Spawn positioning defaults
-export const ENEMY_OPTIMAL_SPAWN_CHANCE = 0;    // 0..1 chance enemies spawn using optimal-range positioning
+export const ENEMY_OPTIMAL_SPAWN_CHANCE = 0.7; // 0..1 chance enemies spawn using optimal-range positioning
 
 // ── Resolved accessors ──────────────────────────────────────────────
 // These pull the live value through the modifier pipeline.

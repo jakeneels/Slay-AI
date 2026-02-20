@@ -1,0 +1,27 @@
+schemaVersion: 1
+id: missle_strike
+name: "Missle Strike"
+type: skill
+rarity: epic
+cost: 3
+copies: 1
+targeting: aoe
+aoeSlots: 2
+maxRange: 8
+# optimalRange: 3
+exhaust: false
+expires_after_turns: 0
+description: "Strike an enemy with a missile, causing damage and pushing them back."
+effects:
+  - kind: damage
+    amount: 14
+  - kind: knockback
+    amount: 1
+    effectTarget: target
+animation:
+  damage:
+    projectileColor: 0x00ffff  # Cyan/blue lightning
+    projectileSpeed: 1500      # Very fast lightning
+    impactSize: 40             # Electric impact burst
+# Long-range AOE - lightning arcs across the battlefield
+

@@ -4,25 +4,25 @@ name: "Scrapling Swarm"
 title: "Feral Scrap Machines"
 description: "Small, feral machines cobbled from rusted parts, glowing erratic cores."
 role: dps
-aggression: 1
 theme: "Swarm DPS – weak individually, dangerous in numbers."
 sprite: "/assets/game/enemies/swarm.png"
 visual:
   preset: small
-  scale: 0.8
-  anchorX: 0.5
-  anchorY: 0.9
+  scale: 0.6
+  anchorX: 1
+  anchorY: 1
   offsetX: 0
-  offsetY: 0
+  offsetY: 14
 isPlayer: false
 stats:
-  hp: 20
-  maxHp: 20
+  hp: 15
+  maxHp: 15
   energy: 5
   maxEnergy: 5
   speed: 0
   suppression: 0
   suppressionResist: 0
+  aggression: 1
 mechanics:
   - "Multi-hit attacks (chip block down)"
   - "High speed/low health"

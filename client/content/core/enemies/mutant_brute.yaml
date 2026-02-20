@@ -4,7 +4,6 @@ name: "Mutant Brute"
 title: "Radborn Berserker"
 description: "A hulking creature twisted by radiation, with reinforced bone growths and toxic blood."
 role: tank
-aggression: 8
 theme: "High-HP tank enemy that absorbs damage and retaliates."
 sprite: "/assets/game/enemies/mutant_brute.png"
 visual:
@@ -17,13 +16,14 @@ visual:
 isPlayer: false
 slotSize: 2
 stats:
-  hp: 120
-  maxHp: 120
+  hp: 90
+  maxHp: 90
   energy: 4
   maxEnergy: 4
   speed: 0
   suppression: 2
   suppressionResist: 1
+  aggression: 8
 mechanics:
   - "High health pool"
   - "Damage reflection"

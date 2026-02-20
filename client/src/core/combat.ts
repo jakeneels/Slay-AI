@@ -696,6 +696,23 @@ type AoePlan = {
   priorityHits: number;
 };
 
+type EnemyPlannedAction = {
+  cardInstanceId: string;
+  cardTemplateId: string;
+  targetId: string;
+  energyCost: number;
+  cardEnergyCost: number;
+  score: number;
+};
+
+type EnemyPlannerResult = {
+  totalScore: number;
+  actions: EnemyPlannedAction[];
+};
+
+const ENEMY_AI_PLANNER_MAX_DEPTH = 3;
+const ENEMY_AI_PLANNER_BEAM_WIDTH = 6;
+
 /**
  * For an AOE card, find the best center slot that maximises damage to opponents
  * while minimising friendly-fire. Evaluates every in-range slot from the provided
@@ -778,6 +795,216 @@ function evaluateBestAoePlan(card: Card, caster: Character, casterSlot: number):
     return { targetId: null, score: -Infinity, priorityHits: 0 };
   }
   return { targetId: bestTargetId, score: bestScore, priorityHits: bestPriorityHits };
+}
+
+function getEnemyCardEnergyCost(caster: Character, card: Card): number {
+  return card.cost.energy + getSuppressionCostPenalty(caster, card);
+}
+
+function getEnemyNonAoeValidTargets(card: Card, caster: Character): Character[] {
+  let validTargets = getAITargetCandidates(card, caster);
+  if ((card.maxRange || card.minRange) && !['self', 'allAllies', 'allEnemies'].includes(card.targeting)) {
+    validTargets = validTargets.filter(target => {
+      const dist = Math.abs(caster.slotIndex - target.slotIndex);
+      if (card.maxRange && dist > card.maxRange) return false;
+      if (card.minRange && dist < card.minRange) return false;
+      return true;
+    });
+  }
+  return validTargets;
+}
+
+function scoreEnemyStatusApplication(
+  statusId: string | undefined,
+  targetIsOpponent: boolean,
+  stacks: number,
+): number {
+  if (!statusId) return 0;
+  const normalized = statusId.toLowerCase();
+  const likelyDebuff = ['bleed', 'burn', 'poison', 'shock', 'disrupt', 'suppressed', 'doom', 'vulnerable', 'stun'];
+  const likelyBuff = ['fortify', 'regen', 'thorns', 'barrier', 'haste', 'ward'];
+  const isLikelyDebuff = likelyDebuff.some(tag => normalized.includes(tag));
+  const isLikelyBuff = likelyBuff.some(tag => normalized.includes(tag));
+  if (targetIsOpponent) {
+    if (isLikelyBuff && !isLikelyDebuff) return -2 * stacks;
+    return 2 * stacks;
+  }
+  if (isLikelyDebuff && !isLikelyBuff) return -2 * stacks;
+  return 1.5 * stacks;
+}
+
+function scoreEnemyAction(card: Card, caster: Character, target: Character): number {
+  const targetIsOpponent = target.isPlayer !== caster.isPlayer;
+  const targetMissingHp = Math.max(0, target.maxHp - target.hp);
+  const casterMissingHp = Math.max(0, caster.maxHp - caster.hp);
+  let score = 0;
+
+  for (const effect of card.effects) {
+    switch (effect.kind) {
+      case 'damage':
+      case 'aoe_damage': {
+        const amount = Math.max(0, effect.amount);
+        if (targetIsOpponent) {
+          score += amount;
+          if (amount >= target.hp) {
+            score += 6;
+          } else {
+            score += Math.min(amount, targetMissingHp) * 0.2;
+          }
+        } else {
+          score -= amount * 2;
+        }
+        break;
+      }
+      case 'heal': {
+        const amount = Math.max(0, effect.amount);
+        if (!targetIsOpponent) {
+          const effective = Math.min(amount, targetMissingHp);
+          score += effective * 1.1;
+          score -= Math.max(0, amount - effective) * 0.3;
+        } else {
+          score -= amount;
+        }
+        break;
+      }
+      case 'grant_block_layer': {
+        const amount = Math.max(0, effect.amount);
+        if (!targetIsOpponent) {
+          const urgencyScale = target.id === caster.id ? (1 + (casterMissingHp / Math.max(1, caster.maxHp))) : 1;
+          score += amount * 0.6 * urgencyScale;
+        } else {
+          score -= amount * 0.4;
+        }
+        break;
+      }
+      case 'status': {
+        const stacks = Math.max(1, effect.stacks ?? 1);
+        score += scoreEnemyStatusApplication(effect.status, targetIsOpponent, stacks);
+        break;
+      }
+      case 'status_modify': {
+        const amount = Math.max(0, effect.amount);
+        score += targetIsOpponent ? amount : amount * 0.5;
+        break;
+      }
+      case 'status_spread':
+        score += targetIsOpponent ? 3 : 1.5;
+        break;
+      case 'energy':
+        score += targetIsOpponent ? -2 * effect.amount : 2 * effect.amount;
+        break;
+      case 'speed':
+        score += targetIsOpponent ? -0.75 * effect.amount : 0.75 * effect.amount;
+        break;
+      case 'knockback':
+      case 'jump':
+      case 'lane_hazard':
+        score += targetIsOpponent ? 1.5 : -1.5;
+        break;
+      case 'thorns':
+        score += targetIsOpponent ? -1 : 2;
+        break;
+      case 'modifier':
+      case 'deck_inject':
+        score += targetIsOpponent ? 0.5 : 1;
+        break;
+      default:
+        break;
+    }
+  }
+
+  if (card.targeting === 'self' && target.id === caster.id) {
+    score += 0.25;
+  }
+
+  return score;
+}
+
+function comparePlannedActions(a: EnemyPlannedAction, b: EnemyPlannedAction): number {
+  if (a.score !== b.score) return b.score - a.score;
+  if (a.cardEnergyCost !== b.cardEnergyCost) return b.cardEnergyCost - a.cardEnergyCost;
+  if (a.cardTemplateId !== b.cardTemplateId) return a.cardTemplateId.localeCompare(b.cardTemplateId);
+  return a.targetId.localeCompare(b.targetId);
+}
+
+function enumerateEnemyNonAoeActions(enemy: Character, candidateCardIds: string[], energy: number): EnemyPlannedAction[] {
+  const actions: EnemyPlannedAction[] = [];
+
+  for (const cardInstanceId of candidateCardIds) {
+    const card = getResolvedCard(cardInstanceId);
+    if (!card || card.targeting === 'aoe') continue;
+    const energyCost = getEnemyCardEnergyCost(enemy, card);
+    if (energyCost > energy) continue;
+
+    const validTargets = getEnemyNonAoeValidTargets(card, enemy);
+    for (const target of validTargets) {
+      actions.push({
+        cardInstanceId,
+        cardTemplateId: card.id,
+        targetId: target.id,
+        energyCost,
+        cardEnergyCost: card.cost.energy,
+        score: scoreEnemyAction(card, enemy, target),
+      });
+    }
+  }
+
+  actions.sort(comparePlannedActions);
+  return actions;
+}
+
+function planEnemyNonAoeBestAction(enemy: Character, playableCards: string[]): EnemyPlannedAction | null {
+  const memo = new Map<string, EnemyPlannerResult>();
+
+  const search = (
+    remainingEnergy: number,
+    remainingCards: string[],
+    depthLeft: number,
+  ): EnemyPlannerResult => {
+    if (depthLeft <= 0 || remainingEnergy <= 0 || remainingCards.length === 0) {
+      return { totalScore: 0, actions: [] };
+    }
+
+    const memoKey = `${remainingEnergy}|${depthLeft}|${remainingCards.join(',')}`;
+    const cached = memo.get(memoKey);
+    if (cached) return cached;
+
+    const actions = enumerateEnemyNonAoeActions(enemy, remainingCards, remainingEnergy);
+    if (actions.length === 0) {
+      const emptyResult = { totalScore: 0, actions: [] };
+      memo.set(memoKey, emptyResult);
+      return emptyResult;
+    }
+
+    let best: EnemyPlannerResult = { totalScore: -Infinity, actions: [] };
+    for (const action of actions.slice(0, ENEMY_AI_PLANNER_BEAM_WIDTH)) {
+      const nextCards = remainingCards.filter(id => id !== action.cardInstanceId);
+      const nextResult = search(remainingEnergy - action.energyCost, nextCards, depthLeft - 1);
+      const totalScore = action.score + nextResult.totalScore;
+      const candidateActions = [action, ...nextResult.actions];
+
+      if (totalScore > best.totalScore) {
+        best = { totalScore, actions: candidateActions };
+        continue;
+      }
+      if (totalScore === best.totalScore) {
+        const currentHead = best.actions[0];
+        if (!currentHead || comparePlannedActions(action, currentHead) < 0) {
+          best = { totalScore, actions: candidateActions };
+        }
+      }
+    }
+
+    if (!Number.isFinite(best.totalScore)) {
+      best = { totalScore: 0, actions: [] };
+    }
+    memo.set(memoKey, best);
+    return best;
+  };
+
+  const depth = Math.min(ENEMY_AI_PLANNER_MAX_DEPTH, playableCards.length);
+  const plan = search(enemy.energy, playableCards, depth);
+  return plan.actions[0] ?? null;
 }
 
 function canMoveForwardForPlanning(char: Character): boolean {
@@ -2809,13 +3036,11 @@ export async function processEnemyTurn(enemy: Character, renderCallback?: () => 
 
     if (playableCards.length === 0) break;
 
-    // Shuffle and find a card with valid in-range targets
-    const shuffledCards = [...playableCards].sort(() => Math.random() - 0.5);
     let chosenCardId: string | null = null;
     let chosenTargetId: string | null = null;
     let movedForBetterAoe = false;
 
-    for (const candidateCardId of shuffledCards) {
+    for (const candidateCardId of playableCards) {
       const candidateCard = getResolvedCard(candidateCardId);
       if (!candidateCard) continue;
 
@@ -2863,23 +3088,16 @@ export async function processEnemyTurn(enemy: Character, renderCallback?: () => 
         continue; // no good AOE placement — try next card
       }
 
-      // Non-AOE cards: existing random selection
-      let validTargets = getAITargetCandidates(candidateCard, enemy);
+      // Non-AOE card choices are selected by bounded turn-value planning after
+      // AOE opportunities are exhausted. Skip here to preserve movement logic.
+      continue;
+    }
 
-      // Filter by range if applicable
-      if ((candidateCard.maxRange || candidateCard.minRange) && !['self', 'allAllies', 'allEnemies'].includes(candidateCard.targeting)) {
-        validTargets = validTargets.filter(t => {
-          const dist = Math.abs(enemy.slotIndex - t.slotIndex);
-          if (candidateCard.maxRange && dist > candidateCard.maxRange) return false;
-          if (candidateCard.minRange && dist < candidateCard.minRange) return false;
-          return true;
-        });
-      }
-
-      if (validTargets.length > 0) {
-        chosenCardId = candidateCardId;
-        chosenTargetId = validTargets[Math.floor(Math.random() * validTargets.length)].id;
-        break;
+    if (!chosenCardId) {
+      const plannedAction = planEnemyNonAoeBestAction(enemy, playableCards);
+      if (plannedAction) {
+        chosenCardId = plannedAction.cardInstanceId;
+        chosenTargetId = plannedAction.targetId;
       }
     }
 

@@ -78,7 +78,35 @@ function getOccupiedSlotsForPlacement(slotIndex: number, slotSize: number): numb
   return Array.from({ length: slotSize }, (_, i) => slotIndex + i);
 }
 
-function findAvailableFrontSlot(characters: Character[], isPlayer: boolean, slotSize: number): number | null {
+function buildEnemyLaneCandidates(candidates: number[], desiredFrontSlot?: number): number[] {
+  const primary = candidates.filter(slot => slot >= 8);
+  const lane7 = candidates.filter(slot => slot === 7);
+  const lane6 = candidates.filter(slot => slot === 6);
+  if (primary.length === 0) {
+    return [...lane7, ...lane6];
+  }
+
+  // Close-range intent gets a small chance to spawn in front lanes.
+  // Otherwise, default to backline clustering in 8+.
+  if (typeof desiredFrontSlot === 'number' && desiredFrontSlot <= 7) {
+    const roll = Math.random();
+    if (lane6.length > 0 && roll < 0.05) {
+      return [...lane6, ...primary, ...lane7];
+    }
+    if (lane7.length > 0 && roll < 0.25) {
+      return [...lane7, ...primary, ...lane6];
+    }
+  }
+
+  return [...primary, ...lane7, ...lane6];
+}
+
+function findAvailableFrontSlot(
+  characters: Character[],
+  isPlayer: boolean,
+  slotSize: number,
+  desiredFrontSlot?: number,
+): number | null {
   const sideMin = isPlayer ? 0 : ENEMY_SLOT_START;
   const sideMax = isPlayer ? ALLY_SLOT_END : MAX_SLOTS - 1;
   const maxFrontSlot = sideMax - slotSize + 1;
@@ -87,7 +115,12 @@ function findAvailableFrontSlot(characters: Character[], isPlayer: boolean, slot
   const step = isPlayer ? 1 : -1;
   const start = isPlayer ? sideMin : maxFrontSlot;
   const endExclusive = isPlayer ? maxFrontSlot + 1 : sideMin - 1;
+  const candidates: number[] = [];
   for (let frontSlot = start; frontSlot !== endExclusive; frontSlot += step) {
+    candidates.push(frontSlot);
+  }
+  const orderedCandidates = isPlayer ? candidates : buildEnemyLaneCandidates(candidates, desiredFrontSlot);
+  for (const frontSlot of orderedCandidates) {
     const candidateSlots = getOccupiedSlotsForPlacement(frontSlot, slotSize);
     const blocked = characters.some(existing => {
       if (existing.hp <= 0 || existing.isPlayer !== isPlayer) return false;
@@ -119,7 +152,8 @@ function findAvailableNearestSlot(
       return isPlayer ? a - b : b - a;
     });
 
-  for (const frontSlot of candidates) {
+  const orderedCandidates = isPlayer ? candidates : buildEnemyLaneCandidates(candidates, clampedDesired);
+  for (const frontSlot of orderedCandidates) {
     const candidateSlots = getOccupiedSlotsForPlacement(frontSlot, slotSize);
     const blocked = characters.some(existing => {
       if (existing.hp <= 0 || existing.isPlayer !== isPlayer) return false;
@@ -362,28 +396,19 @@ async function initGame(): Promise<void> {
     let desiredFrontSlot: number | null = null;
     let mode: 'forward_edge' | 'flexible' | 'max_optimal' = 'flexible';
     let targetRange = 1;
+    const decision = getEnemyPreferredRangeDecisionForCardIds(
+      charDef.startingDeck ?? [],
+      charDef.stats.aggression ?? 5,
+      gameState.cardLibrary,
+    );
+    mode = decision.mode;
+    targetRange = decision.targetRange;
+    desiredFrontSlot = furthestAllyFrontSlot + decision.targetRange;
     if (shouldUseOptimalSpawn) {
-      const decision = getEnemyPreferredRangeDecisionForCardIds(
-        charDef.startingDeck ?? [],
-        charDef.stats.aggression ?? 5,
-        gameState.cardLibrary,
-      );
-      mode = decision.mode;
-      targetRange = decision.targetRange;
-      desiredFrontSlot = furthestAllyFrontSlot + decision.targetRange;
       slotIndex = findAvailableNearestSlot(gameState.characters, false, slotSize, desiredFrontSlot);
     }
     if (slotIndex === null) {
-      slotIndex = findAvailableFrontSlot(gameState.characters, false, slotSize);
-      if (!shouldUseOptimalSpawn) {
-        const decision = getEnemyPreferredRangeDecisionForCardIds(
-          charDef.startingDeck ?? [],
-          charDef.stats.aggression ?? 5,
-          gameState.cardLibrary,
-        );
-        mode = decision.mode;
-        targetRange = decision.targetRange;
-      }
+      slotIndex = findAvailableFrontSlot(gameState.characters, false, slotSize, desiredFrontSlot);
     }
     if (slotIndex === null) {
       console.warn(`No enemy slot available for ${charDef.name} (slotSize ${slotSize}), skipping spawn`);

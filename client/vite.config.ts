@@ -4,7 +4,7 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   plugins: [],
   server: {
-    open: '/game.html',
+    open: '/',
     hmr: {
       overlay: true
     },

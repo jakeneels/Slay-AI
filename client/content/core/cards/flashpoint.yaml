@@ -12,7 +12,7 @@ expires_after_turns: 0
 description: "Convert blood heat to immediate output. Hurt yourself to surge energy."
 effects:
   - kind: damage
-    amount: 8
+    amount: 6
     effectTarget: self
   - kind: energy
     amount: 2

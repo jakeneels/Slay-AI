@@ -48,6 +48,65 @@ vi.mock('../../core/combat.js', () => ({
   processEnemyTurn: processEnemyTurnMock,
 }));
 
+function createEnemyDefinition(overrides: Partial<CharacterDefinition> = {}): CharacterDefinition {
+  const id = overrides.id ?? 'enemy_test';
+  return {
+    ...createMockCharacter({
+      id,
+      name: overrides.name ?? 'Enemy Test',
+      isPlayer: false,
+      hp: overrides.hp ?? 30,
+      maxHp: overrides.maxHp ?? 30,
+      energy: overrides.energy ?? 2,
+      maxEnergy: overrides.maxEnergy ?? 2,
+      slotIndex: overrides.slotIndex ?? 8,
+      slotSize: overrides.slotSize ?? 1,
+      speed: overrides.speed ?? 1,
+    }),
+    stats: {
+      hp: overrides.stats?.hp ?? overrides.hp ?? 30,
+      maxHp: overrides.stats?.maxHp ?? overrides.maxHp ?? 30,
+      energy: overrides.stats?.energy ?? overrides.energy ?? 2,
+      maxEnergy: overrides.stats?.maxEnergy ?? overrides.maxEnergy ?? 2,
+      speed: overrides.stats?.speed ?? overrides.speed ?? 1,
+      suppression: overrides.stats?.suppression ?? 0,
+      suppressionResist: overrides.stats?.suppressionResist ?? 0,
+      aggression: overrides.stats?.aggression ?? 5,
+    },
+    startingDeck: overrides.startingDeck ?? [],
+  };
+}
+
+function setupLaneBiasState(enemyDefs: CharacterDefinition[]): void {
+  const ally = createMockCharacter({
+    id: 'ally_a',
+    name: 'Ally A',
+    isPlayer: true,
+    hp: 100,
+    maxHp: 100,
+    slotIndex: 0,
+    slotSize: 1,
+    deck: [],
+    discardPile: [],
+    hand: [],
+  });
+  generateWaveMock.mockReturnValue(enemyDefs);
+  setupGameState({
+    waveNumber: 1,
+    currentMap: 'map_wave_1',
+    characters: [ally],
+    characterLibrary: {
+      ally_a: {
+        ...ally,
+        stats: { hp: 100, maxHp: 100, energy: 3, maxEnergy: 3, speed: 0, suppression: 0, suppressionResist: 0, aggression: 5 },
+        startingDeck: [],
+      },
+      ...Object.fromEntries(enemyDefs.map(def => [def.id, def])),
+    },
+    cardLibrary: {},
+  });
+}
+
 describe('waveTransition', () => {
   beforeEach(() => {
     resetGameState();
@@ -205,5 +264,143 @@ describe('waveTransition', () => {
 
     const ids = getGameState().characters.filter(c => !c.isPlayer).map(c => c.id).sort();
     expect(ids).toEqual(['dupe_enemy', 'dupe_enemy_1']);
+  });
+
+  it('keeps optimal spawn on lane 8+ when available', () => {
+    const enemyDef = createEnemyDefinition({ id: 'enemy_lane_pref' });
+    setupLaneBiasState([enemyDef]);
+    getModifierRegistry().add({
+      id: 'test-optimal-spawn-on',
+      target: 'enemy_optimal_spawn_chance',
+      op: 'set',
+      value: 1,
+      source: 'test',
+      scope: { kind: 'global' },
+    });
+    getEnemyPreferredRangeDecisionMock.mockReturnValueOnce({ mode: 'max_optimal', targetRange: 8 });
+    vi.spyOn(Math, 'random')
+      .mockImplementationOnce(() => 0.0)
+      .mockImplementationOnce(() => 0.9);
+
+    startNextWave();
+
+    const spawnedEnemy = getGameState().characters.find(c => !c.isPlayer);
+    expect(spawnedEnemy).toBeDefined();
+    expect(spawnedEnemy?.slotIndex).toBe(8);
+  });
+
+  it('uses 20% lane 7 chance for close-range intent', () => {
+    const enemyDef = createEnemyDefinition({ id: 'enemy_lane_7' });
+    setupLaneBiasState([enemyDef]);
+    getModifierRegistry().add({
+      id: 'test-optimal-spawn-on-lane7',
+      target: 'enemy_optimal_spawn_chance',
+      op: 'set',
+      value: 1,
+      source: 'test',
+      scope: { kind: 'global' },
+    });
+    getEnemyPreferredRangeDecisionMock.mockReturnValueOnce({ mode: 'flexible', targetRange: 7 });
+    vi.spyOn(Math, 'random')
+      .mockImplementationOnce(() => 0.0)
+      .mockImplementationOnce(() => 0.2);
+
+    startNextWave();
+
+    const spawnedEnemy = getGameState().characters.find(c => !c.isPlayer);
+    expect(spawnedEnemy).toBeDefined();
+    expect(spawnedEnemy?.slotIndex).toBe(7);
+  });
+
+  it('uses 5% lane 6 chance for close-range intent', () => {
+    const enemyDef = createEnemyDefinition({ id: 'enemy_lane_6' });
+    setupLaneBiasState([enemyDef]);
+    getModifierRegistry().add({
+      id: 'test-optimal-spawn-on-lane6',
+      target: 'enemy_optimal_spawn_chance',
+      op: 'set',
+      value: 1,
+      source: 'test',
+      scope: { kind: 'global' },
+    });
+    getEnemyPreferredRangeDecisionMock.mockReturnValueOnce({ mode: 'flexible', targetRange: 6 });
+    vi.spyOn(Math, 'random')
+      .mockImplementationOnce(() => 0.0)
+      .mockImplementationOnce(() => 0.01);
+
+    startNextWave();
+
+    const spawnedEnemy = getGameState().characters.find(c => !c.isPlayer);
+    expect(spawnedEnemy).toBeDefined();
+    expect(spawnedEnemy?.slotIndex).toBe(6);
+  });
+
+  it('falls back to lanes 7/6 when a large enemy footprint blocks lane 8+', () => {
+    const enemyDefs = [
+      createEnemyDefinition({ id: 'enemy_big', slotSize: 4 }),
+      createEnemyDefinition({ id: 'enemy_small', slotSize: 2 }),
+    ];
+    setupLaneBiasState(enemyDefs);
+    getModifierRegistry().add({
+      id: 'test-optimal-spawn-off-fallback',
+      target: 'enemy_optimal_spawn_chance',
+      op: 'set',
+      value: 0,
+      source: 'test',
+      scope: { kind: 'global' },
+    });
+    vi.spyOn(Math, 'random').mockReturnValue(0.9);
+
+    startNextWave();
+
+    const enemies = getGameState().characters.filter(c => !c.isPlayer);
+    const bigEnemy = enemies.find(c => c.id === 'enemy_big');
+    const smallEnemy = enemies.find(c => c.id === 'enemy_small');
+    expect(bigEnemy?.slotIndex).toBe(8);
+    expect(smallEnemy?.slotIndex).toBe(6);
+  });
+
+  it('keeps close-range enemies in 8+ outside lane 7/6 rolls', () => {
+    const enemyDef = createEnemyDefinition({ id: 'enemy_close_default' });
+    setupLaneBiasState([enemyDef]);
+    getModifierRegistry().add({
+      id: 'test-optimal-spawn-on-close-default',
+      target: 'enemy_optimal_spawn_chance',
+      op: 'set',
+      value: 1,
+      source: 'test',
+      scope: { kind: 'global' },
+    });
+    getEnemyPreferredRangeDecisionMock.mockReturnValueOnce({ mode: 'forward_edge', targetRange: 6 });
+    vi.spyOn(Math, 'random')
+      .mockImplementationOnce(() => 0.0)
+      .mockImplementationOnce(() => 0.9);
+
+    startNextWave();
+
+    const spawnedEnemy = getGameState().characters.find(c => !c.isPlayer);
+    expect(spawnedEnemy).toBeDefined();
+    expect((spawnedEnemy?.slotIndex ?? 0) >= 8).toBe(true);
+  });
+
+  it('keeps non-melee enemies grouped in 8+ by default', () => {
+    const enemyDef = createEnemyDefinition({ id: 'enemy_backline' });
+    setupLaneBiasState([enemyDef]);
+    getModifierRegistry().add({
+      id: 'test-optimal-spawn-on-backline',
+      target: 'enemy_optimal_spawn_chance',
+      op: 'set',
+      value: 1,
+      source: 'test',
+      scope: { kind: 'global' },
+    });
+    getEnemyPreferredRangeDecisionMock.mockReturnValueOnce({ mode: 'max_optimal', targetRange: 10 });
+    vi.spyOn(Math, 'random').mockImplementationOnce(() => 0.0);
+
+    startNextWave();
+
+    const spawnedEnemy = getGameState().characters.find(c => !c.isPlayer);
+    expect(spawnedEnemy).toBeDefined();
+    expect((spawnedEnemy?.slotIndex ?? 0) >= 8).toBe(true);
   });
 });

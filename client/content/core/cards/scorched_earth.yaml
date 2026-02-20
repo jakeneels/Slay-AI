@@ -14,6 +14,8 @@ exhaust: true
 expires_after_turns: 0
 description: "Ignite a whole lane section, then pay the burn tax."
 effects:
+  - kind: damage
+    amount: 6
   - kind: lane_hazard
     damage: 3
     duration_turns: 2

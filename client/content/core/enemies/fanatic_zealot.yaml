@@ -4,7 +4,6 @@ name: "Fanatic Zealot"
 title: "AI Worshipper"
 description: "Human worshipper of AI overlords, armed with stolen tech relics."
 role: dps
-aggression: 3
 theme: "Aggressive Frontliner – reckless but high damage."
 sprite: "/assets/game/enemies/fanatic-zealot.png"
 visual:
@@ -23,6 +22,7 @@ stats:
   speed: 0
   suppression: 2
   suppressionResist: 0
+  aggression: 3
 mechanics:
   - "Gains attack buffs when injured"
   - "Can 'advance' slots aggressively"
@@ -31,7 +31,6 @@ tags: ["human", "fanatic", "normal", "enemy", "aggressive"]
 startingDeck:
   - "heal"
   - "rad_regen"
-  - "shockwave"
-  - "sidearm"
+  - "blast"
   
 

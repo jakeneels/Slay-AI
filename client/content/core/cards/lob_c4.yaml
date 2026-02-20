@@ -3,11 +3,11 @@ id: lob_c4
 name: "Lob C4"
 type: skill
 rarity: epic
-cost: 3
-copies: 2
+cost: 2
+copies: 1
 targeting: aoe
 aoeSlots: 2
-maxRange: 4
+maxRange: 5
 # optimalRange: 1
 exhaust: true
 expires_after_turns: 0

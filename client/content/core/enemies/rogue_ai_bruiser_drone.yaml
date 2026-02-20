@@ -1,0 +1,36 @@
+schemaVersion: 1
+id: rogue_ai_bruiser_drone
+name: "Rogue AI Drone"
+title: "Lanebreaker Sentinel"
+description: "A heavy assault drone with reinforced plating and dual-lane targeting arrays."
+role: bruiser
+theme: "Mid-range bruiser that drags targets into pressure zones and punishes clustered lanes."
+sprite: "/assets/game/enemies/rogue-ai-bruiser-drone.png"
+visual:
+  preset: small
+  scale: 1.2
+  anchorX: 0.5
+  anchorY: 0.8
+  offsetX: 0
+  offsetY: -140
+isPlayer: false
+slotSize: 2
+stats:
+  hp: 50
+  maxHp: 50
+  energy: 5
+  maxEnergy: 5
+  speed: 1
+  suppression: 2
+  suppressionResist: 2
+  aggression: 5
+mechanics:
+  - "Mid-range electric pressure with pull and knockback tools"
+  - "Transitions into close-range disruption when engaged"
+  - "Uses shield windows to survive while controlling two lanes"
+tags: ["ai", "drone", "tech", "enemy", "bruiser", "elite"]
+startingDeck:
+  - "blast"
+  - "javalin"
+  - "missle_strike"
+  - "shield_dome"

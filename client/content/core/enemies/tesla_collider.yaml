@@ -4,7 +4,6 @@ name: "Bombaras"
 title: "Tesla Collider"
 description: "Heavy assault mech with dual Tesla colliders—overwhelming electrical bombardment."
 role: dps/support hybrid
-aggression: 4
 theme: "Electrical bombarder – massive area damage from Tesla coil weaponry."
 sprite: "/assets/game/enemies/bombaras.png"
 visual:
@@ -13,7 +12,7 @@ visual:
   anchorX: 0.5
   anchorY: 0.9
   offsetX: 0
-  offsetY: 14
+  offsetY: 20
 isPlayer: false
 slotSize: 2
 stats:
@@ -24,6 +23,7 @@ stats:
   speed: 1
   suppression: 2
   suppressionResist: 2
+  aggression: 4
 mechanics:
   - "AOE electrical discharge (Chain Lightning)"
   - "Burst single-target nuke (Blast)"
@@ -32,6 +32,7 @@ tags: ["machine", "mech", "elite", "enemy", "dps", "electrical"]
 startingDeck:
   - "chain_lightning"
   - "electric_javalin"
+  - "electric_cannon"
   - "shield_dome"
   - "tesla_cannon"
 

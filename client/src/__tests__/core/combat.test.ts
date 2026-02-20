@@ -4223,6 +4223,210 @@ describe('combat', () => {
       vi.useRealTimers();
     });
 
+    it('should prefer a higher-impact single play when it yields more total value', async () => {
+      vi.useFakeTimers();
+      setApp(mockApp);
+
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        hp: 100,
+        isPlayer: true,
+        slotIndex: 0,
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        hp: 100,
+        energy: 5,
+        maxEnergy: 5,
+        isPlayer: false,
+        slotIndex: 3,
+      });
+
+      const quickJab = createMockCard({
+        id: 'quick_jab',
+        name: 'Quick Jab',
+        cost: { energy: 1 },
+        targeting: 'enemy',
+        effects: [{ kind: 'damage', amount: 10 }],
+      });
+      const annihilate = createMockCard({
+        id: 'annihilate',
+        name: 'Annihilate',
+        cost: { energy: 5 },
+        targeting: 'enemy',
+        effects: [{ kind: 'damage', amount: 20 }],
+      });
+
+      setupGameState({
+        characters: [player, enemy],
+        cardLibrary: { quick_jab: quickJab, annihilate: annihilate },
+        currentPlayerId: 'enemy1',
+        turnQueue: ['enemy1', 'player1'],
+        turnQueueIndex: 0,
+        roundNumber: 1,
+      });
+
+      const quickId = createCardInstance('quick_jab');
+      const annihilateId = createCardInstance('annihilate');
+      if (quickId && annihilateId) {
+        enemy.hand.push(quickId, annihilateId);
+      }
+
+      const turnPromise = processEnemyTurn(enemy);
+      await vi.runAllTimersAsync();
+      await turnPromise;
+
+      expect(player.hp).toBe(80);
+      expect(enemy.energy).toBe(0);
+      expect(enemy.discardPile).toContain('annihilate');
+      expect(enemy.discardPile).not.toContain('quick_jab');
+
+      vi.useRealTimers();
+    });
+
+    it('should choose a stronger multi-card sequence over a weaker single expensive play', async () => {
+      vi.useFakeTimers();
+      setApp(mockApp);
+
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        hp: 100,
+        isPlayer: true,
+        slotIndex: 0,
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        hp: 100,
+        energy: 4,
+        maxEnergy: 4,
+        isPlayer: false,
+        slotIndex: 3,
+      });
+
+      const bigSwing = createMockCard({
+        id: 'big_swing',
+        name: 'Big Swing',
+        cost: { energy: 4 },
+        targeting: 'enemy',
+        effects: [{ kind: 'damage', amount: 14 }],
+      });
+      const mediumStrikeA = createMockCard({
+        id: 'medium_strike_a',
+        name: 'Medium Strike A',
+        cost: { energy: 2 },
+        targeting: 'enemy',
+        effects: [{ kind: 'damage', amount: 9 }],
+      });
+      const mediumStrikeB = createMockCard({
+        id: 'medium_strike_b',
+        name: 'Medium Strike B',
+        cost: { energy: 2 },
+        targeting: 'enemy',
+        effects: [{ kind: 'damage', amount: 9 }],
+      });
+
+      setupGameState({
+        characters: [player, enemy],
+        cardLibrary: {
+          big_swing: bigSwing,
+          medium_strike_a: mediumStrikeA,
+          medium_strike_b: mediumStrikeB,
+        },
+        currentPlayerId: 'enemy1',
+        turnQueue: ['enemy1', 'player1'],
+        turnQueueIndex: 0,
+        roundNumber: 1,
+      });
+
+      const bigId = createCardInstance('big_swing');
+      const mediumAId = createCardInstance('medium_strike_a');
+      const mediumBId = createCardInstance('medium_strike_b');
+      if (bigId && mediumAId && mediumBId) {
+        enemy.hand.push(bigId, mediumAId, mediumBId);
+      }
+
+      const turnPromise = processEnemyTurn(enemy);
+      await vi.runAllTimersAsync();
+      await turnPromise;
+
+      expect(player.hp).toBe(82);
+      expect(enemy.energy).toBe(0);
+      expect(enemy.discardPile).toContain('medium_strike_a');
+      expect(enemy.discardPile).toContain('medium_strike_b');
+      expect(enemy.discardPile).not.toContain('big_swing');
+
+      vi.useRealTimers();
+    });
+
+    it('should prioritize non-damage utility when utility value is higher', async () => {
+      vi.useFakeTimers();
+      setApp(mockApp);
+
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        hp: 100,
+        isPlayer: true,
+        slotIndex: 0,
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        hp: 30,
+        maxHp: 100,
+        energy: 1,
+        maxEnergy: 1,
+        isPlayer: false,
+        slotIndex: 3,
+      });
+
+      const chipShot = createMockCard({
+        id: 'chip_shot',
+        name: 'Chip Shot',
+        cost: { energy: 1 },
+        targeting: 'enemy',
+        effects: [{ kind: 'damage', amount: 8 }],
+      });
+      const emergencyRepair = createMockCard({
+        id: 'emergency_repair',
+        name: 'Emergency Repair',
+        cost: { energy: 1 },
+        targeting: 'self',
+        targetSide: 'self',
+        effects: [{ kind: 'heal', amount: 25 }],
+      });
+
+      setupGameState({
+        characters: [player, enemy],
+        cardLibrary: { chip_shot: chipShot, emergency_repair: emergencyRepair },
+        currentPlayerId: 'enemy1',
+        turnQueue: ['enemy1', 'player1'],
+        turnQueueIndex: 0,
+        roundNumber: 1,
+      });
+
+      const chipShotId = createCardInstance('chip_shot');
+      const repairId = createCardInstance('emergency_repair');
+      if (chipShotId && repairId) {
+        enemy.hand.push(chipShotId, repairId);
+      }
+
+      const turnPromise = processEnemyTurn(enemy);
+      await vi.runAllTimersAsync();
+      await turnPromise;
+
+      expect(enemy.hp).toBe(55);
+      expect(player.hp).toBe(100);
+      expect(enemy.discardPile).toContain('emergency_repair');
+      expect(enemy.discardPile).not.toContain('chip_shot');
+
+      vi.useRealTimers();
+    });
+
     it('should enter inevitable-death mode and dump actions instead of safety repositioning', async () => {
       vi.useFakeTimers();
       vi.spyOn(Math, 'random').mockReturnValue(0);

@@ -15,9 +15,9 @@ description: "Melee attack — best at point-blank, can reach 2 slots."
 effects:
   - kind: damage
     amount: 6
-  - kind: bleed
-    stacks: 3
-    duration: 3
-    effectTarget: target
+  # - kind: bleed
+  #   stacks: 3
+  #   duration: 3
+  #   effectTarget: target
 
 

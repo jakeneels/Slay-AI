@@ -4,7 +4,7 @@ name: "Heat Sink"
 type: skill
 rarity: common
 cost: 1
-copies: 3
+copies: 2
 tags: [pyro, defense, overclock]
 targeting: self
 exhaust: false

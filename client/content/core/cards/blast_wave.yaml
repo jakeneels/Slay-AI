@@ -13,7 +13,7 @@ expires_after_turns: 0
 description: "A concussive thermal burst that drives enemies back."
 effects:
   - kind: damage
-    amount: 6
+    amount: 10
   - kind: knockback
     amount: 2
 animation:
