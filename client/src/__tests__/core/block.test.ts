@@ -5,6 +5,7 @@ import {
   grantBlockLayer,
   decayBlockLayers,
   getBlockDecaySchedule,
+  getNextAvailableDecayOwnerTurnStart,
   getNextDecayOwnerTurnStart,
   processBlockDecayForTurnStart,
 } from '../../core/block.js';
@@ -441,6 +442,58 @@ describe('block', () => {
       processBlockDecayForTurnStart(enemy, gameState);
       expect(enemy.blockLayers[0].amount).toBe(5);
       expect(enemy.blockLayers[0].nextDecayOwnerTurnStart).toBe(2);
+    });
+
+    it('schedules repeated block grants to distinct owner turns', () => {
+      const enemy = createMockCharacter({ id: 'enemy', name: 'Enemy', isPlayer: false, blockLayers: [] });
+      const gameState = getGameState();
+      gameState.characters = [enemy];
+      gameState.turnStartsByCharacterId = {};
+
+      const firstDecayTurn = getNextAvailableDecayOwnerTurnStart(enemy, gameState, enemy.id);
+      grantBlockLayer(enemy, 8, 100, 'shield_dome', {
+        decayOwnerId: enemy.id,
+        sourceLabel: 'Shield Dome',
+        nextDecayOwnerTurnStart: firstDecayTurn,
+      });
+
+      const secondDecayTurn = getNextAvailableDecayOwnerTurnStart(enemy, gameState, enemy.id);
+      grantBlockLayer(enemy, 8, 100, 'shield_dome', {
+        decayOwnerId: enemy.id,
+        sourceLabel: 'Shield Dome',
+        nextDecayOwnerTurnStart: secondDecayTurn,
+      });
+
+      expect(firstDecayTurn).toBe(1);
+      expect(secondDecayTurn).toBe(2);
+      expect(enemy.blockLayers[0].nextDecayOwnerTurnStart).toBe(1);
+      expect(enemy.blockLayers[1].nextDecayOwnerTurnStart).toBe(2);
+    });
+
+    it('decays stacked layers one owner turn at a time when scheduled distinctly', () => {
+      const enemy = createMockCharacter({ id: 'enemy', name: 'Enemy', isPlayer: false, blockLayers: [] });
+      const gameState = getGameState();
+      gameState.characters = [enemy];
+      gameState.turnStartsByCharacterId = {};
+
+      grantBlockLayer(enemy, 8, 100, 'shield_dome', {
+        decayOwnerId: enemy.id,
+        sourceLabel: 'Shield Dome',
+        nextDecayOwnerTurnStart: 1,
+      });
+      grantBlockLayer(enemy, 8, 100, 'shield_dome', {
+        decayOwnerId: enemy.id,
+        sourceLabel: 'Shield Dome',
+        nextDecayOwnerTurnStart: 2,
+      });
+
+      processBlockDecayForTurnStart(enemy, gameState);
+      expect(enemy.blockLayers).toHaveLength(1);
+      expect(enemy.blockLayers[0].amount).toBe(8);
+      expect(enemy.blockLayers[0].nextDecayOwnerTurnStart).toBe(2);
+
+      processBlockDecayForTurnStart(enemy, gameState);
+      expect(enemy.blockLayers).toHaveLength(0);
     });
   });
 });

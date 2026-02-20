@@ -14,7 +14,7 @@ description: "Cast restorative bio-radiation on an ally."
 effects:
   - kind: status
     status: regeneration
-    stacks: 4
+    stacks: 6
     effectTarget: target
 animation:
   heal:

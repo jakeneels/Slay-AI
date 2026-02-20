@@ -1,6 +1,6 @@
 schemaVersion: 1
 id: fanatic_sprinter
-name: "Fanatic Sprinter"
+name: "Sprinter"
 visual:
   preset: small
   scale: 0.8

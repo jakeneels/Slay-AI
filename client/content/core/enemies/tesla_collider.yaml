@@ -1,6 +1,6 @@
 schemaVersion: 1
-id: bombaras
-name: "Bombaras"
+id: tesla_collider
+name: "Tesla Collider"
 title: "Tesla Collider"
 description: "Heavy assault mech with dual Tesla colliders—overwhelming electrical bombardment."
 role: dps/support hybrid

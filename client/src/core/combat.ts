@@ -25,7 +25,7 @@ import {
   type AnimationConfig,
   type PlayDamageAnimationOptions 
 } from '../../animations.js';
-import { applyDamageWithBlock, grantBlockLayer, getNextDecayOwnerTurnStart, processBlockDecayForTurnStart } from './block.js';
+import { applyDamageWithBlock, getNextDecayOwnerTurnStart, grantBlockLayer, processBlockDecayForTurnStart } from './block.js';
 import { applyStatus, modifyStatusStacks, processStatusEffectsWithContext, decayStatusDurations, getStatusStacks } from './status.js';
 import { MAX_SLOTS, SLOTS_PER_SIDE, calculateRangeModifier, getJumpMaxDistance, getJumpOccupiedSlotCost, getSuppressionDistance, getSuppressionRangedThreshold, getSuppressionStackCost } from './constants.js';
 import { getModifierRegistry } from './modifiers.js';
@@ -1741,15 +1741,17 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
           // Use the target from targeting logic (already determined correctly)
           const blockTarget = target;
           const adjustedBlock = Math.round(registry.resolve('block_amount', effect.amount, { character: blockTarget, card }));
+          const decayOwnerId = card.id === 'shield_dome' ? currentPlayer.id : blockTarget.id;
+          const nextDecayOwnerTurnStart = getNextDecayOwnerTurnStart(gameState, decayOwnerId);
           grantBlockLayer(
             blockTarget,
             adjustedBlock,
             effect.decay_percent || 50,
             card.id,
             {
-              decayOwnerId: blockTarget.id,
+              decayOwnerId,
               sourceLabel: card.name,
-              nextDecayOwnerTurnStart: getNextDecayOwnerTurnStart(gameState, blockTarget.id),
+              nextDecayOwnerTurnStart,
             }
           );
           sparkType = 'heal';

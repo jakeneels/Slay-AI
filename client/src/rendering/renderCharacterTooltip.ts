@@ -56,26 +56,20 @@ export function renderCharacterTooltip(app: Application): void {
       return aTurns - bTurns;
     });
 
-  const groupedDecayItems = new Map<string, typeof blockDecaySchedule>();
-  for (const entry of blockDecaySchedule) {
-    const key = entry.turnsUntilDecay === null ? 'unknown' : `${entry.turnsUntilDecay}`;
-    if (!groupedDecayItems.has(key)) groupedDecayItems.set(key, []);
-    groupedDecayItems.get(key)!.push(entry);
-  }
+  const fortifyStacks = (character.statuses ?? []).find(s => s.id === 'fortify')?.stacks ?? 0;
+  const fortifyReduction = fortifyStacks * 10;
   const blockDecayItems: string[] = [];
-  for (const [groupKey, entries] of groupedDecayItems) {
-    if (groupKey === 'unknown') {
-      blockDecayItems.push('Unknown timing');
-    } else {
-      const turns = Number(groupKey);
-      blockDecayItems.push(`In ${turns} turn${turns === 1 ? '' : 's'}`);
-    }
-    for (const entry of entries) {
-      const ownerText = entry.ownerId === character.id
-        ? 'owner turn'
-        : `next: ${entry.ownerName}`;
-      blockDecayItems.push(`  - ${entry.sourceLabel}: ${entry.amount} block (${ownerText})`);
-    }
+  for (const entry of blockDecaySchedule) {
+    const ownerText = entry.ownerId === character.id
+      ? 'owner turn'
+      : `next: ${entry.ownerName}`;
+    const effectiveDecayPercent = Math.max(10, entry.decayPercent - fortifyReduction);
+    const decayAmountPerOwnerTurn = Math.max(1, Math.ceil(entry.baseAmount * (effectiveDecayPercent / 100)));
+    const turnsUntilLayerExpires =
+      entry.ownerTurnsUntilDecay
+      + Math.max(0, Math.ceil(entry.amount / decayAmountPerOwnerTurn) - 1);
+    blockDecayItems.push(`In ${turnsUntilLayerExpires} owner turn${turnsUntilLayerExpires === 1 ? '' : 's'}`);
+    blockDecayItems.push(`  - ${entry.sourceLabel}: ${entry.amount} block (${ownerText})`);
   }
 
   let estimatedH = PAD + 20 + 4 * 16 + PAD;

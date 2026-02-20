@@ -222,6 +222,80 @@ describe('combat', () => {
       expect(getGameState().characters.find(c => c.id === 'enemy1')?.blockLayers[0].amount).toBe(4);
     });
 
+    it('stagger-decays repeated block applications from a single card play', async () => {
+      const ally = createMockCharacter({
+        id: 'ally1',
+        name: 'Ally',
+        energy: 3,
+        speed: 10,
+        isPlayer: true,
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        energy: 3,
+        speed: 0,
+        isPlayer: false,
+      });
+
+      const stackedShieldCard = createMockCard({
+        id: 'stacked_enemy_defend',
+        name: 'Stacked Enemy Defend',
+        cost: { energy: 1 },
+        targeting: 'self',
+        effects: [
+          { kind: 'grant_block_layer', amount: 8, decay_percent: 100 },
+          { kind: 'grant_block_layer', amount: 8, decay_percent: 100 },
+        ],
+      });
+
+      setupGameState({
+        characters: [ally, enemy],
+        cardLibrary: { stacked_enemy_defend: stackedShieldCard },
+        currentPlayerId: 'enemy1',
+        turnQueue: ['ally1', 'enemy1'],
+        turnQueueIndex: 1, // Enemy is the last actor this round
+      });
+
+      const instanceId = createCardInstance('stacked_enemy_defend');
+      if (instanceId) {
+        enemy.hand.push(instanceId);
+      }
+
+      await playCard(instanceId!);
+      expect(enemy.blockLayers).toHaveLength(2);
+      expect(enemy.blockLayers[0].nextDecayOwnerTurnStart).toBe(1);
+      expect(enemy.blockLayers[1].nextDecayOwnerTurnStart).toBe(2);
+
+      // Round transitions to ally; enemy block should not decay yet.
+      endTurn();
+      let enemyState = getGameState().characters.find(c => c.id === 'enemy1')!;
+      expect(getGameState().currentPlayerId).toBe('ally1');
+      expect(enemyState.blockLayers).toHaveLength(2);
+      expect(enemyState.blockLayers[0].amount + enemyState.blockLayers[1].amount).toBe(16);
+
+      // First enemy turn start: only the first layer should decay away.
+      endTurn();
+      enemyState = getGameState().characters.find(c => c.id === 'enemy1')!;
+      expect(getGameState().currentPlayerId).toBe('enemy1');
+      expect(enemyState.blockLayers).toHaveLength(1);
+      expect(enemyState.blockLayers[0].amount).toBe(8);
+      expect(enemyState.blockLayers[0].nextDecayOwnerTurnStart).toBe(2);
+
+      // Next ally turn should not affect enemy-owned decay.
+      endTurn();
+      enemyState = getGameState().characters.find(c => c.id === 'enemy1')!;
+      expect(getGameState().currentPlayerId).toBe('ally1');
+      expect(enemyState.blockLayers).toHaveLength(1);
+      expect(enemyState.blockLayers[0].amount).toBe(8);
+
+      // Second enemy turn start: remaining layer should decay away.
+      endTurn();
+      enemyState = getGameState().characters.find(c => c.id === 'enemy1')!;
+      expect(getGameState().currentPlayerId).toBe('enemy1');
+      expect(enemyState.blockLayers).toHaveLength(0);
+    });
+
     it('should heal target character', async () => {
       const player = createMockCharacter({
         id: 'player1',

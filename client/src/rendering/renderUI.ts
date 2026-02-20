@@ -26,8 +26,8 @@ export function getRollbackButtonUiState(): { visible: boolean; enabled: boolean
 export function renderTurnInfo(app: Application, gameState: GameState): void {
   const currentPlayer = gameState.characters.find(c => c.id === gameState.currentPlayerId);
 
-  // Reserve right side for End Turn button — nothing must overlap
-  const endBtnReserve = 300;
+  // Reserve right side for End Turn column (End Turn + Rollback stacked)
+  const endBtnReserve = 160;
   const rightBound = WIDTH - endBtnReserve;
 
   // Row 1: Stage + round badges + turn text (compact)
@@ -90,8 +90,8 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
     const chipsPerRow = 4;
     const queueStartY = 44;
     const chipH = 15;
-    const chipW = 77; // fits 11 chars at 11px font
-    const chipGap = 6;
+    const chipW = 65; // compact width for short names
+    const chipGap = 5;
     const rowGap = 6;
     let cursorX = 20;
     let cursorY = queueStartY;
@@ -375,7 +375,9 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
   const rollbackBtnW = 120;
   const rollbackState = getRollbackButtonUiState();
   const endBtnX = WIDTH - endBtnW - 20;
-  const rollbackBtnX = endBtnX - rollbackBtnGap - rollbackBtnW;
+  const rollbackBtnX = endBtnX;
+  const endBtnY = 20;
+  const rollbackBtnY = endBtnY + endBtnH + rollbackBtnGap;
 
   if (rollbackState.visible) {
     const rollbackBtn = new Graphics();
@@ -383,7 +385,7 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
     const rollbackStroke = rollbackState.enabled ? 0x94a3b8 : 0x4b5563;
     rollbackBtn.roundRect(0, 0, rollbackBtnW, endBtnH, 8).fill(rollbackFill).stroke({ width: 1, color: rollbackStroke });
     rollbackBtn.x = rollbackBtnX;
-    rollbackBtn.y = 20;
+    rollbackBtn.y = rollbackBtnY;
     rollbackBtn.zIndex = 2500;
     rollbackBtn.eventMode = 'static';
     rollbackBtn.cursor = rollbackState.enabled ? 'pointer' : 'default';
@@ -400,7 +402,7 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
       style: { fill: rollbackState.enabled ? 0xffffff : 0x9ca3af, fontSize: 14, fontWeight: 'bold' }
     });
     rollbackText.x = rollbackBtnX + (rollbackBtnW - rollbackText.width) / 2;
-    rollbackText.y = 20 + (endBtnH - rollbackText.height) / 2;
+    rollbackText.y = rollbackBtnY + (endBtnH - rollbackText.height) / 2;
     rollbackText.eventMode = 'none';
     rollbackText.zIndex = 2501;
     app.stage.addChild(rollbackText);
@@ -409,7 +411,7 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
   const btn = new Graphics();
   btn.roundRect(0, 0, endBtnW, endBtnH, 8).fill(0x3b82f6);
   btn.x = endBtnX;
-  btn.y = 20;
+  btn.y = endBtnY;
   btn.zIndex = 2500;
   btn.eventMode = 'static';
   btn.cursor = 'pointer';
@@ -424,7 +426,7 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
     style: { fill: 0xffffff, fontSize: 14, fontWeight: 'bold' }
   });
   btnText.x = endBtnX + (endBtnW - btnText.width) / 2;
-  btnText.y = 20 + (endBtnH - btnText.height) / 2;
+  btnText.y = endBtnY + (endBtnH - btnText.height) / 2;
   btnText.eventMode = 'none';
   btnText.zIndex = 2501;
   app.stage.addChild(btnText);

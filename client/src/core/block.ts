@@ -229,15 +229,27 @@ export function processBlockDecayForTurnStart(character: Character, gameState: G
   const ownerTurnStartCount = (turnStartsMap[character.id] ?? 0) + 1;
   turnStartsMap[character.id] = ownerTurnStartCount;
 
-  const decayedAmount = decayBlockLayers(character, {
-    ownerTurnStart: {
-      ownerId: character.id,
-      ownerTurnStartCount,
-    },
-  });
+  let totalDecayedAmount = 0;
+  const perCharacterDecay: Array<{ characterId: string; characterName: string; decayedAmount: number }> = [];
+  for (const decayTarget of gameState.characters) {
+    const decayedAmount = decayBlockLayers(decayTarget, {
+      ownerTurnStart: {
+        ownerId: character.id,
+        ownerTurnStartCount,
+      },
+    });
+    totalDecayedAmount += decayedAmount;
+    if (decayedAmount > 0) {
+      perCharacterDecay.push({
+        characterId: decayTarget.id,
+        characterName: decayTarget.name,
+        decayedAmount,
+      });
+    }
+  }
 
-  if (decayedAmount > 0) {
-    addToCombatLog(`${character.name}'s block decays by ${decayedAmount} at turn start`);
+  if (totalDecayedAmount > 0) {
+    addToCombatLog(`${character.name}'s block decays by ${totalDecayedAmount} at turn start`);
   }
 }
 

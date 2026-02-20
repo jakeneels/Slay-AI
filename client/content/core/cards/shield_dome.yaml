@@ -4,7 +4,7 @@ name: "Shield Dome"
 type: skill
 rarity: epic     #common, rare, epic, legendary, mythic.
 cost: 3
-copies: 3
+copies: 2
 targeting: aoe
 targetSide: ally
 aoeSlots: 3
@@ -15,5 +15,5 @@ description: "Grants a protective barrier to all allies in a 3-slot AOE."
 effects:
   - kind: grant_block_layer
     amount: 8
-    decay_percent: 100
+    decay_percent: 50
 
