@@ -93,6 +93,24 @@ export function getNextDecayOwnerTurnStart(gameState: GameState, ownerId: string
   return getCharacterTurnStartCount(gameState, ownerId) + 1;
 }
 
+export function getNextAvailableDecayOwnerTurnStart(
+  character: Character,
+  gameState: GameState,
+  ownerId: string
+): number {
+  const baseline = getNextDecayOwnerTurnStart(gameState, ownerId);
+  const scheduledTurns = character.blockLayers
+    .filter(layer => (layer.decayOwnerId ?? character.id) === ownerId)
+    .map(layer => layer.nextDecayOwnerTurnStart)
+    .filter((turn): turn is number => typeof turn === 'number');
+
+  if (scheduledTurns.length === 0) {
+    return baseline;
+  }
+
+  return Math.max(baseline, Math.max(...scheduledTurns) + 1);
+}
+
 function getTurnsUntilCharacterTurn(gameState: GameState, characterId: string): number | null {
   const queue = gameState.turnQueue ?? [];
   if (queue.length === 0) return null;

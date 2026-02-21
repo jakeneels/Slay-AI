@@ -24,7 +24,8 @@ const RARITY_COLORS: Record<string, number> = {
 const SLOT_LABELS: Record<GearSlot, string> = {
   weapon: 'Weapon',
   armor: 'Armor',
-  accessory: 'Accessory',
+  trinket: 'Trinket',
+  trinket2: 'Trinket 2',
 };
 
 /**

@@ -10,7 +10,8 @@ import type { GearSlot } from '../core/types.js';
 const SLOT_LABELS: Record<GearSlot, string> = {
   weapon: 'Weapon',
   armor: 'Armor',
-  accessory: 'Accessory',
+  trinket: 'Trinket',
+  trinket2: 'Trinket 2',
 };
 
 const TOOLTIP_W = 240;
@@ -63,7 +64,7 @@ export function renderCharacterTooltip(app: Application): void {
       return aTurns - bTurns;
     });
 
-  const gearItems = (['weapon', 'armor', 'accessory'] as GearSlot[])
+  const gearItems = (['weapon', 'armor', 'trinket', 'trinket2'] as GearSlot[])
     .filter((slot) => character.gear[slot])
     .map((slot) => `${SLOT_LABELS[slot]}: ${character.gear[slot]!.name}`);
 

@@ -407,12 +407,14 @@ function renderCharacterGear(char: Character, isEnemy: boolean): string {
   const nameStyle = alive ? '' : ' style="opacity:0.4; text-decoration:line-through;"';
   const weaponName = char.gear.weapon?.name ?? 'Empty';
   const armorName = char.gear.armor?.name ?? 'Empty';
-  const accessoryName = char.gear.accessory?.name ?? 'Empty';
+  const trinketName = char.gear.trinket?.name ?? 'Empty';
+  const trinket2Name = char.gear.trinket2?.name ?? 'Empty';
 
   let html = `<div class="dev-character-name${enemyClass}"${nameStyle}>${escapeHtml(char.name)}</div>`;
   html += `<div class="dev-log-entry"><span style="color:#9ca3af;">Weapon:</span> ${escapeHtml(weaponName)}</div>`;
   html += `<div class="dev-log-entry"><span style="color:#9ca3af;">Armor:</span> ${escapeHtml(armorName)}</div>`;
-  html += `<div class="dev-log-entry"><span style="color:#9ca3af;">Accessory:</span> ${escapeHtml(accessoryName)}</div>`;
+  html += `<div class="dev-log-entry"><span style="color:#9ca3af;">Trinket:</span> ${escapeHtml(trinketName)}</div>`;
+  html += `<div class="dev-log-entry"><span style="color:#9ca3af;">Trinket 2:</span> ${escapeHtml(trinket2Name)}</div>`;
   return html;
 }
 

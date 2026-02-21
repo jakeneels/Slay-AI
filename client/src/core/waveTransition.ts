@@ -331,7 +331,7 @@ export function startNextWave(): void {
       suppressionResist: charDef.stats.suppressionResist ?? 0,
       aggression: charDef.stats.aggression ?? 5,
       facing: 'left',
-      gear: { weapon: null, armor: null, accessory: null },
+      gear: { weapon: null, armor: null, trinket: null, trinket2: null },
     };
 
     // Register cloned enemies in library so sprite lookup works

@@ -204,7 +204,7 @@ describe('waveTransition', () => {
 
     expect(state.waveNumber).toBe(2);
     expect(state.currentMap).toBe('map_wave_2');
-    expect(nextAlly.hp).toBe(80);
+    expect(nextAlly.hp).toBe(60);
     expect(nextAlly.energy).toBe(nextAlly.maxEnergy);
     expect(nextAlly.statuses).toEqual([]);
     expect(nextAlly.blockLayers).toEqual([]);

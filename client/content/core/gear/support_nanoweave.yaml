@@ -2,7 +2,7 @@ schemaVersion: 1
 id: support_nanoweave
 name: "Support Nanoweave"
 description: "Support matrix. Friendly direct heals and HoT ticks gain +2, then +20%."
-slot: accessory
+slot: trinket
 rarity: epic
 modifiers:
   - target: friendly_heal_outgoing

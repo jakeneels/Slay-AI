@@ -2,8 +2,8 @@ schemaVersion: 1
 id: neural_uplink
 name: "Neural Uplink"
 description: "Corrupted neural-link interface. +1 hand size."
-slot: accessory
-rarity: legendary
+slot: trinket
+rarity: epic
 modifiers:
   - target: drawCount
     op: add

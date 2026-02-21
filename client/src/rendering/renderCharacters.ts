@@ -50,7 +50,6 @@ const HUD_BOTTOM_OFFSET = 24;
 const HUD_SECTION_GAP = 6;
 const STATUS_MAX_ROW_WIDTH = 130;
 const MAX_VISIBLE_STATUS_BADGES = 4;
-const MAX_PINNED_STATUS_ICONS = 3;
 const PINNED_ICON_SIZE = 13;
 const PINNED_ICON_GAP = 5;
 const PINNED_OVERFLOW_SIZE = 18;
@@ -1075,10 +1074,7 @@ function renderCharacter(
 
   // Tier 1: compact pinned status indicators above the HP bar.
   const pinnedIconsY = hpBarY - PINNED_ICON_SIZE - 3;
-  const pinnedIconsX = barX + BAR_WIDTH - (
-    MAX_PINNED_STATUS_ICONS * PINNED_ICON_SIZE + (MAX_PINNED_STATUS_ICONS - 1) * PINNED_ICON_GAP
-  );
-  renderPinnedStatusIcons(app, char, pinnedIconsX, pinnedIconsY);
+  renderPinnedStatusIcons(app, char, slotCenterX, pinnedIconsY, STATUS_MAX_ROW_WIDTH);
 
   // Character-local turn marker below bars, before status badges.
   const breadcrumbTopY = energyBarY + BAR_HEIGHT + HUD_SECTION_GAP;
@@ -1250,14 +1246,31 @@ function collectRenderableStatusEntries(char: Character): RenderableStatusEntry[
   return visible;
 }
 
-function renderPinnedStatusIcons(app: Application, char: Character, x: number, y: number): void {
+function renderPinnedStatusIcons(
+  app: Application,
+  char: Character,
+  centerX: number,
+  y: number,
+  maxWidth: number
+): void {
   const visible = collectRenderableStatusEntries(char)
     .sort((a, b) => (PINNED_STATUS_PRIORITY[b.status.id] ?? 0) - (PINNED_STATUS_PRIORITY[a.status.id] ?? 0));
   if (visible.length === 0) return;
 
-  const pinned = visible.slice(0, MAX_PINNED_STATUS_ICONS);
+  const iconUnitWidth = PINNED_ICON_SIZE + PINNED_ICON_GAP;
+  const maxIconsWithoutOverflow = Math.max(0, Math.floor((maxWidth + PINNED_ICON_GAP) / iconUnitWidth));
+  const maxIconsWithOverflow = Math.max(0, Math.floor((maxWidth - PINNED_OVERFLOW_SIZE) / iconUnitWidth));
+  const needsOverflow = visible.length > maxIconsWithoutOverflow;
+  const pinnedCount = needsOverflow
+    ? Math.min(visible.length, maxIconsWithOverflow)
+    : Math.min(visible.length, maxIconsWithoutOverflow);
+  const pinned = visible.slice(0, pinnedCount);
   const overflowCount = Math.max(0, visible.length - pinned.length);
-  let iconX = x;
+  const iconsWidth = pinned.length * PINNED_ICON_SIZE + Math.max(0, pinned.length - 1) * PINNED_ICON_GAP;
+  const totalWidth = iconsWidth + (
+    overflowCount > 0 ? PINNED_OVERFLOW_SIZE + (pinned.length > 0 ? PINNED_ICON_GAP : 0) : 0
+  );
+  let iconX = centerX - totalWidth / 2;
 
   for (const entry of pinned) {
     const { status, config } = entry;
@@ -1314,7 +1327,7 @@ function renderPinnedStatusIcons(app: Application, char: Character, x: number, y
     overflow.roundRect(0, 0, PINNED_OVERFLOW_SIZE, PINNED_OVERFLOW_SIZE, 4)
       .fill({ color: 0x1f2937, alpha: 0.95 })
       .stroke({ width: 1, color: 0x4b5563, alpha: 0.92 });
-    overflow.x = iconX - 2;
+    overflow.x = iconX;
     overflow.y = y - 1;
     overflow.eventMode = 'none';
     overflow.zIndex = Z_STATUS;

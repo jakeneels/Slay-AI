@@ -34,6 +34,6 @@ startingDeck:
   - "heat_sink"
   - "flashpoint"
   - "scorched_earth"
-  - "ember_guard"
+  # - "ember_guard"
   - "flank"
   - "immolate"

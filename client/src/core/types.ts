@@ -327,7 +327,7 @@ export interface ModifierContext {
 
 // ── Gear types ───────────────────────────────────────────────────────
 
-export type GearSlot = 'weapon' | 'armor' | 'accessory';
+export type GearSlot = 'weapon' | 'armor' | 'trinket' | 'trinket2';
 
 export interface GearDefinition {
   id: string;
