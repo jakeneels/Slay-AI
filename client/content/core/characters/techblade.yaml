@@ -20,8 +20,8 @@ spriteSheetPreserveAspect: true
 spriteSheetOffsetY: 0
 spriteSheetOffsetX: 20
 stats:
-  hp: 100
-  maxHp: 100
+  hp: 120
+  maxHp: 120
   energy: 7
   maxEnergy: 7
   speed: 2

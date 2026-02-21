@@ -527,7 +527,7 @@ export function renderCardTile(
   if (suppressionPenalty > 0) {
     const cost = new Text({
       text: `${totalCost}`,
-      style: { fill: 0xfb923c, fontSize: 12, fontWeight: 'bold' },
+      style: { fill: 0x8b5cf6, fontSize: 12, fontWeight: 'bold' },
     });
     cost.x = costX;
     cost.y = 30;

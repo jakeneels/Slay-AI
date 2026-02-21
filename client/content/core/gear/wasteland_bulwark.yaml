@@ -1,0 +1,13 @@
+schemaVersion: 1
+id: wasteland_bulwark
+name: "Wasteland Bulwark"
+description: "Layered drone plating and scrap iron. +35% block, +25 HP."
+slot: armor
+rarity: legendary
+modifiers:
+  - target: block_amount
+    op: multiply
+    value: 1.35
+  - target: maxHp
+    op: add
+    value: 25

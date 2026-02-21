@@ -10,7 +10,7 @@ import { getModifierRegistry } from './modifiers.js';
 // ── Default tuning constants (overridable via modifier registry / dev panel) ──
 
 /** Difficulty budget for wave 1. */
-export const WAVE_BASE_BUDGET = 120;
+export const WAVE_BASE_BUDGET = 0;
 
 /** Extra budget added per wave after the first. */
 export const WAVE_BUDGET_INCREMENT = 35;
@@ -19,7 +19,7 @@ export const WAVE_BUDGET_INCREMENT = 35;
 export const WAVE_BUDGET_JITTER = 0.2;
 
 /** Hard limits on enemies per wave. */
-export const WAVE_MIN_ENEMIES = 2;
+export const WAVE_MIN_ENEMIES = 1;
 export const WAVE_MAX_ENEMIES = 4;
 
 /** Rarity contribution to difficulty (higher = stronger cards). Unknown rarities default to 0. */

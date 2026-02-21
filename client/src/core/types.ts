@@ -334,7 +334,7 @@ export interface GearDefinition {
   name: string;
   description: string;
   slot: GearSlot;
-  rarity: 'common' | 'uncommon' | 'rare';
+  rarity: 'common' | 'rare' | 'epic' | 'legendary' | 'mythic';
   modifiers: Array<{
     target: string;    // e.g. 'maxHp', 'damage_dealt', 'maxEnergy'
     op: 'add' | 'multiply';
@@ -479,6 +479,7 @@ export interface GameState {
   stats: GameStats;
   combatResult: 'ongoing' | 'victory' | 'defeat';
   pendingReward: GearDefinition | null;
+  pendingRewardChoices: GearDefinition[];
   waveNumber: number;
   currentMap: string;
   playedCardsStack: PlayedCardEntry[];

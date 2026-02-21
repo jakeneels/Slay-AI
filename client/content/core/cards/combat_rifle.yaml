@@ -11,8 +11,8 @@ maxRange: 10
 # optimalRange: 1
 exhaust: false
 expires_after_turns: 0
-description: "Versatile Ranged Attack — Can be used at close and medium range."
+description: "Versatile Ranged Attack — Effective at all but the furthest ranges."
 effects:
   - kind: damage
-    amount: 16
+    amount: 18
 

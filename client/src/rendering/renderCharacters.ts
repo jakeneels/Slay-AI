@@ -4,7 +4,7 @@ import type { Application, Texture, Sprite } from 'pixi.js';
 import { Assets, Text, Graphics, Sprite as SpriteImpl } from 'pixi.js';
 import type { GameState, Character, CharacterDefinition } from '../core/types.js';
 import { getSelectedCardId, getGameState } from '../core/gameState.js';
-import { playCard, calculateAoeTargets, getOccupiedSlots, getCharacterSlotSize, getJumpTotalEnergyCostForSlot, getValidJumpSlots, isCharacterSuppressed, getNetSuppressionPenalty } from '../core/combat.js';
+import { playCard, calculateAoeTargets, getOccupiedSlots, getCharacterSlotSize, getJumpTotalEnergyCostForSlot, getValidJumpSlots, isCharacterSuppressed, getNetSuppressionPenalty, canSwapCurrentTurnWithNextAlly, swapCurrentTurnWithNextAlly } from '../core/combat.js';
 import { getSuppressionStackCost } from '../core/constants.js';
 import { render as renderCallback } from './renderer.js';
 import { registerCharacterSprite, hasActiveSpriteSheetOverlay } from '../../animations.js';
@@ -46,10 +46,14 @@ const BAR_RADIUS = 5;
 const BAR_GAP = 4;
 
 // HUD placement below characters
-const HUD_BOTTOM_OFFSET = 14;
+const HUD_BOTTOM_OFFSET = 24;
 const HUD_SECTION_GAP = 6;
 const STATUS_MAX_ROW_WIDTH = 130;
 const MAX_VISIBLE_STATUS_BADGES = 4;
+const MAX_PINNED_STATUS_ICONS = 3;
+const PINNED_ICON_SIZE = 13;
+const PINNED_ICON_GAP = 5;
+const PINNED_OVERFLOW_SIZE = 18;
 
 // Layering buckets
 const Z_SPRITE = 100;
@@ -57,7 +61,11 @@ const Z_NAME = 180;
 const Z_BARS = 220;
 const Z_BLOCK = 230;
 const Z_STATUS = 260;
-const Z_ARROW = 280;
+const Z_TURN_BREADCRUMB = 245;
+
+const TURN_BREADCRUMB_W = 40;
+const TURN_BREADCRUMB_H = 20;
+const TURN_LINK_SEGMENT_H = 10;
 
 // Map to store character sprites for AOE highlighting
 const characterSpriteMap = new Map<string, SpriteImpl>();
@@ -77,6 +85,12 @@ type TargetingFeedback = {
 
 let activeTargetingFeedback: TargetingFeedback | null = null;
 let targetingFeedbackTimeout: ReturnType<typeof setTimeout> | null = null;
+
+type TurnBreadcrumbState = {
+  turnPositionByCharacterId: Record<string, number>;
+  linkedPairIds: [string, string] | null;
+  canSwapLinkedPair: boolean;
+};
 export type ResolvedVisualProfile = {
   scale: number;
   anchorX: number;
@@ -235,6 +249,31 @@ function getCharacterCenterSlotIndex(character: Character): number {
   return character.slotIndex + (size - 1) / 2;
 }
 
+export function deriveTurnBreadcrumbState(gameState: GameState): TurnBreadcrumbState {
+  const turnPositionByCharacterId: Record<string, number> = {};
+  let turnPosition = 1;
+  for (let i = gameState.turnQueueIndex; i < gameState.turnQueue.length; i += 1) {
+    const charId = gameState.turnQueue[i];
+    if (turnPositionByCharacterId[charId] !== undefined) continue;
+    const char = gameState.characters.find(c => c.id === charId);
+    if (!char || char.hp <= 0) continue;
+    turnPositionByCharacterId[charId] = turnPosition;
+    turnPosition += 1;
+  }
+
+  const canSwapLinkedPair = canSwapCurrentTurnWithNextAlly();
+  let linkedPairIds: [string, string] | null = null;
+  if (canSwapLinkedPair && gameState.turnQueueIndex >= 0) {
+    const currentId = gameState.turnQueue[gameState.turnQueueIndex];
+    const nextId = gameState.turnQueue[gameState.turnQueueIndex + 1];
+    if (currentId && nextId) {
+      linkedPairIds = [currentId, nextId];
+    }
+  }
+
+  return { turnPositionByCharacterId, linkedPairIds, canSwapLinkedPair };
+}
+
 function createLaneSelectorHighlight(
   slotCenterX: number,
   groundY: number,
@@ -257,6 +296,121 @@ function createLaneSelectorHighlight(
   return selector;
 }
 
+function renderTurnLinkSegment(
+  app: Application,
+  leftCenterX: number,
+  rightCenterX: number,
+  centerY: number,
+): void {
+  const segmentStartX = leftCenterX + TURN_BREADCRUMB_W / 2;
+  const segmentEndX = rightCenterX - TURN_BREADCRUMB_W / 2;
+  const segmentW = segmentEndX - segmentStartX;
+  if (segmentW <= 2) return;
+
+  const segment = new Graphics();
+  const draw = (hovered: boolean): void => {
+    segment.clear();
+    segment.roundRect(0, 0, segmentW, TURN_LINK_SEGMENT_H, TURN_LINK_SEGMENT_H / 2)
+      .fill({ color: 0x60a5fa, alpha: hovered ? 0.78 : 0.62 })
+      .stroke({ width: hovered ? 2 : 1.2, color: hovered ? 0xbfdbfe : 0x93c5fd, alpha: 0.95 });
+  };
+  draw(false);
+  segment.x = segmentStartX;
+  segment.y = centerY - TURN_LINK_SEGMENT_H / 2;
+  segment.zIndex = Z_TURN_BREADCRUMB - 1;
+  segment.eventMode = 'static';
+  segment.cursor = 'pointer';
+  segment.on('pointerenter', () => draw(true));
+  segment.on('pointerleave', () => draw(false));
+  segment.on('pointerdown', () => {
+    swapCurrentTurnWithNextAlly(renderCallback);
+  });
+  app.stage.addChild(segment);
+}
+
+function renderTurnBreadcrumb(
+  app: Application,
+  gameState: GameState,
+  char: Character,
+  centerX: number,
+  topY: number,
+  breadcrumbState: TurnBreadcrumbState
+): void {
+  const turnPosition = breadcrumbState.turnPositionByCharacterId[char.id];
+  const isActive = char.id === gameState.currentPlayerId;
+  const isUpcoming = turnPosition !== undefined;
+  const isLinked = breadcrumbState.linkedPairIds?.includes(char.id) ?? false;
+  const canInteract = isLinked && breadcrumbState.canSwapLinkedPair;
+  const label = isUpcoming ? `T${turnPosition}` : '--';
+
+  const marker = new Graphics();
+  const draw = (hovered: boolean): void => {
+    marker.clear();
+    let fillColor = 0x0f172a;
+    let fillAlpha = 0.48;
+    let strokeColor = 0x334155;
+    let strokeWidth = 1.2;
+    let strokeAlpha = 0.72;
+    if (isUpcoming) {
+      fillColor = 0x1e293b;
+      fillAlpha = 0.84;
+      strokeColor = 0x64748b;
+    }
+    if (isActive) {
+      fillColor = 0x3b82f6;
+      fillAlpha = 1;
+      strokeColor = 0xbfdbfe;
+      strokeWidth = 2.5;
+      strokeAlpha = 1;
+      // Soft outer glow so active turn catches the eye
+      marker.roundRect(-2, -2, TURN_BREADCRUMB_W + 4, TURN_BREADCRUMB_H + 4, 8)
+        .fill({ color: 0x60a5fa, alpha: 0.35 })
+        .stroke({ width: 1, color: 0x93c5fd, alpha: 0.5 });
+    } else if (isLinked) {
+      fillColor = 0x334155;
+      fillAlpha = hovered ? 0.98 : 0.93;
+      strokeColor = hovered ? 0xbfdbfe : 0x93c5fd;
+      strokeWidth = hovered && canInteract ? 2 : 1.2;
+      strokeAlpha = 0.94;
+    } else if (hovered && canInteract) {
+      strokeWidth = 2;
+    }
+    marker.roundRect(0, 0, TURN_BREADCRUMB_W, TURN_BREADCRUMB_H, 6)
+      .fill({ color: fillColor, alpha: fillAlpha })
+      .stroke({ width: strokeWidth, color: strokeColor, alpha: strokeAlpha });
+  };
+
+  draw(false);
+  marker.x = centerX - TURN_BREADCRUMB_W / 2;
+  marker.y = topY;
+  marker.zIndex = Z_TURN_BREADCRUMB;
+  marker.eventMode = canInteract ? 'static' : 'none';
+  marker.cursor = canInteract ? 'pointer' : 'default';
+  if (canInteract) {
+    marker.on('pointerenter', () => draw(true));
+    marker.on('pointerleave', () => draw(false));
+    marker.on('pointerdown', () => {
+      swapCurrentTurnWithNextAlly(renderCallback);
+    });
+  }
+  app.stage.addChild(marker);
+
+  const markerText = new Text({
+    text: label,
+    style: {
+      fill: isActive ? 0xffffff : isUpcoming ? 0xe2e8f0 : 0x94a3b8,
+      fontSize: isActive ? 12 : 10,
+      fontWeight: 'bold',
+      stroke: { color: 0x020617, width: isActive ? 2.5 : 2 },
+    },
+  });
+  markerText.x = centerX - markerText.width / 2;
+  markerText.y = topY + (TURN_BREADCRUMB_H - markerText.height) / 2;
+  markerText.eventMode = 'none';
+  markerText.zIndex = Z_TURN_BREADCRUMB + 1;
+  app.stage.addChild(markerText);
+}
+
 /**
  * Render all characters on the battlefield
  */
@@ -265,6 +419,8 @@ export function renderCharacters(app: Application, gameState: GameState): void {
   const battleY = HEIGHT - BATTLE_Y_OFFSET; // Move characters down towards bottom
   const battleGroundY = battleY + BATTLE_GROUND_OFFSET;
   const showPositionDebug = shouldShowPositionDebugOverlay();
+  const breadcrumbState = deriveTurnBreadcrumbState(gameState);
+  const characterCenterById = new Map<string, number>();
   const leftBase = BATTLE_LEFT_BASE;
   const rightBase = BATTLE_RIGHT_BASE;
   
@@ -280,14 +436,28 @@ export function renderCharacters(app: Application, gameState: GameState): void {
   allies.forEach((char) => {
     const centerSlot = getCharacterCenterSlotIndex(char);
     const x = leftBase + centerSlot * slotSpacing;
-    renderCharacter(app, gameState, char, x, battleGroundY, showPositionDebug);
+    const slotCenterX = x + CHAR_CENTER;
+    characterCenterById.set(char.id, slotCenterX);
+    renderCharacter(app, gameState, char, x, battleGroundY, showPositionDebug, breadcrumbState);
   });
   
   enemies.forEach((char) => {
     const centerSlot = getCharacterCenterSlotIndex(char);
     const x = leftBase + centerSlot * slotSpacing;
-    renderCharacter(app, gameState, char, x, battleGroundY, showPositionDebug);
+    const slotCenterX = x + CHAR_CENTER;
+    characterCenterById.set(char.id, slotCenterX);
+    renderCharacter(app, gameState, char, x, battleGroundY, showPositionDebug, breadcrumbState);
   });
+
+  if (breadcrumbState.linkedPairIds) {
+    const [pairA, pairB] = breadcrumbState.linkedPairIds;
+    const leftCenter = characterCenterById.get(pairA);
+    const rightCenter = characterCenterById.get(pairB);
+    if (leftCenter !== undefined && rightCenter !== undefined) {
+      const segmentCenterY = battleGroundY + HUD_BOTTOM_OFFSET + BAR_HEIGHT * 2 + BAR_GAP + HUD_SECTION_GAP + TURN_BREADCRUMB_H / 2;
+      renderTurnLinkSegment(app, Math.min(leftCenter, rightCenter), Math.max(leftCenter, rightCenter), segmentCenterY);
+    }
+  }
 
   // --- Render clickable empty-slot hit areas for slot-based targeting ---
   const selectedCardIdForAoe = selectedCardId;
@@ -466,7 +636,8 @@ function renderCharacter(
   char: Character,
   slotX: number,
   groundY: number,
-  showPositionDebug: boolean
+  showPositionDebug: boolean,
+  breadcrumbState: TurnBreadcrumbState
 ): void {
   const charDef = gameState.characterLibrary[char.id];
   const slotCenterX = slotX + CHAR_CENTER;
@@ -902,9 +1073,16 @@ function renderCharacter(
     app.stage.addChild(energyHoverZone);
   }
 
-  // Buff/debuff rows under the bars
-  const statusTopY = energyBarY + BAR_HEIGHT + HUD_SECTION_GAP;
-  const statusLayout = renderStatusBadges(app, char, slotCenterX, statusTopY, STATUS_MAX_ROW_WIDTH);
+  // Tier 1: compact pinned status indicators above the HP bar.
+  const pinnedIconsY = hpBarY - PINNED_ICON_SIZE - 3;
+  const pinnedIconsX = barX + BAR_WIDTH - (
+    MAX_PINNED_STATUS_ICONS * PINNED_ICON_SIZE + (MAX_PINNED_STATUS_ICONS - 1) * PINNED_ICON_GAP
+  );
+  renderPinnedStatusIcons(app, char, pinnedIconsX, pinnedIconsY);
+
+  // Character-local turn marker below bars, before status badges.
+  const breadcrumbTopY = energyBarY + BAR_HEIGHT + HUD_SECTION_GAP;
+  renderTurnBreadcrumb(app, gameState, char, slotCenterX, breadcrumbTopY, breadcrumbState);
 
   // Block display - shield icon with number (like STS), positioned to the right of bars
   const totalBlock = getTotalBlock(char);
@@ -991,26 +1169,168 @@ function renderCharacter(
     app.stage.addChild(blockHoverZone);
   }
 
-  // Keep the turn arrow near the character, above the sprite HUD.
-  if (char.id === gameState.currentPlayerId) {
-    const arrow = new Graphics();
-    arrow.moveTo(0, 0)
-         .lineTo(-10, -15)
-         .lineTo(-5, -15)
-         .lineTo(-5, -25)
-         .lineTo(5, -25)
-         .lineTo(5, -15)
-         .lineTo(10, -15)
-         .closePath()
-         .fill(0xffeb3b); // Bright yellow arrow
-    arrow.x = slotCenterX;
-    arrow.y = hpBarY - 8;
-    arrow.zIndex = Z_ARROW;
-    app.stage.addChild(arrow);
-  }
 }
 
 // ── Status effect badge rendering ─────────────────────────────────────
+
+type RenderableStatusEntry = {
+  status: { id: string; stacks: number };
+  config: NonNullable<ReturnType<typeof getStatusDisplay>>;
+};
+
+const PINNED_STATUS_PRIORITY: Record<string, number> = {
+  suppressed: 100,
+  speed_down: 90,
+  speed_up: 85,
+  fortify: 80,
+  thorns: 75,
+  damage_up: 70,
+  block_up: 65,
+  radiation: 60,
+  bleed: 55,
+  shock: 50,
+  regeneration: 45,
+  disrupt: 40,
+};
+
+function collectRenderableStatusEntries(char: Character): RenderableStatusEntry[] {
+  const statuses = char.statuses ?? [];
+  const visible: RenderableStatusEntry[] = statuses
+    .filter(s => s.id !== 'suppressed') // handle suppressed separately below
+    .map(s => ({ status: s, config: getStatusDisplay(s.id) }))
+    .filter((entry): entry is RenderableStatusEntry => !!entry.config);
+
+  // Inject virtual "suppressed" badge if character is proximity-suppressed.
+  if (isCharacterSuppressed(char)) {
+    const suppressedConfig = getStatusDisplay('suppressed');
+    if (suppressedConfig) {
+      const netPenalty = getNetSuppressionPenalty(char);
+      const explicitStacks = (statuses.find(s => s.id === 'suppressed')?.stacks) ?? 0;
+      const stackCost = getSuppressionStackCost({ character: char });
+      const totalPenalty = netPenalty + explicitStacks * stackCost;
+      visible.push({
+        status: { id: 'suppressed', stacks: totalPenalty },
+        config: suppressedConfig,
+      });
+    }
+  }
+
+  // Inject virtual speed status.
+  if (char.speed !== 0) {
+    const speedStatusId = char.speed > 0 ? 'speed_up' : 'speed_down';
+    const speedConfig = getStatusDisplay(speedStatusId);
+    if (speedConfig) {
+      visible.push({
+        status: { id: speedStatusId, stacks: Math.abs(char.speed) },
+        config: speedConfig,
+      });
+    }
+  }
+
+  // Inject virtual gear modifier badges.
+  const registry = getModifierRegistry();
+  const gearBadges: Array<{ id: string; target: string }> = [
+    { id: 'block_up', target: 'block_amount' },
+    { id: 'damage_up', target: 'damage_dealt' },
+  ];
+  for (const { id, target } of gearBadges) {
+    const mods = registry.getByTarget(target)
+      .filter(m => m.source.startsWith('gear:') && m.scope.kind === 'character' && m.scope.characterId === char.id);
+    if (mods.length === 0) continue;
+    const cfg = getStatusDisplay(id);
+    if (!cfg) continue;
+    let totalPct = 0;
+    for (const m of mods) {
+      if (m.op === 'multiply') totalPct += Math.round((m.value - 1) * 100);
+      else if (m.op === 'add') totalPct += m.value;
+    }
+    visible.push({ status: { id, stacks: totalPct }, config: cfg });
+  }
+
+  return visible;
+}
+
+function renderPinnedStatusIcons(app: Application, char: Character, x: number, y: number): void {
+  const visible = collectRenderableStatusEntries(char)
+    .sort((a, b) => (PINNED_STATUS_PRIORITY[b.status.id] ?? 0) - (PINNED_STATUS_PRIORITY[a.status.id] ?? 0));
+  if (visible.length === 0) return;
+
+  const pinned = visible.slice(0, MAX_PINNED_STATUS_ICONS);
+  const overflowCount = Math.max(0, visible.length - pinned.length);
+  let iconX = x;
+
+  for (const entry of pinned) {
+    const { status, config } = entry;
+    const bg = new Graphics();
+    bg.circle(PINNED_ICON_SIZE / 2, PINNED_ICON_SIZE / 2, PINNED_ICON_SIZE / 2)
+      .fill({ color: config.bgColor, alpha: 0.96 })
+      .stroke({ width: 1, color: config.borderColor, alpha: 0.94 });
+    bg.x = iconX;
+    bg.y = y;
+    bg.eventMode = 'static';
+    bg.cursor = 'help';
+    bg.zIndex = Z_STATUS;
+    registerStatusHoverRegion(status.id, bg.x, bg.y, PINNED_ICON_SIZE, PINNED_ICON_SIZE);
+    bg.on('pointerenter', () => {
+      if (setHoveredStatus(status.id, status.stacks, bg.x + PINNED_ICON_SIZE / 2, bg.y - 2)) {
+        renderCallback();
+      }
+    });
+    bg.on('pointerout', () => {
+      if (setHoveredStatus(null, 0)) {
+        renderCallback();
+      }
+    });
+    app.stage.addChild(bg);
+
+    const drawFn = config.drawIcons[0];
+    if (drawFn) {
+      const icon = new Graphics();
+      drawFn(icon, PINNED_ICON_SIZE - 2);
+      icon.x = iconX + 1;
+      icon.y = y + 1;
+      icon.eventMode = 'none';
+      icon.zIndex = Z_STATUS + 1;
+      app.stage.addChild(icon);
+    }
+
+    if (status.stacks > 1) {
+      const stackText = new Text({
+        text: `${status.stacks}`,
+        style: { fill: 0xffffff, fontSize: 8, fontWeight: 'bold', stroke: { color: 0x000000, width: 2 } },
+      });
+      stackText.x = iconX + PINNED_ICON_SIZE - stackText.width + 1;
+      stackText.y = y + PINNED_ICON_SIZE - stackText.height + 1;
+      stackText.eventMode = 'none';
+      stackText.zIndex = Z_STATUS + 2;
+      app.stage.addChild(stackText);
+    }
+
+    iconX += PINNED_ICON_SIZE + PINNED_ICON_GAP;
+  }
+
+  if (overflowCount > 0) {
+    const overflow = new Graphics();
+    overflow.roundRect(0, 0, PINNED_OVERFLOW_SIZE, PINNED_OVERFLOW_SIZE, 4)
+      .fill({ color: 0x1f2937, alpha: 0.95 })
+      .stroke({ width: 1, color: 0x4b5563, alpha: 0.92 });
+    overflow.x = iconX - 2;
+    overflow.y = y - 1;
+    overflow.eventMode = 'none';
+    overflow.zIndex = Z_STATUS;
+    app.stage.addChild(overflow);
+
+    const overflowText = new Text({
+      text: `+${overflowCount}`,
+      style: { fill: 0xe5e7eb, fontSize: 8, fontWeight: 'bold' },
+    });
+    overflowText.x = overflow.x + (PINNED_OVERFLOW_SIZE - overflowText.width) / 2;
+    overflowText.y = overflow.y + (PINNED_OVERFLOW_SIZE - overflowText.height) / 2;
+    overflowText.eventMode = 'none';
+    overflowText.zIndex = Z_STATUS + 1;
+    app.stage.addChild(overflowText);
+  }
+}
 
 const BADGE_MIN_W = 28;
 const BADGE_H = 16;
@@ -1041,68 +1361,7 @@ function renderStatusBadges(
   rowTopY: number,
   maxRowWidth: number,
 ): { topY: number; bottomY: number; rows: number } {
-  const statuses = char.statuses ?? [];
-
-  // Filter to statuses that have a display config
-  const visible = statuses
-    .filter(s => s.id !== 'suppressed') // handle suppressed separately below
-    .map(s => ({ status: s, config: getStatusDisplay(s.id) }))
-    .filter((entry): entry is { status: typeof statuses[0]; config: NonNullable<ReturnType<typeof getStatusDisplay>> } => !!entry.config);
-
-  // Inject virtual "suppressed" badge if character is proximity-suppressed.
-  // Shows the total energy penalty (base + status stacks) as "+N".
-  if (isCharacterSuppressed(char)) {
-    const suppressedConfig = getStatusDisplay('suppressed');
-    if (suppressedConfig) {
-      const netPenalty = getNetSuppressionPenalty(char);
-      const explicitStacks = (statuses.find(s => s.id === 'suppressed')?.stacks) ?? 0;
-      const stackCost = getSuppressionStackCost({ character: char });
-      const totalPenalty = netPenalty + explicitStacks * stackCost;
-      visible.push({
-        status: { id: 'suppressed', stacks: totalPenalty },
-        config: suppressedConfig,
-      });
-    }
-  }
-
-  // Inject virtual speed badge if character's speed differs from baseline (0).
-  if (char.speed !== 0) {
-    const speedStatusId = char.speed > 0 ? 'speed_up' : 'speed_down';
-    const speedConfig = getStatusDisplay(speedStatusId);
-    if (speedConfig) {
-      visible.push({
-        status: { id: speedStatusId, stacks: Math.abs(char.speed) },
-        config: speedConfig,
-      });
-    }
-  }
-
-  // Inject virtual gear modifier badges (block_up, damage_up) from the modifier registry.
-  {
-    const registry = getModifierRegistry();
-    const gearBadges: Array<{ id: string; target: string }> = [
-      { id: 'block_up', target: 'block_amount' },
-      { id: 'damage_up', target: 'damage_dealt' },
-    ];
-    for (const { id, target } of gearBadges) {
-      const mods = registry.getByTarget(target)
-        .filter(m => m.source.startsWith('gear:') && m.scope.kind === 'character' && m.scope.characterId === char.id);
-      if (mods.length > 0) {
-        const cfg = getStatusDisplay(id);
-        if (cfg) {
-          let totalPct = 0;
-          for (const m of mods) {
-            if (m.op === 'multiply') totalPct += Math.round((m.value - 1) * 100);
-            else if (m.op === 'add') totalPct += m.value;
-          }
-          visible.push({
-            status: { id, stacks: totalPct },
-            config: cfg,
-          });
-        }
-      }
-    }
-  }
+  const visible = collectRenderableStatusEntries(char);
 
   if (visible.length === 0) {
     return { topY: rowTopY, bottomY: rowTopY, rows: 0 };

@@ -1,0 +1,10 @@
+schemaVersion: 1
+id: fanatics_servo
+name: "Fanatic's Servo"
+description: "Servo motor worn as sacred amulet. +1 suppression."
+slot: accessory
+rarity: common
+modifiers:
+  - target: suppression
+    op: add
+    value: 1

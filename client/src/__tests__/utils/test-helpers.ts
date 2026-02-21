@@ -113,6 +113,7 @@ export function createMockGameState(overrides?: Partial<GameState>): GameState {
     },
     combatResult: overrides?.combatResult ?? 'ongoing',
     pendingReward: overrides?.pendingReward ?? null,
+    pendingRewardChoices: overrides?.pendingRewardChoices ?? [],
     waveNumber: overrides?.waveNumber ?? 1,
     currentMap: overrides?.currentMap ?? 'test_map',
     playedCardsStack: overrides?.playedCardsStack || [],

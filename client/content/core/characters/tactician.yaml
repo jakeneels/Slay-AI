@@ -15,8 +15,8 @@ role: support
 theme: "Support / Utility – battlefield control."
 isPlayer: true
 stats:
-  hp: 60
-  maxHp: 60
+  hp: 80
+  maxHp: 80
   energy: 6
   maxEnergy: 6
   speed: 0

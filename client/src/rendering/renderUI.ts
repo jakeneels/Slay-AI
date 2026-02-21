@@ -6,7 +6,7 @@ import type { GameState } from '../core/types.js';
 import { WIDTH, SLOTS_PER_SIDE } from '../core/constants.js';
 import { getCard } from '../core/card.js';
 import { canRollbackTurn, getSelectedCardId, rollbackTurn } from '../core/gameState.js';
-import { endTurn, moveCharacterForward, moveCharacterBack, getMoveCost, getSuppressionCostPenalty, canSwapCurrentTurnWithNextAlly, swapCurrentTurnWithNextAlly, getJumpTotalEnergyCostForSlot, getValidJumpSlots } from '../core/combat.js';
+import { endTurn, moveCharacterForward, moveCharacterBack, getMoveCost, getSuppressionCostPenalty, getJumpTotalEnergyCostForSlot, getValidJumpSlots } from '../core/combat.js';
 import { render as renderCallback } from './renderer.js';
 import type { Card, Character } from '../core/types.js';
 import { createEnergyIcon } from './icons/energyIcon.js';
@@ -79,89 +79,13 @@ export function renderTurnInfo(app: Application, gameState: GameState): void {
     text: `${currentPlayer?.name ?? '—'}'s turn`,
     style: { fill: 0xffffff, fontSize: 16, fontWeight: 'bold' }
   });
-  turnText.x = roundBg.x + roundBadgeW + 12;
-  turnText.y = headerY + (badgeH - turnText.height) / 2;
+  const turnTextGap = 4;
+  turnText.x = 20;
+  turnText.y = headerY + badgeH + turnTextGap;
   turnText.eventMode = 'none';
   turnText.zIndex = 2000;
   app.stage.addChild(turnText);
 
-  // Row 2: Turn queue — 4 per row, then newline; back up below header
-  if (gameState.turnQueue.length > 0) {
-    const chipsPerRow = 4;
-    const queueStartY = 44;
-    const chipH = 15;
-    const chipW = 65; // compact width for short names
-    const chipGap = 5;
-    const rowGap = 6;
-    let cursorX = 20;
-    let cursorY = queueStartY;
-    let chipsInRow = 0;
-
-    for (let i = gameState.turnQueueIndex; i < gameState.turnQueue.length; i++) {
-      const charId = gameState.turnQueue[i];
-      const char = gameState.characters.find(c => c.id === charId);
-      if (!char || char.hp <= 0) continue;
-
-      // Newline after 4 chips
-      if (chipsInRow >= chipsPerRow) {
-        chipsInRow = 0;
-        cursorX = 20;
-        cursorY += chipH + rowGap;
-      }
-
-      const isActive = i === gameState.turnQueueIndex;
-      const isAlly = char.isPlayer;
-
-      const displayName = char.name.length > 11 ? char.name.slice(0, 10) + '…' : char.name;
-
-      const chipBg = new Graphics();
-      chipBg.roundRect(0, 0, chipW, chipH, 4).fill(isActive ? 0x3b82f6 : isAlly ? 0x1f2937 : 0x3b1111)
-        .stroke({ width: 1, color: isActive ? 0x60a5fa : isAlly ? 0x4b5563 : 0x7f1d1d });
-      chipBg.x = cursorX;
-      chipBg.y = cursorY;
-      chipBg.zIndex = 2000;
-      const canSwapConnectedAllies = canSwapCurrentTurnWithNextAlly();
-      const isConnectedAllyTurnChip = canSwapConnectedAllies
-        && char.isPlayer
-        && (i === gameState.turnQueueIndex || i === gameState.turnQueueIndex + 1);
-      if (isConnectedAllyTurnChip) {
-        chipBg.eventMode = 'static';
-        chipBg.cursor = 'pointer';
-        chipBg.hitArea = new Rectangle(0, 0, chipW, chipH);
-        chipBg.on('pointerdown', () => {
-          swapCurrentTurnWithNextAlly(renderCallback);
-        });
-      } else {
-        chipBg.eventMode = 'none';
-      }
-      app.stage.addChild(chipBg);
-
-      const label = new Text({
-        text: displayName,
-        style: { fill: isActive ? 0xffffff : 0xd1d5db, fontSize: 11, fontWeight: isActive ? 'bold' : 'normal' }
-      });
-      label.x = cursorX + (chipW - label.width) / 2;
-      label.y = cursorY + (chipH - label.height) / 2;
-      label.zIndex = 2001;
-      label.eventMode = 'none';
-      app.stage.addChild(label);
-
-      cursorX += chipW + chipGap;
-
-      if (i < gameState.turnQueue.length - 1 && chipsInRow < chipsPerRow - 1) {
-        const arrow = new Text({ text: '›', style: { fill: 0x6b7280, fontSize: 12 } });
-        arrow.x = cursorX;
-        arrow.y = cursorY + (chipH - arrow.height) / 2;
-        arrow.zIndex = 2000;
-        arrow.eventMode = 'none';
-        app.stage.addChild(arrow);
-        cursorX += arrow.width + chipGap;
-      }
-
-      chipsInRow++;
-    }
-  }
-  
   const selectedCardId = getSelectedCardId();
   if (selectedCardId) {
     const card = getCard(selectedCardId);

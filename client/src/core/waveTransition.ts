@@ -361,6 +361,7 @@ export function startNextWave(): void {
   // ── 7. Reset combat state ──────────────────────────────────────────
   gameState.combatResult = 'ongoing';
   gameState.pendingReward = null;
+  gameState.pendingRewardChoices = [];
   gameState.isProcessingTurn = false;
   gameState.selectedCardId = null;
   gameState.turnIndex = 0;

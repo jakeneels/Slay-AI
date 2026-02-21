@@ -134,28 +134,29 @@ function drawDisruptIcon(g: Graphics, size: number): void {
     .stroke({ width: 1.5 * s, color: 0xc084fc });
 }
 
-/** Suppressed — broken arrow (ranged attack disrupted) */
+/** Suppressed — broken arrow (ranged attack disrupted) — violet to distinguish from thorns */
+const SUPPRESSION_ICON_COLOR = 0x8b5cf6;
 function drawSuppressedIcon(g: Graphics, size: number): void {
   const s = size / 14;
   // Arrow shaft (broken in the middle)
   // Left half of shaft
   g.moveTo(1 * s, 7 * s)
     .lineTo(5.5 * s, 7 * s)
-    .stroke({ width: 1.5 * s, color: 0xfb923c });
+    .stroke({ width: 1.5 * s, color: SUPPRESSION_ICON_COLOR });
   // Right half of shaft (offset down to show break)
   g.moveTo(8.5 * s, 8 * s)
     .lineTo(11 * s, 8 * s)
-    .stroke({ width: 1.5 * s, color: 0xfb923c });
+    .stroke({ width: 1.5 * s, color: SUPPRESSION_ICON_COLOR });
   // Arrowhead (on right end, pointing right)
   g.moveTo(13 * s, 8 * s).lineTo(11 * s, 5 * s)
-    .stroke({ width: 1.2 * s, color: 0xfb923c });
+    .stroke({ width: 1.2 * s, color: SUPPRESSION_ICON_COLOR });
   g.moveTo(13 * s, 8 * s).lineTo(11 * s, 11 * s)
-    .stroke({ width: 1.2 * s, color: 0xfb923c });
+    .stroke({ width: 1.2 * s, color: SUPPRESSION_ICON_COLOR });
   // Fletching (on left end)
   g.moveTo(1 * s, 7 * s).lineTo(3 * s, 4 * s)
-    .stroke({ width: 1 * s, color: 0xfb923c });
+    .stroke({ width: 1 * s, color: SUPPRESSION_ICON_COLOR });
   g.moveTo(1 * s, 7 * s).lineTo(3 * s, 10 * s)
-    .stroke({ width: 1 * s, color: 0xfb923c });
+    .stroke({ width: 1 * s, color: SUPPRESSION_ICON_COLOR });
   // X mark at the break point to emphasize disruption
   g.moveTo(5.5 * s, 5 * s).lineTo(8.5 * s, 10 * s)
     .stroke({ width: 1.2 * s, color: 0xef4444 });
@@ -332,9 +333,9 @@ export const STATUS_DISPLAY: Record<string, StatusDisplayConfig> = {
   suppressed: {
     label: 'Suppressed',
     description: 'An enemy is too close. Ranged cards (range 4+) cost extra energy.',
-    iconColor: 0xfb923c,
-    bgColor: 0x3b2211,
-    borderColor: 0x9a3412,
+    iconColor: 0x8b5cf6,
+    bgColor: 0x2e1146,
+    borderColor: 0x6d28d9,
     drawIcons: [drawSuppressedIcon, drawEnergySmallIcon],
   },
   speed_up: {

@@ -1,0 +1,13 @@
+schemaVersion: 1
+id: crucible_igniter
+name: "Crucible Igniter"
+description: "Pre-war thermal weapon core from the Crucible. +25% damage dealt, +1 speed."
+slot: weapon
+rarity: mythic
+modifiers:
+  - target: damage_dealt
+    op: multiply
+    value: 1.25
+  - target: speed
+    op: add
+    value: 1

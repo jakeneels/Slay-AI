@@ -19,6 +19,13 @@ import {
   setNoPreFightSetupSetting,
   setShowRollbackButtonSetting,
 } from './preFightDisplaySettings.js';
+import {
+  GEAR_RARITY_KEYS,
+  getGearRarityDropWeights,
+  setGearRarityDropWeight,
+  resetGearRarityDropWeights,
+  DEFAULT_GEAR_RARITY_DROP_WEIGHTS,
+} from '../core/gearRewardConfig.js';
 
 let initialized = false;
 const ACS_TARGET = 'acs_wave4_boss';
@@ -566,6 +573,10 @@ function initBalanceTweaks(): void {
   // Event delegation for balance inputs
   balanceContainer.addEventListener('input', (e) => {
     const input = e.target as HTMLInputElement;
+    if (input.dataset.gearRarity) {
+      handleGearRarityInput(input);
+      return;
+    }
     if (!input.dataset.modTarget) return;
     handleBalanceInput(input);
   });
@@ -578,6 +589,9 @@ function initBalanceTweaks(): void {
     if (btn.dataset.action === 'reset-devpanel') {
       getModifierRegistry().clearSource('devpanel');
       persistDevPanelModifiers();
+      renderBalanceTweaks();
+    } else if (btn.dataset.action === 'reset-gear-rarity') {
+      resetGearRarityDropWeights();
       renderBalanceTweaks();
     } else if (btn.dataset.action === 'select-char') {
       selectedCharId = btn.dataset.charId || null;
@@ -695,6 +709,25 @@ function renderBalanceTweaks(): void {
     return inner;
   });
 
+  // ── Gear Rarity Weights ──
+  html += renderBalanceCollapsible('bal-gear-rarity', 'Gear Reward: Rarity Weights', () => {
+    const weights = getGearRarityDropWeights();
+    let inner = `<div style="color:#9ca3af;font-size:10px;margin-bottom:6px;">Higher = more likely to drop</div>`;
+    for (const rarity of GEAR_RARITY_KEYS) {
+      const value = weights[rarity] ?? 1;
+      const defaultVal = DEFAULT_GEAR_RARITY_DROP_WEIGHTS[rarity] ?? 1;
+      inner += `<div class="dev-bal-row">`;
+      inner += `<label class="dev-bal-label">${escapeHtml(rarity)}</label>`;
+      inner += `<input type="number" class="dev-bal-input" data-gear-rarity="${escapeHtml(rarity)}"
+        value="${value}" step="1" min="0" max="999" data-default="${defaultVal}" />`;
+      inner += `</div>`;
+    }
+    inner += `<div style="margin-top:6px;text-align:right;">`;
+    inner += `<button class="dev-bal-btn" data-action="reset-gear-rarity">Reset Weights</button>`;
+    inner += `</div>`;
+    return inner;
+  });
+
   // ── Active Modifiers list ──
   html += renderBalanceCollapsible('bal-active-mods', 'Active Modifiers', () => {
     const allMods = registry.getAll();
@@ -798,6 +831,14 @@ function handleBalanceInput(input: HTMLInputElement): void {
   // Persist to localStorage and update the active modifiers display
   persistDevPanelModifiers();
   refreshActiveModifiers();
+}
+
+function handleGearRarityInput(input: HTMLInputElement): void {
+  const rarity = input.dataset.gearRarity;
+  if (!rarity) return;
+  const value = parseFloat(input.value);
+  if (isNaN(value) || value < 0) return;
+  setGearRarityDropWeight(rarity, value);
 }
 
 /**

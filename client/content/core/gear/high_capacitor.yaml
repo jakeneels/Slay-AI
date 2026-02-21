@@ -3,7 +3,7 @@ id: high_yield_capacitor
 name: "High Yield Capacitor"
 description: "High yield capacitor. +2 max energy per turn."
 slot: accessory
-rarity: uncommon
+rarity: epic
 modifiers:
   - target: maxEnergy
     op: add

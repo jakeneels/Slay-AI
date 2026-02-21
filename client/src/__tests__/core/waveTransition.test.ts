@@ -189,6 +189,7 @@ describe('waveTransition', () => {
       laneHazards: [{ slotIndex: 3, damage: 4, remainingTurns: 1, ownerIsPlayer: true }],
       combatResult: 'victory',
       pendingReward: createMockCard({ id: 'reward_card' }) as any,
+      pendingRewardChoices: [createMockCard({ id: 'reward_choice_a' }) as any],
       selectedCardId: 'inst_1',
       turnQueue: ['ally_a'],
       turnQueueIndex: 0,
@@ -212,6 +213,7 @@ describe('waveTransition', () => {
     expect(state.laneHazards).toEqual([]);
     expect(state.combatResult).toBe('ongoing');
     expect(state.pendingReward).toBeNull();
+    expect(state.pendingRewardChoices).toEqual([]);
     expect(state.selectedCardId).toBeNull();
     expect(state.roundNumber).toBe(1);
     expect(state.turnQueue).toEqual(['ally_a', 'enemy_1']);

@@ -26,6 +26,7 @@ let gameState: GameState = {
   },
   combatResult: 'ongoing',
   pendingReward: null,
+  pendingRewardChoices: [],
   waveNumber: 1,
   currentMap: pickRandomMap(undefined, 1),
   playedCardsStack: [],

@@ -1,0 +1,13 @@
+schemaVersion: 1
+id: scrapyard_autoloader
+name: "Scrapyard Autoloader"
+description: "Jury-rigged autoloader cobbled from turret parts. +1 card draw, +1 hand size."
+slot: weapon
+rarity: common
+modifiers:
+  - target: drawCount
+    op: add
+    value: 1
+  - target: maxHandSize
+    op: add
+    value: 1
