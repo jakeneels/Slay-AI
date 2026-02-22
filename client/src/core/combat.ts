@@ -30,6 +30,7 @@ import { applyStatus, modifyStatusStacks, processStatusEffectsWithContext, decay
 import { MAX_SLOTS, SLOTS_PER_SIDE, calculateRangeModifier, getJumpMaxDistance, getJumpOccupiedSlotCost, getSuppressionDistance, getSuppressionRangedThreshold, getSuppressionStackCost } from './constants.js';
 import { getModifierRegistry } from './modifiers.js';
 import { computeDifficulty, RARITY_WEIGHTS } from './waveGenerator.js';
+import { getGearRarityDropWeight } from './gearRewardConfig.js';
 
 let app: Application | null = null;
 
@@ -39,6 +40,50 @@ interface ThornsStatusMetadata {
   debuffStatus?: string;
   debuffStacks?: number;
   debuffDuration?: number;
+}
+
+const GEAR_REWARD_CHOICES_PER_VICTORY = 3;
+
+function pickWeightedGearChoices(gearLibrary: Record<string, { rarity: string }>, count: number): string[] {
+  const pool = Object.keys(gearLibrary);
+  const picks: string[] = [];
+  const targetCount = Math.min(Math.max(0, count), pool.length);
+
+  while (picks.length < targetCount && pool.length > 0) {
+    let totalWeight = 0;
+    for (const id of pool) {
+      totalWeight += getGearRarityDropWeight(gearLibrary[id]?.rarity);
+    }
+
+    // Fallback safety in case all weights are zero/invalid.
+    if (totalWeight <= 0) {
+      const randomPoolIndex = Math.floor(Math.random() * pool.length);
+      picks.push(pool.splice(randomPoolIndex, 1)[0]);
+      continue;
+    }
+
+    let roll = Math.random() * totalWeight;
+    let selectedIndex = 0;
+    for (let i = 0; i < pool.length; i++) {
+      const weight = getGearRarityDropWeight(gearLibrary[pool[i]]?.rarity);
+      roll -= weight;
+      if (roll <= 0) {
+        selectedIndex = i;
+        break;
+      }
+    }
+
+    picks.push(pool.splice(selectedIndex, 1)[0]);
+  }
+
+  return picks;
+}
+
+function assignVictoryGearRewards(): void {
+  const gameState = getGameState();
+  const rewardIds = pickWeightedGearChoices(gameState.gearLibrary, GEAR_REWARD_CHOICES_PER_VICTORY);
+  gameState.pendingRewardChoices = rewardIds.map(id => gameState.gearLibrary[id]).filter(Boolean);
+  gameState.pendingReward = gameState.pendingRewardChoices[0] ?? null;
 }
 
 function isRollbackEpochStale(expectedEpoch: number): boolean {
@@ -398,11 +443,7 @@ function checkCombatResolutionAfterHazards(): void {
   if (livingEnemies.length === 0 && gameState.combatResult === 'ongoing') {
     logAllEnemiesDead();
     gameState.combatResult = 'victory';
-    const gearIds = Object.keys(gameState.gearLibrary);
-    if (gearIds.length > 0) {
-      const randomId = gearIds[Math.floor(Math.random() * gearIds.length)];
-      gameState.pendingReward = gameState.gearLibrary[randomId];
-    }
+    assignVictoryGearRewards();
     gameState.isProcessingTurn = true;
     addToCombatLog('Victory! All enemies defeated.');
   }
@@ -1981,12 +2022,7 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
   if (livingEnemies.length === 0 && gameState.combatResult === 'ongoing') {
     logAllEnemiesDead();
     gameState.combatResult = 'victory';
-    // Pick a random gear reward
-    const gearIds = Object.keys(gameState.gearLibrary);
-    if (gearIds.length > 0) {
-      const randomId = gearIds[Math.floor(Math.random() * gearIds.length)];
-      gameState.pendingReward = gameState.gearLibrary[randomId];
-    }
+    assignVictoryGearRewards();
     gameState.isProcessingTurn = true; // Block further card plays
     addToCombatLog('Victory! All enemies defeated.');
   }
@@ -2174,11 +2210,7 @@ export function processRoundStart(renderCallback?: () => void): void {
   if (livingEnemies.length === 0 && gameState.combatResult === 'ongoing') {
     logAllEnemiesDead();
     gameState.combatResult = 'victory';
-    const gearIds = Object.keys(gameState.gearLibrary);
-    if (gearIds.length > 0) {
-      const randomId = gearIds[Math.floor(Math.random() * gearIds.length)];
-      gameState.pendingReward = gameState.gearLibrary[randomId];
-    }
+    assignVictoryGearRewards();
     gameState.isProcessingTurn = true;
     addToCombatLog('Victory! All enemies defeated.');
   }

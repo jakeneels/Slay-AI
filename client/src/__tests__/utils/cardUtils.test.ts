@@ -25,7 +25,7 @@ describe('cardUtils', () => {
 
     it('should be case insensitive', () => {
       expect(getRarityColor('COMMON')).toBe(0x22c55e);
-      expect(getRarityColor('Rare')).toBe(0x3b82f6);
+      expect(getRarityColor('Rare')).toBe(0x06b6d4);
       expect(getRarityColor('mYtHiC')).toBe(0xff0080);
     });
 

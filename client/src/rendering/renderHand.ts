@@ -516,7 +516,7 @@ function renderEnemyHand(app: Application, _gameState: GameState, currentPlayer:
       if (enemySuppPenalty > 0) {
         const ct = new Text({
           text: `${enemyTotalCost}`,
-          style: { fill: 0xfb923c, fontSize: 10, fontWeight: 'bold' }
+          style: { fill: 0x8b5cf6, fontSize: 10, fontWeight: 'bold' }
         });
         ct.x = costX; ct.y = y + 24; ct.eventMode = 'none';
         app.stage.addChild(ct);

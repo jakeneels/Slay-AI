@@ -3,7 +3,7 @@ id: heavy_pendant
 name: "Heavy Pendant"
 description: "Heavy pendant. +10% damage dealt."
 slot: weapon
-rarity: uncommon
+rarity: common
 modifiers:
   - target: damage_dealt
     op: multiply

@@ -2,8 +2,8 @@ schemaVersion: 1
 id: synapse_burner
 name: "Synapse Burner"
 description: "Synapse burner. speed +2"
-slot: accessory
-rarity: epic
+slot: trinket
+rarity: legendary
 modifiers:
   - target: speed
     op: add

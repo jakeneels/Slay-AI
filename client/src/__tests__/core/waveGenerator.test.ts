@@ -33,7 +33,7 @@ function createEnemyDef(
     suppression: 0,
     suppressionResist: 0,
     aggression: 5,
-    gear: { weapon: null, armor: null, accessory: null },
+    gear: { weapon: null, armor: null, trinket: null, trinket2: null },
     stats: {
       hp: 40,
       maxHp: 40,

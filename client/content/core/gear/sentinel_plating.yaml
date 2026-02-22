@@ -1,0 +1,13 @@
+schemaVersion: 1
+id: sentinel_plating
+name: "Sentinel Plating"
+description: "Salvaged Sentinel drone hull plating. +25% block, +15 HP."
+slot: armor
+rarity: epic
+modifiers:
+  - target: block_amount
+    op: multiply
+    value: 1.25
+  - target: maxHp
+    op: add
+    value: 15

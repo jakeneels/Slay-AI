@@ -5,6 +5,14 @@ import { getGameState, getSelectedCardId } from '../core/gameState.js';
 import { getBlockDecaySchedule, getTotalBlock } from '../core/block.js';
 import { getStatusDisplay } from './statusConfig.js';
 import { WIDTH, HEIGHT } from '../core/constants.js';
+import type { GearSlot } from '../core/types.js';
+
+const SLOT_LABELS: Record<GearSlot, string> = {
+  weapon: 'Weapon',
+  armor: 'Armor',
+  trinket: 'Trinket',
+  trinket2: 'Trinket 2',
+};
 
 const TOOLTIP_W = 240;
 const PAD = 10;
@@ -56,6 +64,10 @@ export function renderCharacterTooltip(app: Application): void {
       return aTurns - bTurns;
     });
 
+  const gearItems = (['weapon', 'armor', 'trinket', 'trinket2'] as GearSlot[])
+    .filter((slot) => character.gear[slot])
+    .map((slot) => `${SLOT_LABELS[slot]}: ${character.gear[slot]!.name}`);
+
   const fortifyStacks = (character.statuses ?? []).find(s => s.id === 'fortify')?.stacks ?? 0;
   const fortifyReduction = fortifyStacks * 10;
   const blockDecayItems: string[] = [];
@@ -73,6 +85,9 @@ export function renderCharacterTooltip(app: Application): void {
   }
 
   let estimatedH = PAD + 20 + 4 * 16 + PAD;
+  if (gearItems.length > 0) {
+    estimatedH += 16 + gearItems.length * 14;
+  }
   if (statusItems.length > 0) {
     estimatedH += 16 + statusItems.length * 14;
   }
@@ -111,6 +126,13 @@ export function renderCharacterTooltip(app: Application): void {
   cy = addLine(app, `HP ${character.hp}/${character.maxHp}`, tx + PAD, cy);
   cy = addLine(app, `Energy ${character.energy}/${character.maxEnergy}`, tx + PAD, cy);
   cy = addLine(app, `Block ${block}   Speed ${character.speed}`, tx + PAD, cy, 0x9ca3af);
+
+  if (gearItems.length > 0) {
+    cy = addLine(app, 'Equipped Gear', tx + PAD, cy + 2, 0x9ca3af, 10, true);
+    for (const item of gearItems) {
+      cy = addLine(app, `- ${item}`, tx + PAD, cy, 0xd1d5db, 10);
+    }
+  }
 
   if (blockDecayItems.length > 0) {
     cy = addLine(app, 'Block Decay Schedule', tx + PAD, cy + 2, 0x9ca3af, 10, true);

@@ -44,7 +44,7 @@ export function createMockCharacter(overrides?: Partial<Character>): Character {
     suppression: overrides?.suppression ?? 0,
     suppressionResist: overrides?.suppressionResist ?? 0,
     aggression: overrides?.aggression ?? 5,
-    gear: overrides?.gear ?? { weapon: null, armor: null, accessory: null },
+    gear: overrides?.gear ?? { weapon: null, armor: null, trinket: null, trinket2: null },
     ...overrides
   };
 }
@@ -74,7 +74,7 @@ export function createMockCharacterDefinition(overrides?: Partial<CharacterDefin
     suppression: overrides?.suppression ?? 0,
     suppressionResist: overrides?.suppressionResist ?? 0,
     aggression: overrides?.aggression ?? 5,
-    gear: overrides?.gear ?? { weapon: null, armor: null, accessory: null },
+    gear: overrides?.gear ?? { weapon: null, armor: null, trinket: null, trinket2: null },
     stats: overrides?.stats || {
       hp: overrides?.hp ?? 100,
       maxHp: overrides?.maxHp ?? 100,
@@ -113,6 +113,7 @@ export function createMockGameState(overrides?: Partial<GameState>): GameState {
     },
     combatResult: overrides?.combatResult ?? 'ongoing',
     pendingReward: overrides?.pendingReward ?? null,
+    pendingRewardChoices: overrides?.pendingRewardChoices ?? [],
     waveNumber: overrides?.waveNumber ?? 1,
     currentMap: overrides?.currentMap ?? 'test_map',
     playedCardsStack: overrides?.playedCardsStack || [],

@@ -2,7 +2,7 @@ schemaVersion: 1
 id: combat_stimulant
 name: "Combat Stimulant"
 description: "Neural accelerant injector. +1 speed."
-slot: accessory
+slot: trinket
 rarity: rare
 modifiers:
   - target: speed

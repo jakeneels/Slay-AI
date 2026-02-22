@@ -2,7 +2,7 @@ schemaVersion: 1
 id: scorched_earth
 name: "Scorched Earth"
 type: skill
-rarity: legendary
+rarity: epic
 cost: 3
 copies: 2
 tags: [pyro, hazard]
@@ -17,7 +17,7 @@ effects:
   - kind: damage
     amount: 6
   - kind: lane_hazard
-    damage: 3
+    damage: 4
     duration_turns: 2
     aoeSlots: 3
   - kind: damage

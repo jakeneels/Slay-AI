@@ -2,8 +2,8 @@ schemaVersion: 1
 id: power_cell
 name: "Power Cell"
 description: "Compact fusion cell. +1 max energy per turn."
-slot: accessory
-rarity: uncommon
+slot: trinket
+rarity: rare
 modifiers:
   - target: maxEnergy
     op: add

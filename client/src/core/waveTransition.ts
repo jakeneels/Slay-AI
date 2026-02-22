@@ -331,7 +331,7 @@ export function startNextWave(): void {
       suppressionResist: charDef.stats.suppressionResist ?? 0,
       aggression: charDef.stats.aggression ?? 5,
       facing: 'left',
-      gear: { weapon: null, armor: null, accessory: null },
+      gear: { weapon: null, armor: null, trinket: null, trinket2: null },
     };
 
     // Register cloned enemies in library so sprite lookup works
@@ -361,6 +361,7 @@ export function startNextWave(): void {
   // ── 7. Reset combat state ──────────────────────────────────────────
   gameState.combatResult = 'ongoing';
   gameState.pendingReward = null;
+  gameState.pendingRewardChoices = [];
   gameState.isProcessingTurn = false;
   gameState.selectedCardId = null;
   gameState.turnIndex = 0;

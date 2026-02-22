@@ -1,0 +1,13 @@
+schemaVersion: 1
+id: tesla_gauntlet
+name: "Tesla Gauntlet"
+description: "Salvaged Tesla coil gauntlet. +15% block, +1 speed."
+slot: weapon
+rarity: rare
+modifiers:
+  - target: block_amount
+    op: multiply
+    value: 1.15
+  - target: speed
+    op: add
+    value: 1

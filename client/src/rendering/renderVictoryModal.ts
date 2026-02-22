@@ -1,7 +1,7 @@
 // Victory modal – two-phase overlay after all enemies are defeated.
 //
-// Phase 1 (pendingReward set): Show gear reward, let player equip it.
-// Phase 2 (pendingReward null): Show wave summary + "Next Wave" button.
+// Phase 1 (pendingRewardChoices set): pick one reward and equip it.
+// Phase 2 (pendingRewardChoices empty): Show wave summary + "Next Wave" button.
 
 import type { Application } from 'pixi.js';
 import { Container, Graphics, Text } from 'pixi.js';
@@ -15,14 +15,17 @@ import { startNextWave, WAVE_HEAL_FRACTION } from '../core/waveTransition.js';
 // ── Rarity colours ──────────────────────────────────────────────────
 const RARITY_COLORS: Record<string, number> = {
   common: 0x9ca3af,    // grey
-  uncommon: 0x22c55e,  // green
   rare: 0xeab308,      // gold
+  epic: 0xa855f7,      // purple
+  legendary: 0xf97316, // orange
+  mythic: 0xec4899,    // pink
 };
 
 const SLOT_LABELS: Record<GearSlot, string> = {
   weapon: 'Weapon',
   armor: 'Armor',
-  accessory: 'Accessory',
+  trinket: 'Trinket',
+  trinket2: 'Trinket 2',
 };
 
 /**
@@ -30,8 +33,13 @@ const SLOT_LABELS: Record<GearSlot, string> = {
  * Dispatches to phase 1 or phase 2 based on pendingReward state.
  */
 export function renderVictoryModal(app: Application, gameState: GameState): void {
-  if (gameState.pendingReward) {
-    renderGearRewardPhase(app, gameState, gameState.pendingReward);
+  const rewardChoices = gameState.pendingRewardChoices ?? [];
+  const selectedReward = gameState.pendingReward ?? rewardChoices[0] ?? null;
+  if (rewardChoices.length > 0 && selectedReward) {
+    if (!gameState.pendingReward) {
+      gameState.pendingReward = selectedReward;
+    }
+    renderGearRewardPhase(app, gameState, selectedReward, rewardChoices);
   } else {
     renderWaveCompletePhase(app, gameState);
   }
@@ -39,7 +47,12 @@ export function renderVictoryModal(app: Application, gameState: GameState): void
 
 // ── Phase 1: Gear Reward ─────────────────────────────────────────────
 
-function renderGearRewardPhase(app: Application, gameState: GameState, reward: GearDefinition): void {
+function renderGearRewardPhase(
+  app: Application,
+  gameState: GameState,
+  reward: GearDefinition,
+  rewardChoices: GearDefinition[],
+): void {
   const modal = createModalContainer();
 
   // ── Title ──────────────────────────────────────────────────────────
@@ -59,11 +72,53 @@ function renderGearRewardPhase(app: Application, gameState: GameState, reward: G
   title.zIndex = 1;
   modal.addChild(title);
 
+  // ── Reward choice row ──────────────────────────────────────────────
+  const choiceW = 230;
+  const choiceH = 48;
+  const choiceGap = 14;
+  const choices = rewardChoices.slice(0, 3);
+  const totalChoiceW = choices.length * choiceW + (choices.length - 1) * choiceGap;
+  const choiceStartX = (WIDTH - totalChoiceW) / 2;
+  const choiceY = 152;
+
+  choices.forEach((choice, index) => {
+    const x = choiceStartX + index * (choiceW + choiceGap);
+    const isSelected = choice.id === reward.id;
+    const choiceRarityColor = RARITY_COLORS[choice.rarity] ?? 0xffffff;
+
+    const btn = new Graphics();
+    btn.roundRect(x, choiceY, choiceW, choiceH, 8);
+    btn.fill({ color: isSelected ? 0x1f2937 : 0x111827, alpha: 0.96 });
+    btn.stroke({ width: isSelected ? 3 : 2, color: isSelected ? choiceRarityColor : 0x374151 });
+    btn.zIndex = 2;
+    btn.eventMode = 'static';
+    btn.cursor = 'pointer';
+    btn.hitArea = new (makeHitRect())(x, choiceY, choiceW, choiceH);
+    btn.on('pointerover', () => { btn.tint = 0xbbddff; });
+    btn.on('pointerout', () => { btn.tint = 0xffffff; });
+    btn.on('pointertap', () => {
+      gameState.pendingReward = choice;
+      render();
+    });
+    modal.addChild(btn);
+
+    const label = new Text({
+      text: `${choice.name} (${choice.rarity})`,
+      style: { fill: isSelected ? choiceRarityColor : 0xe5e7eb, fontSize: 12, fontFamily: 'monospace' },
+    });
+    label.anchor.set(0.5, 0.5);
+    label.x = x + choiceW / 2;
+    label.y = choiceY + choiceH / 2;
+    label.zIndex = 3;
+    label.eventMode = 'none';
+    modal.addChild(label);
+  });
+
   // ── Gear card panel ────────────────────────────────────────────────
   const panelW = 360;
   const panelH = 240;
   const panelX = (WIDTH - panelW) / 2;
-  const panelY = 160;
+  const panelY = 220;
 
   const rarityCol = RARITY_COLORS[reward.rarity] ?? 0xffffff;
 
@@ -122,7 +177,7 @@ function renderGearRewardPhase(app: Application, gameState: GameState, reward: G
 
   // ── Instruction ────────────────────────────────────────────────────
   const instruction = new Text({
-    text: 'Click a character to equip',
+    text: 'Pick a reward, then click a character to equip',
     style: { fill: 0xfbbf24, fontSize: 18, fontFamily: 'monospace' },
   });
   instruction.anchor.set(0.5, 0);
@@ -404,6 +459,7 @@ function equipGear(character: Character, gear: GearDefinition, gameState: GameSt
 
   // Dismiss modal
   gameState.pendingReward = null;
+  gameState.pendingRewardChoices = [];
   // Keep combatResult as 'victory' (modal dismissed)
 
   render();

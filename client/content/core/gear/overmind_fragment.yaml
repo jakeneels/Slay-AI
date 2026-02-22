@@ -1,0 +1,16 @@
+schemaVersion: 1
+id: overmind_fragment
+name: "Overmind Fragment"
+description: "Shard of a fallen AI core, humming with residual intelligence. +2 energy, +1 hand size."
+slot: trinket
+rarity: mythic
+modifiers:
+  - target: maxEnergy
+    op: add
+    value: 2
+  - target: drawCount
+    op: add
+    value: 1
+  - target: maxHandSize
+    op: add
+    value: 1
