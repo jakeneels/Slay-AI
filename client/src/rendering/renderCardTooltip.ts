@@ -449,7 +449,13 @@ export function renderCardTooltip(app: Application): void {
     }
   }
 
-  const data = generateTooltipData(card);
+  const caster = (() => {
+    if (gameState.preFight?.active && gameState.preFight.activeCardEditorAllyId) {
+      return gameState.characters.find(c => c.id === gameState.preFight!.activeCardEditorAllyId);
+    }
+    return gameState.characters.find(c => c.id === gameState.currentPlayerId);
+  })();
+  const data = generateTooltipData(card, caster);
   const tooltipH = measureTooltipHeight(data);
 
   // Position: below the rarity icon, clamped to canvas

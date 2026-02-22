@@ -649,6 +649,7 @@ export function renderPreFightModal(app: Application, gameState: GameState): voi
         const cardTile = renderCardTile(galleryCards, card, x, y, {
           selected: isCurrent,
           interactive: true,
+          caster: activeAlly,
           onClick: () => {
             assignPreFightCardToActiveSlot(cardId);
             render();

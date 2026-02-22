@@ -3,12 +3,14 @@ import type {
   BaseCardEffect,
   Card,
   CardEffect,
+  Character,
   StatusEffect,
   StatusModifyEffect,
   StatusSpreadEffect,
   LaneHazardEffect,
   ThornsEffect,
 } from '../core/types.js';
+import { resolveDisplayAmount } from '../utils/displayAmountResolver.js';
 import { createEnergyIcon } from './icons/energyIcon.js';
 import { createDamageIcon } from './icons/damageIcon.js';
 import { createSpeedIcon } from './icons/speedIcon.js';
@@ -35,6 +37,7 @@ export interface RenderCardTileOptions {
   dimmed?: boolean;
   interactive?: boolean;
   suppressionPenalty?: number;
+  caster?: Character;
   onClick?: () => void;
   onRarityHover?: (cardId: string | null, anchorX?: number, anchorY?: number) => void;
 }
@@ -195,6 +198,8 @@ function renderSingleEffect(
   rowY: number,
   iconSize: number,
   fontSize: number,
+  card: Card,
+  caster: Character | undefined,
 ): number {
   if (effect.kind === 'modifier' || effect.kind === 'deck_inject') return startX;
 
@@ -347,7 +352,14 @@ function renderSingleEffect(
     return ex;
   }
 
-  const amt = (effect as BaseCardEffect).amount;
+  const baseAmt = (effect as BaseCardEffect).amount;
+  const amt = resolveDisplayAmount(
+    effect.kind,
+    baseAmt,
+    card,
+    caster,
+    effect,
+  );
   const icon = createEffectIcon(effect.kind, iconSize);
   let ex = startX;
   if (!icon) {
@@ -612,7 +624,16 @@ export function renderCardTile(
         ex += indicatorWidth + 3;
       }
 
-      renderSingleEffect(container, renderableEffects[ei], ex, curY, effectIconSize, 12);
+      renderSingleEffect(
+        container,
+        renderableEffects[ei],
+        ex,
+        curY,
+        effectIconSize,
+        12,
+        card,
+        options.caster,
+      );
       curY += rowHeight;
       renderedRows++;
     }

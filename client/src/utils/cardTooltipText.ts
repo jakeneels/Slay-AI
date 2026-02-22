@@ -1,8 +1,9 @@
 // Templated card tooltip text generation
 // Pure logic — no PIXI dependency. Generates structured tooltip data from a Card object.
 
-import type { Card, CardEffect, BaseCardEffect, BlockEffect, StatusEffect, StatusModifyEffect, StatusSpreadEffect, ThornsEffect, KnockbackEffect, DeckInjectEffect, ModifierEffect, LaneHazardEffect } from '../core/types.js';
+import type { Card, CardEffect, BaseCardEffect, BlockEffect, StatusEffect, StatusModifyEffect, StatusSpreadEffect, ThornsEffect, KnockbackEffect, DeckInjectEffect, ModifierEffect, LaneHazardEffect, Character } from '../core/types.js';
 import { RANGE_OPTIMAL_BONUS, RANGE_PENALTY_PER_SLOT, RANGE_MODIFIER_MIN } from '../core/constants.js';
+import { resolveDisplayAmount } from './displayAmountResolver.js';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -98,23 +99,25 @@ function effectTargetAnnotation(effect: CardEffect, card: Card): string | null {
 // Effect templates
 // ---------------------------------------------------------------------------
 
-function describeEffect(effect: CardEffect, card: Card): TooltipEffectLine {
+function describeEffect(effect: CardEffect, card: Card, caster?: Character): TooltipEffectLine {
   const targetLabel = effectTargetAnnotation(effect, card);
 
   switch (effect.kind) {
     case 'damage': {
+      const amount = resolveDisplayAmount(effect.kind, (effect as BaseCardEffect).amount, card, caster, effect);
       return {
         icon: 'damage',
-        text: `Deals ${effect.amount} damage`,
+        text: `Deals ${amount} damage`,
         subLines: [],
         targetLabel,
       };
     }
 
     case 'heal': {
+      const amount = resolveDisplayAmount(effect.kind, (effect as BaseCardEffect).amount, card, caster, effect);
       return {
         icon: 'heal',
-        text: `Restores ${effect.amount} HP`,
+        text: `Restores ${amount} HP`,
         subLines: [],
         targetLabel,
       };
@@ -143,9 +146,10 @@ function describeEffect(effect: CardEffect, card: Card): TooltipEffectLine {
     }
 
     case 'aoe_damage': {
+      const amount = resolveDisplayAmount(effect.kind, (effect as BaseCardEffect).amount, card, caster, effect);
       return {
         icon: 'damage',
-        text: `Deals ${effect.amount} area damage`,
+        text: `Deals ${amount} area damage`,
         subLines: [],
         targetLabel,
       };
@@ -153,6 +157,7 @@ function describeEffect(effect: CardEffect, card: Card): TooltipEffectLine {
 
     case 'grant_block_layer': {
       const blockEffect = effect as BlockEffect;
+      const amount = resolveDisplayAmount(effect.kind, blockEffect.amount, card, caster, effect);
       const subLines = [
         'Absorbs damage before HP',
       ];
@@ -161,7 +166,7 @@ function describeEffect(effect: CardEffect, card: Card): TooltipEffectLine {
       }
       return {
         icon: 'shield',
-        text: `Grants ${blockEffect.amount} Block`,
+        text: `Grants ${amount} Block`,
         subLines,
         targetLabel,
       };
@@ -422,7 +427,7 @@ function describeProperties(card: Card): TooltipPropertyLine[] {
  * Generate structured tooltip data from a Card object.
  * Pure function — no side effects, no PIXI dependency.
  */
-export function generateTooltipData(card: Card): TooltipData {
+export function generateTooltipData(card: Card, caster?: Character): TooltipData {
   return {
     header: {
       name: card.name,
@@ -431,7 +436,7 @@ export function generateTooltipData(card: Card): TooltipData {
     },
     cost: card.cost.energy,
     targeting: targetingLabel(card),
-    effects: card.effects.map(e => describeEffect(e, card)),
+    effects: card.effects.map(e => describeEffect(e, card, caster)),
     range: { lines: describeRange(card) },
     properties: describeProperties(card),
     tags: card.tags ?? [],

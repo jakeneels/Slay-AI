@@ -5,6 +5,6 @@ description: "Flux multiplier. +20% healing dealt."
 slot: armor
 rarity: rare
 modifiers:
-  - target: heal_amount
+  - target: friendly_heal_outgoing
     op: multiply
     value: 1.20

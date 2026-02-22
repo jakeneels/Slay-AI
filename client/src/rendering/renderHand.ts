@@ -25,6 +25,7 @@ import { createThornsIcon } from './icons/thornsIcon.js';
 import { registerCardHoverRegion, setHoveredCard } from './tooltipState.js';
 import { getStatusDisplay } from './statusConfig.js';
 import { renderCardTile } from './cardTileRenderer.js';
+import { resolveDisplayAmount } from '../utils/displayAmountResolver.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -179,6 +180,8 @@ function renderSingleEffect(
   rowY: number,
   iconSize: number,
   fontSize: number,
+  card: Card,
+  caster: Character | undefined,
 ): number {
   if (effect.kind === 'modifier' || effect.kind === 'deck_inject') return startX;
 
@@ -319,7 +322,8 @@ function renderSingleEffect(
     return ex;
   }
 
-  const amt = (effect as BaseCardEffect).amount;
+  const baseAmt = (effect as BaseCardEffect).amount;
+  const amt = resolveDisplayAmount(effect.kind, baseAmt, card, caster, effect);
   const icon = createEffectIcon(effect.kind, iconSize);
   let ex = startX;
   if (!icon) {
@@ -397,6 +401,7 @@ function renderPlayerHand(app: Application, _gameState: GameState, currentPlayer
       dimmed: !canAfford,
       interactive: true,
       suppressionPenalty,
+      caster: currentPlayer,
       onClick: async () => {
         if (isSelected && card.targeting === 'self') {
           await playCard(cardId, undefined, renderCallback);
@@ -569,7 +574,7 @@ function renderEnemyHand(app: Application, _gameState: GameState, currentPlayer:
           ex += indicatorWidth + 2;
         }
 
-        renderSingleEffect(app, renderableEffects[ei], ex, curY, effectIconSize, 10);
+        renderSingleEffect(app, renderableEffects[ei], ex, curY, effectIconSize, 10, card, currentPlayer);
         curY += rowHeight;
       }
       groupIdx++;
