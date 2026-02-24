@@ -17,8 +17,12 @@ import type {
   AoePattern,
   GameModifier,
   ModifierScope,
+  EffectTrigger,
+  EffectTriggerApplyStatus,
+  EffectTriggerHeal,
 } from '../core/types.js';
 import { getModifierRegistry } from '../core/modifiers.js';
+import { normalizeModifierTarget } from '../core/modifierTargets.js';
 
 // Auto-discover all YAML files via Vite glob imports (eager, raw strings)
 const cardYamlModules = import.meta.glob('/content/core/cards/*.yaml', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
@@ -219,6 +223,90 @@ export async function loadContent(): Promise<LoadedContent> {
               parsed.debuffDuration = typeof parsed.debuffDuration === 'number' ? Math.max(1, Math.floor(parsed.debuffDuration)) : undefined;
             }
           }
+          if (parsed.kind === 'lane_buff') {
+            parsed.duration_turns = typeof parsed.duration_turns === 'number'
+              ? Math.max(1, Math.floor(parsed.duration_turns))
+              : 1;
+            if (parsed.aoeSlots !== undefined) {
+              parsed.aoeSlots = typeof parsed.aoeSlots === 'number'
+                ? Math.max(1, Math.min(6, Math.floor(parsed.aoeSlots)))
+                : undefined;
+            }
+            const toMultiplier = (pct: number): number => 1 + pct / 100;
+            const legacyModifiers: Array<{ target: string; op: 'add' | 'multiply'; value: number }> = [];
+            if (typeof parsed.damage_pct === 'number' && parsed.damage_pct !== 0) {
+              legacyModifiers.push({ target: 'damage_dealt', op: 'multiply', value: toMultiplier(parsed.damage_pct) });
+            }
+            if (typeof parsed.block_gain_pct === 'number' && parsed.block_gain_pct !== 0) {
+              legacyModifiers.push({ target: 'block_amount', op: 'multiply', value: toMultiplier(parsed.block_gain_pct) });
+            }
+            if (typeof parsed.speed_flat === 'number' && parsed.speed_flat !== 0) {
+              legacyModifiers.push({ target: 'speed', op: 'add', value: Math.floor(parsed.speed_flat) });
+            }
+
+            const parsedModifiers = Array.isArray(parsed.modifiers)
+              ? parsed.modifiers
+                .filter((mod: any) => mod && typeof mod.target === 'string')
+                .filter((mod: any) => ['add', 'multiply', 'set', 'min', 'max'].includes(mod.op))
+                .filter((mod: any) => typeof mod.value === 'number' && Number.isFinite(mod.value))
+                .map((mod: any) => ({ target: normalizeModifierTarget(mod.target), op: mod.op, value: mod.value }))
+              : [];
+            parsed.modifiers = parsedModifiers.length > 0 ? parsedModifiers : legacyModifiers;
+
+            const legacyAffects = parsed.affects;
+            const legacyAppliesTo = legacyAffects === 'enemies'
+              ? 'lane_enemies'
+              : legacyAffects === 'both'
+              ? 'lane_occupants'
+              : 'lane_allies';
+            parsed.appliesTo = parsed.appliesTo === 'lane_enemies' || parsed.appliesTo === 'lane_occupants'
+              ? parsed.appliesTo
+              : legacyAppliesTo;
+
+            // Parse triggers array (replaces round_start_status/round_start_heal)
+            const parsedTriggers: EffectTrigger[] = [];
+            if (Array.isArray(parsed.triggers)) {
+              for (const triggerRaw of parsed.triggers) {
+                if (!triggerRaw || typeof triggerRaw !== 'object') continue;
+                
+                const when = triggerRaw.when;
+                const action = triggerRaw.action;
+                
+                if (when === 'round_start' && action === 'apply_status') {
+                  const statusId = typeof triggerRaw.status === 'string' ? triggerRaw.status.trim() : '';
+                  if (statusId.length > 0) {
+                    parsedTriggers.push({
+                      when: 'round_start',
+                      action: 'apply_status',
+                      status: statusId,
+                      stacks: typeof triggerRaw.stacks === 'number'
+                        ? Math.max(1, Math.floor(triggerRaw.stacks))
+                        : undefined,
+                      duration: typeof triggerRaw.duration === 'number'
+                        ? Math.max(1, Math.floor(triggerRaw.duration))
+                        : undefined,
+                    } as EffectTriggerApplyStatus);
+                  }
+                } else if (when === 'round_start' && action === 'heal') {
+                  const amount = typeof triggerRaw.amount === 'number' && Number.isFinite(triggerRaw.amount)
+                    ? Math.max(0, Math.floor(triggerRaw.amount))
+                    : 0;
+                  if (amount > 0) {
+                    parsedTriggers.push({
+                      when: 'round_start',
+                      action: 'heal',
+                      amount,
+                    } as EffectTriggerHeal);
+                  }
+                }
+              }
+            }
+            parsed.triggers = parsedTriggers.length > 0 ? parsedTriggers : undefined;
+            
+            // Remove legacy fields if present (breaking cleanup - ignore them)
+            delete (parsed as any).round_start_status;
+            delete (parsed as any).round_start_heal;
+          }
           // Carry over per-effect targeting if present
           if (e.effectTarget) {
             parsed.effectTarget = e.effectTarget as EffectTarget;
@@ -309,7 +397,7 @@ export async function loadContent(): Promise<LoadedContent> {
           slot: gearData.slot,
           rarity: gearData.rarity || 'common',
           modifiers: (gearData.modifiers ?? []).map((m: any) => ({
-            target: m.target,
+            target: typeof m.target === 'string' ? normalizeModifierTarget(m.target) : m.target,
             op: m.op,
             value: m.value,
           })),
@@ -435,6 +523,7 @@ function registerOps(
   source: string
 ): void {
   if (!ops || typeof ops !== 'object') return;
+  const normalizedTarget = normalizeModifierTarget(target);
 
   const validOps = ['set', 'add', 'multiply', 'min', 'max'] as const;
   for (const op of validOps) {
@@ -445,11 +534,11 @@ function registerOps(
         : scope.kind === 'character' ? `char:${scope.characterId}`
         : scope.kind === 'tag' ? `tag:${scope.tag}`
         : 'unknown';
-      const id = `${source}:${scopeKey}:${target}:${op}`;
+      const id = `${source}:${scopeKey}:${normalizedTarget}:${op}`;
 
       const mod: GameModifier = {
         id,
-        target,
+        target: normalizedTarget,
         op,
         value: ops[op],
         source,

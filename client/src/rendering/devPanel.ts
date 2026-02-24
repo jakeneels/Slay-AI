@@ -16,8 +16,10 @@ import { getShowLanesSetting, setShowLanesSetting } from './renderLanes.js';
 import {
   getNoPreFightSetupSetting,
   getShowRollbackButtonSetting,
+  getThreatBudgetSetting,
   setNoPreFightSetupSetting,
   setShowRollbackButtonSetting,
+  setThreatBudgetSetting,
 } from './preFightDisplaySettings.js';
 import {
   GEAR_RARITY_KEYS,
@@ -155,7 +157,27 @@ export function initDevPanel(): void {
 
     content.addEventListener('change', (e) => {
       const input = e.target as HTMLInputElement;
-      if (!input || input.type !== 'checkbox') return;
+      if (!input) return;
+      
+      // Handle number inputs
+      if (input.type === 'number') {
+        const devInput = input.dataset.devInput;
+        if (devInput === 'threat-budget') {
+          const value = parseFloat(input.value);
+          if (!isNaN(value) && value > 0) {
+            setThreatBudgetSetting(value);
+            const gameState = getGameState();
+            if (gameState.preFight.active) {
+              gameState.preFight.threatBudget = value;
+            }
+            requestFullRender();
+          }
+        }
+        return;
+      }
+      
+      // Handle checkboxes
+      if (input.type !== 'checkbox') return;
       const toggle = input.dataset.devToggle;
       if (toggle === 'show-lanes') {
         setShowLanesSetting(input.checked);
@@ -244,6 +266,7 @@ export function renderDevPanel(gameState: GameState): void {
     const showRollbackButtonChecked = getShowRollbackButtonSetting() ? 'checked' : '';
     const acsChecked = isAcsEnabled() ? 'checked' : '';
     const acsKyleWave1Checked = isAcsKyleWave1Enabled() ? 'checked' : '';
+    const threatBudgetValue = getThreatBudgetSetting();
     return `
       <label style="display:flex;align-items:center;gap:6px;color:#d1d5db;font-size:11px;cursor:pointer;">
         <input type="checkbox" data-dev-toggle="show-lanes" ${checked} />
@@ -257,6 +280,10 @@ export function renderDevPanel(gameState: GameState): void {
         <input type="checkbox" data-dev-toggle="show-rollback-button" ${showRollbackButtonChecked} />
         <span>Show rollback button</span>
       </label>
+      <div style="display:flex;align-items:center;gap:6px;color:#d1d5db;font-size:11px;margin-top:6px;">
+        <label style="flex:1;">Threat Budget:</label>
+        <input type="number" data-dev-input="threat-budget" value="${threatBudgetValue}" min="1" step="1" style="width:80px;padding:2px 4px;background:#1f2937;border:1px solid #374151;color:#d1d5db;font-size:11px;border-radius:3px;" />
+      </div>
       <label style="display:flex;align-items:center;gap:6px;color:#d1d5db;font-size:11px;cursor:pointer;margin-top:6px;">
         <input type="checkbox" data-dev-toggle="acs" ${acsChecked} />
         <span>ACS</span>

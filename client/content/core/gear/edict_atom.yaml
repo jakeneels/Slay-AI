@@ -7,7 +7,7 @@ rarity: epic
 modifiers:
   - target: damage_dealt
     op: multiply
-    value: 0.15
+    value: 1.15
   - target: suppression
     op: add
     value: 1

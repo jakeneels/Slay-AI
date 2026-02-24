@@ -4,7 +4,7 @@ import type { Application, Texture, Sprite } from 'pixi.js';
 import { Assets, Text, Graphics, Sprite as SpriteImpl } from 'pixi.js';
 import type { GameState, Character, CharacterDefinition } from '../core/types.js';
 import { getSelectedCardId, getGameState } from '../core/gameState.js';
-import { playCard, calculateAoeTargets, getOccupiedSlots, getCharacterSlotSize, getJumpTotalEnergyCostForSlot, getValidJumpSlots, isCharacterSuppressed, getNetSuppressionPenalty, canSwapCurrentTurnWithNextAlly, swapCurrentTurnWithNextAlly } from '../core/combat.js';
+import { playCard, calculateAoeTargets, getOccupiedSlots, getCharacterSlotSize, getJumpTotalEnergyCostForSlot, getValidJumpSlots, isCharacterSuppressed, getNetSuppressionPenalty, canSwapCurrentTurnWithNextAlly, canSelectUninterruptedAllyTurn, selectUninterruptedAllyTurn } from '../core/combat.js';
 import { getSuppressionStackCost } from '../core/constants.js';
 import { render as renderCallback } from './renderer.js';
 import { registerCharacterSprite, hasActiveSpriteSheetOverlay } from '../../animations.js';
@@ -89,6 +89,7 @@ type TurnBreadcrumbState = {
   turnPositionByCharacterId: Record<string, number>;
   linkedPairIds: [string, string] | null;
   canSwapLinkedPair: boolean;
+  selectableAllyIds: string[];
 };
 export type ResolvedVisualProfile = {
   scale: number;
@@ -250,6 +251,7 @@ function getCharacterCenterSlotIndex(character: Character): number {
 
 export function deriveTurnBreadcrumbState(gameState: GameState): TurnBreadcrumbState {
   const turnPositionByCharacterId: Record<string, number> = {};
+  const selectableAllyIds: string[] = [];
   let turnPosition = 1;
   for (let i = gameState.turnQueueIndex; i < gameState.turnQueue.length; i += 1) {
     const charId = gameState.turnQueue[i];
@@ -258,6 +260,18 @@ export function deriveTurnBreadcrumbState(gameState: GameState): TurnBreadcrumbS
     if (!char || char.hp <= 0) continue;
     turnPositionByCharacterId[charId] = turnPosition;
     turnPosition += 1;
+  }
+
+  if (gameState.turnQueueIndex >= 0) {
+    for (let i = gameState.turnQueueIndex; i < gameState.turnQueue.length; i += 1) {
+      const charId = gameState.turnQueue[i];
+      const char = gameState.characters.find(c => c.id === charId);
+      if (!char || char.hp <= 0) continue;
+      if (!char.isPlayer) break;
+      if (canSelectUninterruptedAllyTurn(charId)) {
+        selectableAllyIds.push(charId);
+      }
+    }
   }
 
   const canSwapLinkedPair = canSwapCurrentTurnWithNextAlly();
@@ -270,7 +284,7 @@ export function deriveTurnBreadcrumbState(gameState: GameState): TurnBreadcrumbS
     }
   }
 
-  return { turnPositionByCharacterId, linkedPairIds, canSwapLinkedPair };
+  return { turnPositionByCharacterId, linkedPairIds, canSwapLinkedPair, selectableAllyIds };
 }
 
 function createLaneSelectorHighlight(
@@ -307,23 +321,13 @@ function renderTurnLinkSegment(
   if (segmentW <= 2) return;
 
   const segment = new Graphics();
-  const draw = (hovered: boolean): void => {
-    segment.clear();
-    segment.roundRect(0, 0, segmentW, TURN_LINK_SEGMENT_H, TURN_LINK_SEGMENT_H / 2)
-      .fill({ color: 0x60a5fa, alpha: hovered ? 0.78 : 0.62 })
-      .stroke({ width: hovered ? 2 : 1.2, color: hovered ? 0xbfdbfe : 0x93c5fd, alpha: 0.95 });
-  };
-  draw(false);
+  segment.roundRect(0, 0, segmentW, TURN_LINK_SEGMENT_H, TURN_LINK_SEGMENT_H / 2)
+    .fill({ color: 0x60a5fa, alpha: 0.62 })
+    .stroke({ width: 1.2, color: 0x93c5fd, alpha: 0.95 });
   segment.x = segmentStartX;
   segment.y = centerY - TURN_LINK_SEGMENT_H / 2;
   segment.zIndex = Z_TURN_BREADCRUMB - 1;
-  segment.eventMode = 'static';
-  segment.cursor = 'pointer';
-  segment.on('pointerenter', () => draw(true));
-  segment.on('pointerleave', () => draw(false));
-  segment.on('pointerdown', () => {
-    swapCurrentTurnWithNextAlly(renderCallback);
-  });
+  segment.eventMode = 'none';
   app.stage.addChild(segment);
 }
 
@@ -339,7 +343,8 @@ function renderTurnBreadcrumb(
   const isActive = char.id === gameState.currentPlayerId;
   const isUpcoming = turnPosition !== undefined;
   const isLinked = breadcrumbState.linkedPairIds?.includes(char.id) ?? false;
-  const canInteract = isLinked && breadcrumbState.canSwapLinkedPair;
+  const isSelectableAlly = breadcrumbState.selectableAllyIds.includes(char.id);
+  const canInteract = isSelectableAlly;
   const label = isUpcoming ? `T${turnPosition}` : '--';
 
   const marker = new Graphics();
@@ -389,7 +394,7 @@ function renderTurnBreadcrumb(
     marker.on('pointerenter', () => draw(true));
     marker.on('pointerleave', () => draw(false));
     marker.on('pointerdown', () => {
-      swapCurrentTurnWithNextAlly(renderCallback);
+      selectUninterruptedAllyTurn(char.id, renderCallback);
     });
   }
   app.stage.addChild(marker);
@@ -448,12 +453,15 @@ export function renderCharacters(app: Application, gameState: GameState): void {
     renderCharacter(app, gameState, char, x, battleGroundY, showPositionDebug, breadcrumbState);
   });
 
-  if (breadcrumbState.linkedPairIds) {
-    const [pairA, pairB] = breadcrumbState.linkedPairIds;
-    const leftCenter = characterCenterById.get(pairA);
-    const rightCenter = characterCenterById.get(pairB);
-    if (leftCenter !== undefined && rightCenter !== undefined) {
-      const segmentCenterY = battleGroundY + HUD_BOTTOM_OFFSET + BAR_HEIGHT * 2 + BAR_GAP + HUD_SECTION_GAP + TURN_BREADCRUMB_H / 2;
+  const selectableChain = breadcrumbState.selectableAllyIds;
+  if (selectableChain.length > 1) {
+    const segmentCenterY = battleGroundY + HUD_BOTTOM_OFFSET + BAR_HEIGHT * 2 + BAR_GAP + HUD_SECTION_GAP + TURN_BREADCRUMB_H / 2;
+    for (let i = 0; i < selectableChain.length - 1; i += 1) {
+      const leftId = selectableChain[i];
+      const rightId = selectableChain[i + 1];
+      const leftCenter = characterCenterById.get(leftId);
+      const rightCenter = characterCenterById.get(rightId);
+      if (leftCenter === undefined || rightCenter === undefined) continue;
       renderTurnLinkSegment(app, Math.min(leftCenter, rightCenter), Math.max(leftCenter, rightCenter), segmentCenterY);
     }
   }
@@ -478,6 +486,10 @@ export function renderCharacters(app: Application, gameState: GameState): void {
         });
 
         const highlightColor = card.targeting === 'slot' ? 0x8b5cf6 : 0xffaa00;
+        const isLaneEffectCard = card.effects.some(effect =>
+          effect.kind === 'lane_hazard' || effect.kind === 'lane_buff'
+        );
+        const allowsAnyEmptyLaneInRange = card.allowEmptySlotTarget === true && isLaneEffectCard;
         const jumpEffect = card.targeting === 'slot'
           ? card.effects.find(effect => effect.kind === 'jump')
           : null;
@@ -497,14 +509,15 @@ export function renderCharacters(app: Application, gameState: GameState): void {
             if (card.minRange && dist < card.minRange) continue;
           }
 
-          // Skip empty slots whose AOE wouldn't hit any characters.
+          // For classic AOE damage cards, skip empty centers that hit nothing.
+          // Lane effects are allowed to target any empty slot in range.
           if (card.targeting === 'aoe') {
             const aoeCheck = card.aoeSlots ?? 3;
             let potentialTargets = calculateAoeTargets(slot, 'all', aoeCheck);
             if (card.maxRange) {
               potentialTargets = potentialTargets.filter(t => Math.abs(caster.slotIndex - t.slotIndex) <= card.maxRange!);
             }
-            if (potentialTargets.length === 0) continue;
+            if (potentialTargets.length === 0 && !allowsAnyEmptyLaneInRange) continue;
           }
 
           const slotX = leftBase + slot * slotSpacing;
@@ -1176,6 +1189,9 @@ type RenderableStatusEntry = {
 
 const PINNED_STATUS_PRIORITY: Record<string, number> = {
   suppressed: 100,
+  lane_light_speed: 95,
+  lane_light_damage: 92,
+  lane_light_block: 91,
   speed_down: 90,
   speed_up: 85,
   fortify: 80,
@@ -1188,6 +1204,16 @@ const PINNED_STATUS_PRIORITY: Record<string, number> = {
   regeneration: 45,
   disrupt: 40,
 };
+
+function laneBuffAffectsCharacter(
+  ownerIsPlayer: boolean,
+  appliesTo: 'lane_allies' | 'lane_enemies' | 'lane_occupants',
+  character: Character,
+): boolean {
+  if (appliesTo === 'lane_occupants') return true;
+  const isAllyToOwner = ownerIsPlayer === character.isPlayer;
+  return appliesTo === 'lane_allies' ? isAllyToOwner : !isAllyToOwner;
+}
 
 function collectRenderableStatusEntries(char: Character): RenderableStatusEntry[] {
   const statuses = char.statuses ?? [];
@@ -1241,6 +1267,43 @@ function collectRenderableStatusEntries(char: Character): RenderableStatusEntry[
       else if (m.op === 'add') totalPct += m.value;
     }
     visible.push({ status: { id, stacks: totalPct }, config: cfg });
+  }
+
+  // Inject virtual lane-light buff badges while standing in buffed lanes.
+  const occupiedSlots = getOccupiedSlots(char);
+  const laneBuffs = getGameState().laneBuffs.filter(buff =>
+    buff.remainingTurns > 0
+    && occupiedSlots.includes(buff.slotIndex)
+    && laneBuffAffectsCharacter(buff.ownerIsPlayer, buff.appliesTo, char)
+  );
+  if (laneBuffs.length > 0) {
+    let damagePct = 0;
+    let blockPct = 0;
+    let speedFlat = 0;
+    for (const buff of laneBuffs) {
+      for (const mod of buff.modifiers) {
+        if (mod.target === 'damage_dealt' && mod.op === 'multiply') {
+          damagePct += Math.round((mod.value - 1) * 100);
+        } else if (mod.target === 'block_amount' && mod.op === 'multiply') {
+          blockPct += Math.round((mod.value - 1) * 100);
+        } else if (mod.target === 'speed' && mod.op === 'add') {
+          speedFlat += mod.value;
+        }
+      }
+    }
+
+    if (damagePct !== 0) {
+      const cfg = getStatusDisplay('lane_light_damage');
+      if (cfg) visible.push({ status: { id: 'lane_light_damage', stacks: damagePct }, config: cfg });
+    }
+    if (blockPct !== 0) {
+      const cfg = getStatusDisplay('lane_light_block');
+      if (cfg) visible.push({ status: { id: 'lane_light_block', stacks: blockPct }, config: cfg });
+    }
+    if (speedFlat !== 0) {
+      const cfg = getStatusDisplay('lane_light_speed');
+      if (cfg) visible.push({ status: { id: 'lane_light_speed', stacks: speedFlat }, config: cfg });
+    }
   }
 
   return visible;
@@ -1389,6 +1452,10 @@ function renderStatusBadges(
       labelText = `+${status.stacks}`;
     } else if (status.id === 'speed_down') {
       labelText = `-${status.stacks}`;
+    } else if (status.id === 'lane_light_speed') {
+      labelText = `${status.stacks > 0 ? '+' : ''}${status.stacks}`;
+    } else if (status.id === 'lane_light_block' || status.id === 'lane_light_damage') {
+      labelText = `${status.stacks > 0 ? '+' : ''}${status.stacks}%`;
     } else if (status.id === 'block_up' || status.id === 'damage_up') {
       labelText = `+${status.stacks}%`;
     } else if (status.stacks > 1) {

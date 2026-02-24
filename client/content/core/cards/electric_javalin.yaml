@@ -12,7 +12,7 @@ maxRange: 6
 # optimalRange: 1
 exhaust: false
 expires_after_turns: 0
-description: "Throw a javelin at an enemy, hitting two adjacent lanes."
+description: "Throw a javelin at an enemy, hitting two lanes."
 effects:
   - kind: damage
     amount: 15

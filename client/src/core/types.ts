@@ -133,6 +133,53 @@ export interface LaneHazardEffect {
   aoeSlots?: number; // Optional spread width around the targeted slot
 }
 
+export type LaneBuffAppliesTo = 'lane_allies' | 'lane_enemies' | 'lane_occupants';
+
+export interface LaneBuffModifier {
+  target: ModifierTarget;
+  op: 'add' | 'multiply' | 'set' | 'min' | 'max';
+  value: number;
+}
+
+// ── Trigger Framework ──────────────────────────────────────────────────────
+// Unified system for event-driven side effects on card effects.
+// Replaces ad-hoc fields like round_start_status/round_start_heal with
+// a scalable trigger model that can be extended to other effect types.
+
+/** When a trigger fires (event timing). */
+export type EffectTriggerWhen = 'round_start';
+
+/** What action a trigger performs. */
+export type EffectTriggerAction = 'apply_status' | 'heal';
+
+/** Trigger that applies a status effect. */
+export interface EffectTriggerApplyStatus {
+  when: EffectTriggerWhen;
+  action: 'apply_status';
+  status: string; // Status ID (e.g., 'regeneration', 'bleed')
+  stacks?: number; // Number of stacks (default 1)
+  duration?: number; // Optional duration override
+}
+
+/** Trigger that heals the target. */
+export interface EffectTriggerHeal {
+  when: EffectTriggerWhen;
+  action: 'heal';
+  amount: number; // Heal amount
+}
+
+/** Union of all trigger action payloads. */
+export type EffectTrigger = EffectTriggerApplyStatus | EffectTriggerHeal;
+
+export interface LaneBuffEffect {
+  kind: 'lane_buff';
+  duration_turns: number;
+  modifiers: LaneBuffModifier[];
+  appliesTo?: LaneBuffAppliesTo;
+  aoeSlots?: number; // Optional spread width around the targeted slot
+  triggers?: EffectTrigger[]; // Event-driven side effects (replaces round_start_status/round_start_heal)
+}
+
 // Union type for all card effects
 export type CardEffect = 
   | DamageEffect 
@@ -148,6 +195,7 @@ export type CardEffect =
   | KnockbackEffect
   | JumpEffect
   | LaneHazardEffect
+  | LaneBuffEffect
   | ModifierEffect 
   | DeckInjectEffect;
 
@@ -388,6 +436,17 @@ export interface LaneHazard {
   sourceCardId?: string;
 }
 
+export interface LaneBuff {
+  slotIndex: number;
+  remainingTurns: number;
+  ownerIsPlayer: boolean;
+  appliesTo: LaneBuffAppliesTo;
+  modifiers: LaneBuffModifier[];
+  triggers?: EffectTrigger[]; // Event-driven side effects
+  sourceCharacterId?: string;
+  sourceCardId?: string;
+}
+
 export type PreFightSource = 'run_start' | 'stage_trigger';
 
 export interface PreFightState {
@@ -484,6 +543,7 @@ export interface GameState {
   currentMap: string;
   playedCardsStack: PlayedCardEntry[];
   laneHazards: LaneHazard[];
+  laneBuffs: LaneBuff[];
   preFight: PreFightState;
   enemyAiDebug: EnemyAiDebugState;
 }

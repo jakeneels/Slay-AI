@@ -106,5 +106,46 @@ describe('contentLoader', () => {
     expect(normalized.visual?.preset).toBe('small');
     expect(normalized.visual?.anchorY).toBe(1);
   });
+
+  it('normalizes lane buff card effect fields', async () => {
+    const result = await loadContent();
+    const laneBuffCards = Object.values(result.cards).filter(card =>
+      card.effects.some(effect => effect.kind === 'lane_buff')
+    );
+
+    expect(laneBuffCards.length).toBeGreaterThan(0);
+    for (const card of laneBuffCards) {
+      for (const effect of card.effects) {
+        if (effect.kind !== 'lane_buff') continue;
+        expect(effect.duration_turns).toBeGreaterThanOrEqual(1);
+        expect(['lane_allies', 'lane_enemies', 'lane_occupants']).toContain(effect.appliesTo ?? 'lane_allies');
+        expect(Array.isArray(effect.modifiers)).toBe(true);
+        for (const mod of effect.modifiers) {
+          expect(typeof mod.target).toBe('string');
+          expect(['add', 'multiply', 'set', 'min', 'max']).toContain(mod.op);
+          expect(typeof mod.value).toBe('number');
+        }
+      }
+    }
+  });
+
+  it('normalizes trigger fields for lane buffs', async () => {
+    const result = await loadContent();
+    const card = result.cards.lane_sustain;
+    expect(card).toBeDefined();
+    if (!card) return;
+
+    const effect = card.effects.find(e => e.kind === 'lane_buff');
+    expect(effect).toBeDefined();
+    if (!effect || effect.kind !== 'lane_buff') return;
+
+    expect(effect.triggers).toBeDefined();
+    expect(Array.isArray(effect.triggers)).toBe(true);
+    expect(effect.triggers?.length).toBeGreaterThan(0);
+    const statusTrigger = effect.triggers?.find(t => t.action === 'apply_status' && t.status === 'regeneration');
+    expect(statusTrigger).toBeDefined();
+    expect(statusTrigger?.when).toBe('round_start');
+    expect(statusTrigger && 'stacks' in statusTrigger ? statusTrigger.stacks : undefined).toBeGreaterThanOrEqual(1);
+  });
 });
 

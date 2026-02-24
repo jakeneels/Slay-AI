@@ -118,6 +118,7 @@ export function createMockGameState(overrides?: Partial<GameState>): GameState {
     currentMap: overrides?.currentMap ?? 'test_map',
     playedCardsStack: overrides?.playedCardsStack || [],
     laneHazards: overrides?.laneHazards || [],
+    laneBuffs: overrides?.laneBuffs || [],
     enemyAiDebug: overrides?.enemyAiDebug ?? {
       spawns: [],
       preRound: [],

@@ -11,3 +11,4 @@ export { createRangeIcon } from './rangeIcon.js';
 export { createKnockbackIcon } from './knockbackIcon.js';
 export { createPullIcon } from './pullIcon.js';
 export { createLaneHazardIcon } from './laneHazardIcon.js';
+export { createLaneBuffIcon } from './laneBuffIcon.js';

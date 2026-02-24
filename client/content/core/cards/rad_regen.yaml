@@ -10,12 +10,14 @@ targeting: aoe
 aoeSlots: 2
 exhaust: false
 expires_after_turns: 0
-description: "Cast restorative bio-radiation on an ally."
+description: "Cast restorative bio-radiation on two allies."
 effects:
   - kind: status
     status: regeneration
-    stacks: 6
+    stacks: 5
     effectTarget: target
+  - kind: heal
+    amount: 3
 animation:
   heal:
     particleColor: 0x22c55e

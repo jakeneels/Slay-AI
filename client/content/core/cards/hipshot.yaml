@@ -2,7 +2,7 @@ schemaVersion: 1
 id: hipshot
 name: "Hipshot"
 type: attack
-rarity: common
+rarity: rare
 cost: 2
 copies: 3
 tags: [basic]

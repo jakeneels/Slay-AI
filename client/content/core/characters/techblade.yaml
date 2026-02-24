@@ -34,13 +34,10 @@ mechanics:
 tags: ["warrior", "tech", "vanguard", "tank"]
 startingDeck:
   - "defend"
-  # - "strike"
   - "cleave"
   - "shield_dome"
   - "linebreaker"
   - "misty_step"
-  - "energy_lasso"
+  - "energy_hook"
   - "shockwave"
-  # - "thornmail"
-  # - "strike"
-  # - "flank"
+

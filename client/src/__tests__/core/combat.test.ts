@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { playCard, endTurn, setApp, processEnemyTurn, calculateAoeTargets, getCharactersByPosition, moveCharacterForward, moveCharacterBack, applyKnockback, applyJump, canOccupyRange, canSwapCurrentTurnWithNextAlly, getValidJumpSlots, swapCurrentTurnWithNextAlly } from '../../core/combat.js';
+import { playCard, endTurn, setApp, processEnemyTurn, calculateAoeTargets, getCharactersByPosition, moveCharacterForward, moveCharacterBack, applyKnockback, applyJump, canOccupyRange, canSwapCurrentTurnWithNextAlly, canSelectUninterruptedAllyTurn, selectUninterruptedAllyTurn, getValidJumpSlots, swapCurrentTurnWithNextAlly } from '../../core/combat.js';
 import { resetGameState, createMockCharacter, createMockCard, createMockCharacterDefinition, setupGameState } from '../utils/test-helpers.js';
 import { canRollbackTurn, getGameState, rollbackTurn } from '../../core/gameState.js';
 import { createCardInstance } from '../../core/card.js';
@@ -6322,6 +6322,338 @@ describe('combat', () => {
     });
   });
 
+  describe('lane buffs', () => {
+    it('creates and refreshes lane buffs with stacking caps', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        energy: 5,
+        isPlayer: true,
+        slotIndex: 0,
+      });
+      const ally = createMockCharacter({
+        id: 'ally1',
+        name: 'Ally',
+        isPlayer: true,
+        slotIndex: 1,
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        isPlayer: false,
+        slotIndex: 6,
+      });
+
+      const buffCard = createMockCard({
+        id: 'lane_focus',
+        name: 'Lane Focus',
+        cost: { energy: 1 },
+        targeting: 'ally',
+        effects: [{
+          kind: 'lane_buff',
+          duration_turns: 2,
+          appliesTo: 'lane_allies',
+          modifiers: [{ target: 'damage_dealt', op: 'multiply', value: 1.7 }],
+        }],
+      });
+
+      setupGameState({
+        characters: [player, ally, enemy],
+        cardLibrary: { lane_focus: buffCard },
+        currentPlayerId: 'player1',
+      });
+
+      const first = createCardInstance('lane_focus');
+      const second = createCardInstance('lane_focus');
+      if (first) player.hand.push(first);
+      if (second) player.hand.push(second);
+
+      await playCard(first!, 'ally1');
+      await playCard(second!, 'ally1');
+
+      const state = getGameState();
+      expect(state.laneBuffs).toHaveLength(1);
+      expect(state.laneBuffs[0].slotIndex).toBe(1);
+      const damageMod = state.laneBuffs[0].modifiers.find(mod => mod.target === 'damage_dealt');
+      expect(damageMod?.op).toBe('multiply');
+      expect(damageMod?.value).toBeCloseTo(2.89);
+      expect(state.laneBuffs[0].remainingTurns).toBe(2);
+    });
+
+    it('applies side eligibility rules when affects is enemies', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        hp: 100,
+        energy: 4,
+        isPlayer: true,
+        slotIndex: 0,
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        hp: 100,
+        energy: 3,
+        isPlayer: false,
+        slotIndex: 5,
+      });
+
+      const curseLane = createMockCard({
+        id: 'curse_lane',
+        name: 'Curse Lane',
+        cost: { energy: 1 },
+        targeting: 'enemy',
+        effects: [{
+          kind: 'lane_buff',
+          duration_turns: 2,
+          appliesTo: 'lane_enemies',
+          modifiers: [{ target: 'damage_dealt', op: 'multiply', value: 1.5 }],
+        }],
+      });
+      const jab = createMockCard({
+        id: 'jab',
+        name: 'Jab',
+        cost: { energy: 1 },
+        targeting: 'enemy',
+        effects: [{ kind: 'damage', amount: 10 }],
+      });
+
+      setupGameState({
+        characters: [player, enemy],
+        cardLibrary: { curse_lane: curseLane, jab },
+        currentPlayerId: 'player1',
+      });
+
+      const curseInstance = createCardInstance('curse_lane');
+      const jabInstance = createCardInstance('jab');
+      if (curseInstance) player.hand.push(curseInstance);
+      if (jabInstance) enemy.hand.push(jabInstance);
+
+      await playCard(curseInstance!, 'enemy1');
+      getGameState().currentPlayerId = 'enemy1';
+      await playCard(jabInstance!, 'player1');
+
+      expect(player.hp).toBe(85);
+    });
+
+    it('activates while standing in lane and stops when leaving', async () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        hp: 100,
+        energy: 4,
+        isPlayer: true,
+        slotIndex: 0,
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        hp: 100,
+        isPlayer: false,
+        slotIndex: 4,
+      });
+      const strike = createMockCard({
+        id: 'strike_buff_test',
+        name: 'Strike',
+        cost: { energy: 1 },
+        targeting: 'enemy',
+        effects: [{ kind: 'damage', amount: 10 }],
+      });
+
+      setupGameState({
+        characters: [player, enemy],
+        cardLibrary: { strike_buff_test: strike },
+        currentPlayerId: 'player1',
+        laneBuffs: [{
+          slotIndex: 0,
+          remainingTurns: 3,
+          ownerIsPlayer: true,
+          appliesTo: 'lane_allies',
+          modifiers: [{ target: 'damage_dealt', op: 'multiply', value: 1.5 }],
+          sourceCardId: 'manual',
+        }],
+      });
+
+      const first = createCardInstance('strike_buff_test');
+      const second = createCardInstance('strike_buff_test');
+      if (first) player.hand.push(first);
+      if (second) player.hand.push(second);
+
+      await playCard(first!, 'enemy1');
+      expect(enemy.hp).toBe(85);
+
+      moveCharacterForward('player1');
+      await playCard(second!, 'enemy1');
+      expect(enemy.hp).toBe(75);
+    });
+
+    it('expires lane buffs during round transition', () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        hp: 100,
+        energy: 3,
+        isPlayer: true,
+        slotIndex: 0,
+      });
+
+      setupGameState({
+        characters: [player],
+        currentPlayerId: 'player1',
+        turnQueue: ['player1'],
+        turnQueueIndex: 0,
+        roundNumber: 1,
+        laneBuffs: [{
+          slotIndex: 0,
+          remainingTurns: 1,
+          ownerIsPlayer: true,
+          appliesTo: 'lane_allies',
+          modifiers: [
+            { target: 'damage_dealt', op: 'multiply', value: 1.25 },
+            { target: 'block_amount', op: 'multiply', value: 1.25 },
+            { target: 'speed', op: 'add', value: 1 },
+          ],
+          sourceCardId: 'temp',
+        }],
+      });
+
+      endTurn();
+      expect(getGameState().laneBuffs).toHaveLength(0);
+      expect(getGameState().roundNumber).toBe(2);
+    });
+
+    it('applies lane sustain status at round start with source heal scaling', () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        hp: 100,
+        energy: 3,
+        isPlayer: true,
+        slotIndex: 0,
+      });
+      const ally = createMockCharacter({
+        id: 'ally1',
+        name: 'Ally',
+        hp: 90,
+        maxHp: 100,
+        isPlayer: true,
+        slotIndex: 1,
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        hp: 100,
+        isPlayer: false,
+        slotIndex: 6,
+      });
+
+      setupGameState({
+        characters: [player, ally, enemy],
+        currentPlayerId: 'player1',
+        turnQueue: ['player1'],
+        turnQueueIndex: 0,
+        roundNumber: 1,
+        statusLibrary: {
+          regeneration: {
+            id: 'regeneration',
+            name: 'Regeneration',
+            description: 'Heals each round',
+            cadence: 'round_start',
+            dot: null,
+            hot: { heal_per_stack: 1 },
+            decay: { mode: 'none' },
+          },
+        },
+        laneBuffs: [{
+          slotIndex: 1,
+          remainingTurns: 2,
+          ownerIsPlayer: true,
+          appliesTo: 'lane_allies',
+          modifiers: [{ target: 'friendly_heal_outgoing', op: 'multiply', value: 1.25 }],
+          triggers: [{ when: 'round_start', action: 'apply_status', status: 'regeneration', stacks: 1 }],
+          sourceCharacterId: 'player1',
+          sourceCardId: 'lane_sustain',
+        }],
+      });
+
+      getModifierRegistry().add({
+        id: 'lane-sustain-heal-scale',
+        target: 'friendly_heal_outgoing',
+        op: 'multiply',
+        value: 2,
+        source: 'test',
+        scope: { kind: 'character', characterId: 'player1' },
+      });
+
+      endTurn();
+
+      const state = getGameState();
+      const updatedAlly = state.characters.find(c => c.id === 'ally1');
+      expect(updatedAlly?.hp).toBe(92);
+      expect(updatedAlly?.statuses.find(s => s.id === 'regeneration')?.stacks).toBe(1);
+      expect(state.laneBuffs[0].remainingTurns).toBe(1);
+    });
+
+    it('applies 1-turn lane sustain before buff expiry at round transition', () => {
+      const player = createMockCharacter({
+        id: 'player1',
+        name: 'Player',
+        hp: 100,
+        energy: 3,
+        isPlayer: true,
+        slotIndex: 0,
+      });
+      const ally = createMockCharacter({
+        id: 'ally1',
+        name: 'Ally',
+        hp: 90,
+        maxHp: 100,
+        isPlayer: true,
+        slotIndex: 1,
+      });
+
+      setupGameState({
+        characters: [player, ally],
+        currentPlayerId: 'player1',
+        turnQueue: ['player1'],
+        turnQueueIndex: 0,
+        roundNumber: 1,
+        statusLibrary: {
+          regeneration: {
+            id: 'regeneration',
+            name: 'Regeneration',
+            description: 'Heals each round',
+            cadence: 'round_start',
+            dot: null,
+            hot: { heal_per_stack: 1 },
+            decay: { mode: 'none' },
+          },
+        },
+        laneBuffs: [{
+          slotIndex: 1,
+          remainingTurns: 1,
+          ownerIsPlayer: true,
+          appliesTo: 'lane_allies',
+          modifiers: [{ target: 'heal_amount', op: 'multiply', value: 1.25 }],
+          triggers: [
+            { when: 'round_start', action: 'apply_status', status: 'regeneration', stacks: 2 },
+            { when: 'round_start', action: 'heal', amount: 3 },
+          ],
+          sourceCharacterId: 'player1',
+          sourceCardId: 'lane_sustain',
+        }],
+      });
+
+      endTurn();
+
+      const state = getGameState();
+      const updatedAlly = state.characters.find(c => c.id === 'ally1');
+      expect(updatedAlly?.hp).toBe(96); // +4 roundStartHeal, +2 regeneration tick (buff expires before status tick)
+      expect(updatedAlly?.statuses.find(s => s.id === 'regeneration')?.stacks).toBe(2);
+      expect(state.laneBuffs).toHaveLength(0);
+    });
+  });
+
   describe('connected ally turn swaps', () => {
     it('swaps current ally with next connected ally turn', () => {
       const didi = createMockCharacter({
@@ -6388,6 +6720,90 @@ describe('combat', () => {
       const state = getGameState();
       expect(state.turnQueue).toEqual(['didi', 'enemy1']);
       expect(state.currentPlayerId).toBe('didi');
+    });
+
+    it('allows selecting any uninterrupted ally turn before first enemy', () => {
+      const didi = createMockCharacter({
+        id: 'didi',
+        name: 'Didi',
+        isPlayer: true,
+        hp: 50,
+      });
+      const kyle = createMockCharacter({
+        id: 'kyle',
+        name: 'Kyle',
+        isPlayer: true,
+        hp: 50,
+      });
+      const nyx = createMockCharacter({
+        id: 'nyx',
+        name: 'Nyx',
+        isPlayer: true,
+        hp: 50,
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        isPlayer: false,
+        hp: 50,
+      });
+
+      setupGameState({
+        characters: [didi, kyle, nyx, enemy],
+        currentPlayerId: 'didi',
+        turnQueue: ['didi', 'kyle', 'nyx', 'enemy1'],
+        turnQueueIndex: 0,
+      });
+
+      expect(canSelectUninterruptedAllyTurn('nyx')).toBe(true);
+      const selected = selectUninterruptedAllyTurn('nyx');
+
+      expect(selected).toBe(true);
+      const state = getGameState();
+      expect(state.currentPlayerId).toBe('nyx');
+      expect(state.turnQueue).toEqual(['nyx', 'didi', 'kyle', 'enemy1']);
+    });
+
+    it('blocks selecting ally turns that are interrupted by an enemy turn', () => {
+      const didi = createMockCharacter({
+        id: 'didi',
+        name: 'Didi',
+        isPlayer: true,
+        hp: 50,
+      });
+      const kyle = createMockCharacter({
+        id: 'kyle',
+        name: 'Kyle',
+        isPlayer: true,
+        hp: 50,
+      });
+      const nyx = createMockCharacter({
+        id: 'nyx',
+        name: 'Nyx',
+        isPlayer: true,
+        hp: 50,
+      });
+      const enemy = createMockCharacter({
+        id: 'enemy1',
+        name: 'Enemy',
+        isPlayer: false,
+        hp: 50,
+      });
+
+      setupGameState({
+        characters: [didi, enemy, kyle, nyx],
+        currentPlayerId: 'didi',
+        turnQueue: ['didi', 'enemy1', 'kyle', 'nyx'],
+        turnQueueIndex: 0,
+      });
+
+      expect(canSelectUninterruptedAllyTurn('kyle')).toBe(false);
+      expect(canSelectUninterruptedAllyTurn('nyx')).toBe(false);
+      expect(selectUninterruptedAllyTurn('nyx')).toBe(false);
+
+      const state = getGameState();
+      expect(state.currentPlayerId).toBe('didi');
+      expect(state.turnQueue).toEqual(['didi', 'enemy1', 'kyle', 'nyx']);
     });
 
     it('consumes connected ally pair on end turn without restoring partner energy', () => {

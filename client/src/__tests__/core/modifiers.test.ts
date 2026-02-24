@@ -154,4 +154,31 @@ describe('ModifierRegistry', () => {
     expect(registry.has('a')).toBe(false);
     expect(registry.has('b')).toBe(true);
   });
+
+  it('normalizes incoming-heal aliases to heal_amount', () => {
+    registry.add({
+      id: 'incoming-heal-alias',
+      target: 'friendly_heal_in',
+      op: 'multiply',
+      value: 1.5,
+      source: 'test',
+      scope: { kind: 'global' },
+    });
+
+    expect(registry.resolve('heal_amount', 10)).toBe(15);
+    expect(registry.resolve('friendly_heal_incoming', 10)).toBe(15);
+  });
+
+  it('normalizes outgoing-heal aliases to friendly_heal_outgoing', () => {
+    registry.add({
+      id: 'outgoing-heal-alias',
+      target: 'friendly_heal_out',
+      op: 'multiply',
+      value: 1.25,
+      source: 'test',
+      scope: { kind: 'global' },
+    });
+
+    expect(registry.resolve('friendly_heal_outgoing', 8)).toBe(10);
+  });
 });

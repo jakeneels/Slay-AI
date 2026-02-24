@@ -8,6 +8,7 @@ import type {
   StatusModifyEffect,
   StatusSpreadEffect,
   LaneHazardEffect,
+  LaneBuffEffect,
   ThornsEffect,
 } from '../core/types.js';
 import { resolveDisplayAmount } from '../utils/displayAmountResolver.js';
@@ -21,6 +22,7 @@ import { createExhaustIcon } from './icons/exhaustIcon.js';
 import { createShieldIcon } from './icons/shieldIcon.js';
 import { createRangeIcon } from './icons/rangeIcon.js';
 import { createLaneHazardIcon } from './icons/laneHazardIcon.js';
+import { createLaneBuffIcon } from './icons/laneBuffIcon.js';
 import { createThornsIcon } from './icons/thornsIcon.js';
 import { getStatusDisplay } from './statusConfig.js';
 import { registerCardHoverRegion } from './tooltipState.js';
@@ -110,6 +112,8 @@ function createEffectIcon(kind: string, size: number): Graphics | null {
       return createSpeedIcon(size);
     case 'lane_hazard':
       return createLaneHazardIcon(size);
+    case 'lane_buff':
+      return createLaneBuffIcon(size);
     case 'thorns':
       return createThornsIcon(size);
     default:
@@ -137,6 +141,8 @@ function effectColor(kind: string): number {
       return 0x8b5cf6;
     case 'lane_hazard':
       return 0xf97316;
+    case 'lane_buff':
+      return 0xfacc15;
     case 'thorns':
       return 0xf59e0b;
     default:
@@ -286,6 +292,60 @@ function renderSingleEffect(
       const text = new Text({
         text: `${lh.damage}×${lh.duration_turns}t`,
         style: { fill: effectColor('lane_hazard'), fontSize, fontWeight: 'bold' },
+      });
+      text.x = ex;
+      text.y = rowY;
+      text.eventMode = 'none';
+      parent.addChild(text);
+      ex += text.width;
+    }
+    return ex;
+  }
+
+  if (effect.kind === 'lane_buff') {
+    const lb = effect as LaneBuffEffect;
+    const icon = createEffectIcon('lane_buff', iconSize);
+    let ex = startX;
+    if (icon) {
+      icon.x = ex;
+      icon.y = rowY;
+      parent.addChild(icon);
+      ex += iconSize + 1;
+      const parts: string[] = [];
+      for (const mod of lb.modifiers ?? []) {
+        if (mod.target === 'damage_dealt' && mod.op === 'multiply') {
+          const pct = Math.round((mod.value - 1) * 100);
+          parts.push(`D${pct > 0 ? '+' : ''}${pct}%`);
+        } else if (mod.target === 'block_amount' && mod.op === 'multiply') {
+          const pct = Math.round((mod.value - 1) * 100);
+          parts.push(`B${pct > 0 ? '+' : ''}${pct}%`);
+        } else if (mod.target === 'speed' && mod.op === 'add') {
+          parts.push(`S${mod.value > 0 ? '+' : ''}${mod.value}`);
+        } else if (mod.target === 'friendly_heal_outgoing' && mod.op === 'multiply') {
+          const pct = Math.round((mod.value - 1) * 100);
+          parts.push(`Hout${pct > 0 ? '+' : ''}${pct}%`);
+        } else if (mod.target === 'heal_amount' && mod.op === 'multiply') {
+          const pct = Math.round((mod.value - 1) * 100);
+          parts.push(`H${pct > 0 ? '+' : ''}${pct}%`);
+        } else {
+          parts.push(`${mod.target}:${mod.op}`);
+        }
+      }
+      if (Array.isArray(lb.triggers)) {
+        for (const trigger of lb.triggers) {
+          if (trigger.when === 'round_start') {
+            if (trigger.action === 'heal') {
+              parts.push(`RH+${Math.floor(trigger.amount)}`);
+            } else if (trigger.action === 'apply_status') {
+              const stacks = Math.max(1, Math.floor(trigger.stacks ?? 1));
+              parts.push(`RS+${stacks}`);
+            }
+          }
+        }
+      }
+      const text = new Text({
+        text: `${parts.join(' ')} ${lb.duration_turns}t`.trim(),
+        style: { fill: effectColor('lane_buff'), fontSize: fontSize - 1, fontWeight: 'bold' },
       });
       text.x = ex;
       text.y = rowY;

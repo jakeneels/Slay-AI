@@ -31,6 +31,7 @@ let gameState: GameState = {
   currentMap: pickRandomMap(undefined, 1),
   playedCardsStack: [],
   laneHazards: [],
+  laneBuffs: [],
   enemyAiDebug: {
     spawns: [],
     preRound: [],

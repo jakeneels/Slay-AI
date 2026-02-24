@@ -55,6 +55,32 @@ export function renderCharacterTooltip(app: Application): void {
     const value = s.stacks > 1 ? ` x${s.stacks}` : '';
     return `- ${label}${value}`;
   });
+  const occupiedSlots = Array.from({ length: Math.max(1, character.slotSize ?? 1) }, (_, i) => character.slotIndex + i);
+  const activeLaneBuffs = gameState.laneBuffs.filter(buff => {
+    if (buff.remainingTurns <= 0) return false;
+    if (!occupiedSlots.includes(buff.slotIndex)) return false;
+    if (buff.appliesTo === 'lane_occupants') return true;
+    const allyToOwner = buff.ownerIsPlayer === character.isPlayer;
+    return buff.appliesTo === 'lane_allies' ? allyToOwner : !allyToOwner;
+  });
+  let laneDamage = 0;
+  let laneBlock = 0;
+  let laneSpeed = 0;
+  for (const buff of activeLaneBuffs) {
+    for (const mod of buff.modifiers) {
+      if (mod.target === 'damage_dealt' && mod.op === 'multiply') {
+        laneDamage += Math.round((mod.value - 1) * 100);
+      } else if (mod.target === 'block_amount' && mod.op === 'multiply') {
+        laneBlock += Math.round((mod.value - 1) * 100);
+      } else if (mod.target === 'speed' && mod.op === 'add') {
+        laneSpeed += mod.value;
+      }
+    }
+  }
+  const laneBuffItems: string[] = [];
+  if (laneDamage !== 0) laneBuffItems.push(`- Light lane damage ${laneDamage > 0 ? '+' : ''}${laneDamage}%`);
+  if (laneBlock !== 0) laneBuffItems.push(`- Light lane block ${laneBlock > 0 ? '+' : ''}${laneBlock}%`);
+  if (laneSpeed !== 0) laneBuffItems.push(`- Light lane speed ${laneSpeed > 0 ? '+' : ''}${laneSpeed}`);
 
   const block = getTotalBlock(character);
   const blockDecaySchedule = getBlockDecaySchedule(character, gameState)
@@ -90,6 +116,9 @@ export function renderCharacterTooltip(app: Application): void {
   }
   if (statusItems.length > 0) {
     estimatedH += 16 + statusItems.length * 14;
+  }
+  if (laneBuffItems.length > 0) {
+    estimatedH += 16 + laneBuffItems.length * 14;
   }
   if (blockDecayItems.length > 0) {
     estimatedH += 16 + blockDecayItems.length * 14;
@@ -144,6 +173,12 @@ export function renderCharacterTooltip(app: Application): void {
   if (statusItems.length > 0) {
     cy = addLine(app, 'Statuses', tx + PAD, cy + 2, 0x9ca3af, 10, true);
     for (const item of statusItems) {
+      cy = addLine(app, item, tx + PAD, cy, 0xd1d5db, 10);
+    }
+  }
+  if (laneBuffItems.length > 0) {
+    cy = addLine(app, 'Lane Buffs', tx + PAD, cy + 2, 0x9ca3af, 10, true);
+    for (const item of laneBuffItems) {
       cy = addLine(app, item, tx + PAD, cy, 0xd1d5db, 10);
     }
   }

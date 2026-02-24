@@ -2,7 +2,7 @@
 
 import type { Application } from 'pixi.js';
 import { Graphics, Text, Rectangle } from 'pixi.js';
-import type { GameState, Character, Card, CardEffect, BaseCardEffect, StatusEffect, StatusModifyEffect, StatusSpreadEffect, LaneHazardEffect, ThornsEffect } from '../core/types.js';
+import type { GameState, Character, Card, CardEffect, BaseCardEffect, StatusEffect, StatusModifyEffect, StatusSpreadEffect, LaneHazardEffect, LaneBuffEffect, ThornsEffect } from '../core/types.js';
 import { WIDTH } from '../core/constants.js';
 
 /** Max slots shown on card position indicators (largest AOE in the game). */
@@ -21,6 +21,7 @@ import { createExhaustIcon } from './icons/exhaustIcon.js';
 import { createShieldIcon } from './icons/shieldIcon.js';
 import { createRangeIcon } from './icons/rangeIcon.js';
 import { createLaneHazardIcon } from './icons/laneHazardIcon.js';
+import { createLaneBuffIcon } from './icons/laneBuffIcon.js';
 import { createThornsIcon } from './icons/thornsIcon.js';
 import { registerCardHoverRegion, setHoveredCard } from './tooltipState.js';
 import { getStatusDisplay } from './statusConfig.js';
@@ -151,6 +152,7 @@ function createEffectIcon(kind: string, size: number): Graphics | null {
     case 'knockback': return createKnockbackIcon(size);
     case 'jump': return createSpeedIcon(size);
     case 'lane_hazard': return createLaneHazardIcon(size);
+    case 'lane_buff': return createLaneBuffIcon(size);
     case 'thorns': return createThornsIcon(size);
     default: return null;
   }
@@ -167,6 +169,7 @@ function effectColor(kind: string): number {
     case 'knockback':                 return 0xef4444;   // red-orange
     case 'jump':                      return 0x8b5cf6;   // violet
     case 'lane_hazard':               return 0xf97316;   // orange (fire)
+    case 'lane_buff':                 return 0xfacc15;   // yellow (pure light lane buff)
     case 'thorns':                    return 0xf59e0b;   // amber (thorns)
     default:                          return 0xd1d5db;   // gray fallback
   }
@@ -262,6 +265,57 @@ function renderSingleEffect(
       const text = new Text({
         text: `${lh.damage}×${lh.duration_turns}t`,
         style: { fill: effectColor('lane_hazard'), fontSize, fontWeight: 'bold' }
+      });
+      text.x = ex; text.y = rowY; text.eventMode = 'none';
+      app.stage.addChild(text);
+      ex += text.width;
+    }
+    return ex;
+  }
+
+  if (effect.kind === 'lane_buff') {
+    const lb = effect as LaneBuffEffect;
+    const icon = createEffectIcon('lane_buff', iconSize);
+    let ex = startX;
+    if (icon) {
+      icon.x = ex; icon.y = rowY;
+      app.stage.addChild(icon);
+      ex += iconSize + 1;
+      const parts: string[] = [];
+      for (const mod of lb.modifiers ?? []) {
+        if (mod.target === 'damage_dealt' && mod.op === 'multiply') {
+          const pct = Math.round((mod.value - 1) * 100);
+          parts.push(`D${pct > 0 ? '+' : ''}${pct}%`);
+        } else if (mod.target === 'block_amount' && mod.op === 'multiply') {
+          const pct = Math.round((mod.value - 1) * 100);
+          parts.push(`B${pct > 0 ? '+' : ''}${pct}%`);
+        } else if (mod.target === 'speed' && mod.op === 'add') {
+          parts.push(`S${mod.value > 0 ? '+' : ''}${mod.value}`);
+        } else if (mod.target === 'friendly_heal_outgoing' && mod.op === 'multiply') {
+          const pct = Math.round((mod.value - 1) * 100);
+          parts.push(`Hout${pct > 0 ? '+' : ''}${pct}%`);
+        } else if (mod.target === 'heal_amount' && mod.op === 'multiply') {
+          const pct = Math.round((mod.value - 1) * 100);
+          parts.push(`H${pct > 0 ? '+' : ''}${pct}%`);
+        } else {
+          parts.push(`${mod.target}:${mod.op}`);
+        }
+      }
+      if (Array.isArray(lb.triggers)) {
+        for (const trigger of lb.triggers) {
+          if (trigger.when === 'round_start') {
+            if (trigger.action === 'heal') {
+              parts.push(`RH+${Math.floor(trigger.amount)}`);
+            } else if (trigger.action === 'apply_status') {
+              const stacks = Math.max(1, Math.floor(trigger.stacks ?? 1));
+              parts.push(`RS+${stacks}`);
+            }
+          }
+        }
+      }
+      const text = new Text({
+        text: `${parts.join(' ')} ${lb.duration_turns}t`.trim(),
+        style: { fill: effectColor('lane_buff'), fontSize: fontSize - 1, fontWeight: 'bold' }
       });
       text.x = ex; text.y = rowY; text.eventMode = 'none';
       app.stage.addChild(text);

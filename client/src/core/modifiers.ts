@@ -15,6 +15,7 @@ import type {
   ModifierCondition,
   Character,
 } from './types.js';
+import { normalizeModifierTarget } from './modifierTargets.js';
 
 // ── ModifierRegistry ─────────────────────────────────────────────────
 
@@ -29,6 +30,7 @@ export class ModifierRegistry {
 
   /** Register a modifier. Replaces any existing modifier with the same id. */
   add(mod: GameModifier): void {
+    mod.target = normalizeModifierTarget(mod.target);
     // Remove old if id already exists
     if (this.byId.has(mod.id)) {
       this.remove(mod.id);
@@ -86,7 +88,8 @@ export class ModifierRegistry {
    * @returns          The modified value
    */
   resolve(target: ModifierTarget, baseValue: number, ctx: ModifierContext = {}): number {
-    const list = this.byTarget.get(target);
+    const normalizedTarget = normalizeModifierTarget(target);
+    const list = this.byTarget.get(normalizedTarget);
     if (!list || list.length === 0) return baseValue;
 
     // Filter to matching modifiers
@@ -140,7 +143,7 @@ export class ModifierRegistry {
 
   /** Get all modifiers for a specific target. */
   getByTarget(target: ModifierTarget): GameModifier[] {
-    return [...(this.byTarget.get(target) ?? [])];
+    return [...(this.byTarget.get(normalizeModifierTarget(target)) ?? [])];
   }
 
   /** Get all modifiers from a specific source. */

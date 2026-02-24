@@ -14,5 +14,5 @@ expires_after_turns: 0
 description: "Versatile Ranged Attack — Effective at all but the furthest ranges."
 effects:
   - kind: damage
-    amount: 18
+    amount: 16
 

@@ -279,6 +279,23 @@ function drawSpeedUpIcon(g: Graphics, size: number): void {
     .stroke({ width: 0.8, color: 0x0d9488, alignment: 1 });
 }
 
+/** Lane light buff — shared icon so all light buffs look consistent */
+function drawLaneLightBuffIcon(g: Graphics, size: number): void {
+  const s = size / 14;
+  g.moveTo(7 * s, 1 * s)
+    .lineTo(10.2 * s, 4.4 * s)
+    .lineTo(13 * s, 7 * s)
+    .lineTo(10.2 * s, 9.6 * s)
+    .lineTo(7 * s, 13 * s)
+    .lineTo(3.8 * s, 9.6 * s)
+    .lineTo(1 * s, 7 * s)
+    .lineTo(3.8 * s, 4.4 * s)
+    .closePath()
+    .fill(0xfacc15)
+    .stroke({ width: 0.8, color: 0xca8a04, alignment: 1 });
+  g.circle(7 * s, 7 * s, 1.4 * s).fill(0xfef08a);
+}
+
 // ── Registry ──────────────────────────────────────────────────────────
 
 export const STATUS_DISPLAY: Record<string, StatusDisplayConfig> = {
@@ -370,6 +387,30 @@ export const STATUS_DISPLAY: Record<string, StatusDisplayConfig> = {
     borderColor: 0x7f1d1d,
     drawIcons: [drawDamageUpIcon],
   },
+  lane_light_damage: {
+    label: 'Light Damage',
+    description: 'Lane buff: while standing in a light lane, damage dealt is increased.',
+    iconColor: 0xfacc15,
+    bgColor: 0x3f3000,
+    borderColor: 0xeab308,
+    drawIcons: [drawLaneLightBuffIcon],
+  },
+  lane_light_block: {
+    label: 'Light Guard',
+    description: 'Lane buff: while standing in a light lane, block gained is increased.',
+    iconColor: 0xfde047,
+    bgColor: 0x3f3000,
+    borderColor: 0xeab308,
+    drawIcons: [drawLaneLightBuffIcon],
+  },
+  lane_light_speed: {
+    label: 'Light Speed',
+    description: 'Lane buff: while standing in a light lane, movement speed is increased.',
+    iconColor: 0xfef08a,
+    bgColor: 0x3f3000,
+    borderColor: 0xeab308,
+    drawIcons: [drawLaneLightBuffIcon],
+  },
   thorns: {
     label: 'Thorns',
     description: 'When hit by unblocked attack damage, retaliates against the attacker.',
@@ -394,6 +435,9 @@ const ICON_DRAW_REGISTRY: Record<string, IconDrawFn[]> = {
   speed_down: [drawSpeedDownIcon],
   block_up: [drawBlockUpIcon],
   damage_up: [drawDamageUpIcon],
+  lane_light_damage: [drawLaneLightBuffIcon],
+  lane_light_block: [drawLaneLightBuffIcon],
+  lane_light_speed: [drawLaneLightBuffIcon],
   thorns: [drawThornsIcon],
 };
 

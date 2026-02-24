@@ -30,5 +30,7 @@ mechanics:
 tags: ["human", "fanatic", "normal", "enemy", "aggressive", "melee"]
 startingDeck:
   - "strike"
+  - "cleave"
   - "shockwave"
   - "shrapnel_grenade"
+  - "flank"

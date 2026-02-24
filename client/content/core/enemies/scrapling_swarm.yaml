@@ -30,6 +30,5 @@ mechanics:
 tags: ["machine", "swarm", "normal", "enemy", "dps"]
 startingDeck:
   - "chain_lightning"
-  - "overclock"
   - "electric_javalin"
   

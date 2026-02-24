@@ -89,5 +89,22 @@ describe('renderCharacters - turn breadcrumbs', () => {
     const breadcrumbState = deriveTurnBreadcrumbState(getGameState());
     expect(breadcrumbState.linkedPairIds).toEqual(['ally_a', 'ally_b']);
     expect(breadcrumbState.canSwapLinkedPair).toBe(true);
+    expect(breadcrumbState.selectableAllyIds).toEqual(['ally_a', 'ally_b']);
+  });
+
+  it('marks uninterrupted ally chain as selectable and stops at enemy turn', () => {
+    const allyA = createMockCharacter({ id: 'ally_a', isPlayer: true, hp: 100 });
+    const allyB = createMockCharacter({ id: 'ally_b', isPlayer: true, hp: 100 });
+    const allyC = createMockCharacter({ id: 'ally_c', isPlayer: true, hp: 100 });
+    const enemyA = createMockCharacter({ id: 'enemy_a', isPlayer: false, hp: 100 });
+    setupGameState({
+      characters: [allyA, allyB, enemyA, allyC],
+      currentPlayerId: 'ally_a',
+      turnQueue: ['ally_a', 'ally_b', 'enemy_a', 'ally_c'],
+      turnQueueIndex: 0,
+    });
+
+    const breadcrumbState = deriveTurnBreadcrumbState(getGameState());
+    expect(breadcrumbState.selectableAllyIds).toEqual(['ally_a', 'ally_b']);
   });
 });

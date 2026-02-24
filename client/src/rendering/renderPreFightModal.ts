@@ -149,12 +149,20 @@ export function renderPreFightModal(app: Application, gameState: GameState): voi
     rosterPanel.zIndex = 1;
     modal.addChild(rosterPanel);
 
-    const cardW = 240;
-    const cardH = 148;
-    const gap = 16;
+    const gap = candidates.length > 8 ? 6 : candidates.length > 6 ? 8 : 16;
+    const maxCardW = 240;
+    const availableRosterW = panelW - 32;
+    const cardW = candidates.length > 0
+      ? Math.min(
+        maxCardW,
+        Math.floor((availableRosterW - Math.max(0, candidates.length - 1) * gap) / candidates.length),
+      )
+      : maxCardW;
+    const cardH = cardW < 170 ? 136 : 148;
     const totalW = candidates.length * cardW + Math.max(0, candidates.length - 1) * gap;
-    const startX = (WIDTH - totalW) / 2;
-    const startY = panelY + 32;
+    const startX = panelX + Math.max(0, Math.floor((panelW - totalW) / 2));
+    const startY = panelY + Math.floor((panelH - cardH) / 2);
+    const compactRosterCard = cardW < 170;
 
     candidates.forEach((ally, i) => {
       const x = startX + i * (cardW + gap);
@@ -177,44 +185,44 @@ export function renderPreFightModal(app: Application, gameState: GameState): voi
 
       const name = new Text({
         text: ally.name,
-        style: { fill: 0xffffff, fontSize: 18, fontWeight: 'bold', fontFamily: 'monospace' },
+        style: { fill: 0xffffff, fontSize: compactRosterCard ? 14 : 18, fontWeight: 'bold', fontFamily: 'monospace' },
       });
       name.anchor.set(0.5, 0);
       name.x = x + cardW / 2;
-      name.y = startY + 12;
+      name.y = startY + (compactRosterCard ? 10 : 12);
       name.zIndex = 3;
       name.eventMode = 'none';
       modal.addChild(name);
 
       const hp = new Text({
         text: `HP ${ally.hp}/${ally.maxHp}`,
-        style: { fill: 0x4ade80, fontSize: 14, fontFamily: 'monospace' },
+        style: { fill: 0x4ade80, fontSize: compactRosterCard ? 12 : 14, fontFamily: 'monospace' },
       });
       hp.anchor.set(0.5, 0);
       hp.x = x + cardW / 2;
-      hp.y = startY + 46;
+      hp.y = startY + (compactRosterCard ? 40 : 46);
       hp.zIndex = 3;
       hp.eventMode = 'none';
       modal.addChild(hp);
 
       const speed = new Text({
         text: `Speed ${ally.speed}`,
-        style: { fill: 0x93c5fd, fontSize: 14, fontFamily: 'monospace' },
+        style: { fill: 0x93c5fd, fontSize: compactRosterCard ? 12 : 14, fontFamily: 'monospace' },
       });
       speed.anchor.set(0.5, 0);
       speed.x = x + cardW / 2;
-      speed.y = startY + 68;
+      speed.y = startY + (compactRosterCard ? 58 : 68);
       speed.zIndex = 3;
       speed.eventMode = 'none';
       modal.addChild(speed);
 
       const slotSize = new Text({
         text: `Size ${Math.max(1, Math.floor(ally.slotSize ?? 1))}`,
-        style: { fill: 0xcbd5e1, fontSize: 13, fontFamily: 'monospace' },
+        style: { fill: 0xcbd5e1, fontSize: compactRosterCard ? 12 : 13, fontFamily: 'monospace' },
       });
       slotSize.anchor.set(0.5, 0);
       slotSize.x = x + cardW / 2;
-      slotSize.y = startY + 90;
+      slotSize.y = startY + (compactRosterCard ? 76 : 90);
       slotSize.zIndex = 3;
       slotSize.eventMode = 'none';
       modal.addChild(slotSize);
@@ -223,14 +231,14 @@ export function renderPreFightModal(app: Application, gameState: GameState): voi
         text: isSelected ? `SELECTED #${selectedOrder}` : 'NOT SELECTED',
         style: {
           fill: isSelected ? 0x2dd4bf : 0x94a3b8,
-          fontSize: 13,
+          fontSize: compactRosterCard ? 11 : 13,
           fontWeight: 'bold',
           fontFamily: 'monospace',
         },
       });
       status.anchor.set(0.5, 0);
       status.x = x + cardW / 2;
-      status.y = startY + 116;
+      status.y = startY + (compactRosterCard ? 102 : 116);
       status.zIndex = 3;
       status.eventMode = 'none';
       modal.addChild(status);
@@ -262,9 +270,19 @@ export function renderPreFightModal(app: Application, gameState: GameState): voi
   const selectedAllies = selectedIds
     .map(id => candidates.find(c => c.id === id))
     .filter((c): c is Character => !!c);
-  const chipW = isCardsPage ? 214 : 220;
-  const chipH = isCardsPage ? 56 : 84;
-  const chipGap = 16;
+  const chipGap = selectedAllies.length > 8 ? 6 : selectedAllies.length > 6 ? 8 : 16;
+  const chipBaseW = isCardsPage ? 214 : 220;
+  const availableLineupW = lineupW - 32;
+  const chipW = selectedAllies.length > 0
+    ? Math.min(
+      chipBaseW,
+      Math.floor((availableLineupW - Math.max(0, selectedAllies.length - 1) * chipGap) / selectedAllies.length),
+    )
+    : chipBaseW;
+  const compactLineupChip = chipW < (isCardsPage ? 170 : 150);
+  const chipH = isCardsPage
+    ? (compactLineupChip ? 50 : 56)
+    : (compactLineupChip ? 72 : 84);
   const chipsTotalW = selectedAllies.length * chipW + Math.max(0, selectedAllies.length - 1) * chipGap;
   const chipsStartX = lineupX + Math.max(0, (lineupW - chipsTotalW) / 2);
   const chipsY = lineupY + (isCardsPage ? 40 : 48);
@@ -289,30 +307,31 @@ export function renderPreFightModal(app: Application, gameState: GameState): voi
 
     const slotLabel = new Text({
       text: `Slot ${i + 1}`,
-      style: { fill: 0x99f6e4, fontSize: 12, fontFamily: 'monospace' },
+      style: { fill: 0x99f6e4, fontSize: compactLineupChip ? 11 : 12, fontFamily: 'monospace' },
     });
     slotLabel.anchor.set(0.5, 0);
     slotLabel.x = x + chipW / 2;
-    slotLabel.y = chipsY + (isCardsPage ? 4 : 6);
+    slotLabel.y = chipsY + (isCardsPage ? (compactLineupChip ? 3 : 4) : (compactLineupChip ? 4 : 6));
     slotLabel.zIndex = 3;
     slotLabel.eventMode = 'none';
     modal.addChild(slotLabel);
 
     const name = new Text({
       text: ally.name,
-      style: { fill: 0xffffff, fontSize: 14, fontWeight: 'bold', fontFamily: 'monospace' },
+      style: { fill: 0xffffff, fontSize: compactLineupChip ? 12 : 14, fontWeight: 'bold', fontFamily: 'monospace' },
     });
     name.anchor.set(0.5);
     name.x = x + chipW / 2;
-    name.y = chipsY + (isCardsPage ? 30 : 42);
+    name.y = chipsY + (isCardsPage ? (compactLineupChip ? 26 : 30) : (compactLineupChip ? 34 : 42));
     name.zIndex = 3;
     name.eventMode = 'none';
     modal.addChild(name);
 
-    const arrowW = 24;
-    const arrowH = isCardsPage ? 18 : 24;
-    const leftX = x + 10;
-    const rightX = x + chipW - arrowW - 10;
+    const arrowW = compactLineupChip ? 18 : 24;
+    const arrowH = isCardsPage ? (compactLineupChip ? 16 : 18) : (compactLineupChip ? 20 : 24);
+    const arrowPad = compactLineupChip ? 6 : 10;
+    const leftX = x + arrowPad;
+    const rightX = x + chipW - arrowW - arrowPad;
     const arrowY = chipsY + chipH - arrowH - (isCardsPage ? 4 : 8);
 
     const left = new Graphics();

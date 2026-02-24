@@ -1,7 +1,7 @@
 // Combat logic - card playing, turn management, enemy AI
 
 import type { Application } from 'pixi.js';
-import type { Character, CardEffect, Card, BaseCardEffect, SpeedEffect, StatusSpreadEffect, LaneHazardEffect, JumpEffect, ThornsEffect } from './types.js';
+import type { Character, CardEffect, Card, BaseCardEffect, SpeedEffect, StatusSpreadEffect, LaneHazardEffect, LaneBuffEffect, LaneBuff, LaneBuffModifier, ModifierTarget, JumpEffect, ThornsEffect, EffectTriggerApplyStatus, EffectTriggerHeal, EffectTriggerWhen } from './types.js';
 import { addToCombatLog, getGameState, getRollbackEpoch, pushHistorySnapshot } from './gameState.js';
 import { getCard } from './card.js';
 import { drawCards } from './deck.js';
@@ -435,6 +435,140 @@ function applyLaneHazardsToCharacter(
   return totalDamage;
 }
 
+function laneBuffAffectsCharacter(buff: LaneBuff, character: Character): boolean {
+  if (buff.appliesTo === 'lane_occupants') return true;
+  const isAllyToOwner = buff.ownerIsPlayer === character.isPlayer;
+  if (buff.appliesTo === 'lane_allies') return isAllyToOwner;
+  return !isAllyToOwner;
+}
+
+function getActiveLaneBuffsForCharacter(character: Character): LaneBuff[] {
+  const gameState = getGameState();
+  if (character.hp <= 0) return [];
+  const occupied = getOccupiedSlots(character);
+  return gameState.laneBuffs.filter(buff =>
+    buff.remainingTurns > 0 &&
+    occupied.includes(buff.slotIndex) &&
+    laneBuffAffectsCharacter(buff, character)
+  );
+}
+
+function getActiveLaneModifiersForCharacter(character: Character): LaneBuffModifier[] {
+  return getActiveLaneBuffsForCharacter(character)
+    .flatMap(buff => buff.modifiers)
+    .filter(mod => Number.isFinite(mod.value));
+}
+
+function mergeLaneBuffModifiers(existing: LaneBuffModifier[], incoming: LaneBuffModifier[]): LaneBuffModifier[] {
+  const merged = [...existing];
+  for (const next of incoming) {
+    const match = merged.find(m => m.target === next.target && m.op === next.op);
+    if (!match) {
+      merged.push({ ...next });
+      continue;
+    }
+    switch (next.op) {
+      case 'add':
+        match.value += next.value;
+        break;
+      case 'multiply':
+        match.value *= next.value;
+        break;
+      case 'set':
+        match.value = next.value;
+        break;
+      case 'min':
+        match.value = Math.max(match.value, next.value);
+        break;
+      case 'max':
+        match.value = Math.min(match.value, next.value);
+        break;
+      default:
+        break;
+    }
+  }
+  return merged;
+}
+
+function resolveLaneBuffValue(character: Character, target: ModifierTarget, base: number): number {
+  const mods = getActiveLaneModifiersForCharacter(character).filter(m => m.target === target);
+  if (mods.length === 0) return base;
+
+  let value = base;
+  const sets = mods.filter(m => m.op === 'set');
+  if (sets.length > 0) value = sets[sets.length - 1].value;
+  for (const mod of mods) {
+    if (mod.op === 'add') value += mod.value;
+  }
+  for (const mod of mods) {
+    if (mod.op === 'multiply') value *= mod.value;
+  }
+  const mins = mods.filter(m => m.op === 'min');
+  if (mins.length > 0) value = Math.max(value, Math.max(...mins.map(m => m.value)));
+  const maxes = mods.filter(m => m.op === 'max');
+  if (maxes.length > 0) value = Math.min(value, Math.min(...maxes.map(m => m.value)));
+  return value;
+}
+
+function getEffectiveSpeed(character: Character): number {
+  return resolveLaneBuffValue(character, 'speed', character.speed);
+}
+
+function getLaneBuffSustainSource(buff: LaneBuff): Character | undefined {
+  if (typeof buff.sourceCharacterId !== 'string') return undefined;
+  const gameState = getGameState();
+  return gameState.characters.find(c => c.id === buff.sourceCharacterId && c.hp > 0);
+}
+
+function executeLaneBuffTriggers(character: Character, when: EffectTriggerWhen): void {
+  const buffs = getActiveLaneBuffsForCharacter(character).filter(buff =>
+    Array.isArray(buff.triggers) && buff.triggers.some(t => t.when === when)
+  );
+  if (buffs.length === 0) return;
+
+  const registry = getModifierRegistry();
+  for (const buff of buffs) {
+    if (character.hp <= 0) break;
+    const sourceCharacter = getLaneBuffSustainSource(buff);
+    
+    if (!Array.isArray(buff.triggers)) continue;
+    
+    for (const trigger of buff.triggers) {
+      if (trigger.when !== when) continue;
+      
+      if (trigger.action === 'heal') {
+        const healTrigger = trigger as EffectTriggerHeal;
+        let adjustedHeal = resolveLaneBuffValue(character, 'heal_amount', healTrigger.amount);
+        adjustedHeal = registry.resolve('heal_amount', adjustedHeal, { character });
+        if (sourceCharacter && sourceCharacter.isPlayer === character.isPlayer) {
+          adjustedHeal = resolveLaneBuffValue(sourceCharacter, 'friendly_heal_outgoing', adjustedHeal);
+          adjustedHeal = registry.resolve('friendly_heal_outgoing', adjustedHeal, { character: sourceCharacter });
+        }
+        const resolvedHeal = Math.max(0, Math.round(adjustedHeal));
+        if (resolvedHeal > 0) {
+          const hpBefore = character.hp;
+          character.hp = Math.min(character.maxHp, character.hp + resolvedHeal);
+          const actualHeal = character.hp - hpBefore;
+          if (actualHeal > 0) {
+            addToCombatLog(`${character.name} heals ${actualHeal} HP from lane sustain`);
+          }
+        }
+      } else if (trigger.action === 'apply_status') {
+        const statusTrigger = trigger as EffectTriggerApplyStatus;
+        const stacks = Math.max(1, Math.floor(statusTrigger.stacks ?? 1));
+        const duration = statusTrigger.duration;
+        applyStatus(
+          character,
+          statusTrigger.status,
+          stacks,
+          typeof duration === 'number' ? Math.max(1, Math.floor(duration)) : undefined,
+          sourceCharacter ? { sourceCharacterId: sourceCharacter.id } : undefined
+        );
+      }
+    }
+  }
+}
+
 function checkCombatResolutionAfterHazards(): void {
   const gameState = getGameState();
   const livingEnemies = gameState.characters.filter(c => !c.isPlayer && c.hp > 0);
@@ -700,7 +834,7 @@ function canResolveCardWithoutCharacterTargets(card: Card, targetId: string | un
   if (!card.allowEmptySlotTarget) return false;
   if (!targetId) return false;
   if (resolveTargetSlot(targetId) === null) return false;
-  return card.effects.some(effect => effect.kind === 'lane_hazard');
+  return card.effects.some(effect => effect.kind === 'lane_hazard' || effect.kind === 'lane_buff');
 }
 
 /**
@@ -940,6 +1074,7 @@ function scoreEnemyAction(card: Card, caster: Character, target: Character): num
       case 'knockback':
       case 'jump':
       case 'lane_hazard':
+      case 'lane_buff':
         score += targetIsOpponent ? 1.5 : -1.5;
         break;
       case 'thorns':
@@ -1088,7 +1223,8 @@ function canMoveForwardForPlanning(char: Character): boolean {
  * Speed < 0: penalised. Each slot costs 1 + abs(speed) energy, no charges.
  */
 export function getMoveCost(char: Character): { energyCost: number; usesCharge: boolean } {
-  if (char.speed < 0) return { energyCost: 1 + Math.abs(char.speed), usesCharge: false };
+  const effectiveSpeed = getEffectiveSpeed(char);
+  if (effectiveSpeed < 0) return { energyCost: 1 + Math.abs(effectiveSpeed), usesCharge: false };
   if (char.moveCharges > 0) return { energyCost: 0, usesCharge: true };
   return { energyCost: 1, usesCharge: false };
 }
@@ -1530,6 +1666,64 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
       }
       continue;
     }
+
+    if (effect.kind === 'lane_buff') {
+      if (!targetId) continue;
+      const laneBuff = effect as LaneBuffEffect;
+      const centerSlot = resolveTargetSlot(targetId);
+      if (centerSlot === null) continue;
+
+      const durationTurns = Math.max(1, Math.floor(laneBuff.duration_turns));
+      const laneBuffAoeSlotsRaw = laneBuff.aoeSlots ?? card.aoeSlots ?? 1;
+      const laneBuffAoeSlots = Math.max(1, Math.floor(laneBuffAoeSlotsRaw));
+      const affectedSlots = calculateAoeSlotIndices(centerSlot, laneBuffAoeSlots);
+      const appliesTo = laneBuff.appliesTo ?? 'lane_allies';
+      const modifiers = (laneBuff.modifiers ?? [])
+        .filter(mod => typeof mod?.target === 'string')
+        .filter(mod => ['add', 'multiply', 'set', 'min', 'max'].includes(mod.op))
+        .filter(mod => typeof mod.value === 'number' && Number.isFinite(mod.value))
+        .map(mod => ({ target: mod.target, op: mod.op, value: mod.value as number }));
+      const triggers = Array.isArray(laneBuff.triggers) ? laneBuff.triggers.map(t => ({ ...t })) : undefined;
+      const hasSustain = Array.isArray(triggers) && triggers.length > 0;
+      if (modifiers.length === 0 && !hasSustain) continue;
+
+      for (const slot of affectedSlots) {
+        const existing = gameState.laneBuffs.find(b =>
+          b.slotIndex === slot &&
+          b.ownerIsPlayer === currentPlayer.isPlayer &&
+          b.appliesTo === appliesTo
+        );
+
+        if (existing) {
+          existing.modifiers = mergeLaneBuffModifiers(existing.modifiers, modifiers);
+          existing.remainingTurns = durationTurns;
+          // Only update triggers if the new card has triggers (preserve existing triggers otherwise)
+          if (triggers !== undefined) {
+            existing.triggers = triggers;
+          }
+          existing.sourceCharacterId = currentPlayer.id;
+          addToCombatLog(`${card.name} refreshes lane ${slot} buff (${existing.remainingTurns} turns)`);
+        } else {
+          const newBuff: LaneBuff = {
+            slotIndex: slot,
+            remainingTurns: durationTurns,
+            ownerIsPlayer: currentPlayer.isPlayer,
+            appliesTo,
+            modifiers: modifiers.map(mod => ({ ...mod })),
+            triggers,
+            sourceCharacterId: currentPlayer.id,
+            sourceCardId: card.id,
+          };
+          gameState.laneBuffs.push(newBuff);
+          addToCombatLog(`${card.name} buffs lane ${slot} (${durationTurns} turns)`);
+        }
+      }
+
+      if (renderCallback) {
+        renderCallback();
+      }
+      continue;
+    }
     
     // Resolve per-effect targets (may differ from card-level targets)
     let effectTargets = resolveEffectTargets(effect, currentPlayer, targets, targetId, card);
@@ -1586,7 +1780,8 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
       switch (effect.kind) {
         case 'damage':
           const rawDamage = Math.round(effect.amount * rangeModifier);
-          const casterDmgMod = registry.resolve('damage_dealt', rawDamage, { character: currentPlayer, card });
+          const buffedRawDamage = Math.round(resolveLaneBuffValue(currentPlayer, 'damage_dealt', rawDamage));
+          const casterDmgMod = registry.resolve('damage_dealt', buffedRawDamage, { character: currentPlayer, card });
           const adjustedDamage = Math.round(registry.resolve('damage_received', casterDmgMod, { character: target, card }));
           gameState.stats.cumulativeDamage += adjustedDamage;
           const actualDamage = applyDamageWithBlock(target, adjustedDamage);
@@ -1656,7 +1851,8 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
         case 'aoe_damage':
           // AOE damage is similar to regular damage but uses range modifier
           const rawAoeDamage = Math.round(effect.amount * rangeModifier);
-          const casterAoeMod = registry.resolve('damage_dealt', rawAoeDamage, { character: currentPlayer, card });
+          const buffedRawAoeDamage = Math.round(resolveLaneBuffValue(currentPlayer, 'damage_dealt', rawAoeDamage));
+          const casterAoeMod = registry.resolve('damage_dealt', buffedRawAoeDamage, { character: currentPlayer, card });
           const aoeDamage = Math.round(registry.resolve('damage_received', casterAoeMod, { character: target, card }));
           gameState.stats.cumulativeDamage += aoeDamage;
           const actualAoEDamage = applyDamageWithBlock(target, aoeDamage);
@@ -1781,7 +1977,8 @@ export async function playCard(cardId: string, targetId?: string, renderCallback
         case 'grant_block_layer':
           // Use the target from targeting logic (already determined correctly)
           const blockTarget = target;
-          const adjustedBlock = Math.round(registry.resolve('block_amount', effect.amount, { character: blockTarget, card }));
+          const buffedBlock = Math.round(resolveLaneBuffValue(blockTarget, 'block_amount', effect.amount));
+          const adjustedBlock = Math.round(registry.resolve('block_amount', buffedBlock, { character: blockTarget, card }));
           const decayOwnerId = card.id === 'shield_dome' ? currentPlayer.id : blockTarget.id;
           const nextDecayOwnerTurnStart = getNextDecayOwnerTurnStart(gameState, decayOwnerId);
           grantBlockLayer(
@@ -2071,7 +2268,7 @@ export function buildTurnQueue(): string[] {
   const living = gameState.characters.filter(c => c.hp > 0);
   const scored = living.map(c => ({
     id: c.id,
-    score: c.speed + Math.random() * SPEED_VARIANCE,
+    score: getEffectiveSpeed(c) + Math.random() * SPEED_VARIANCE,
   }));
   scored.sort((a, b) => b.score - a.score);
   return scored.map(s => s.id);
@@ -2093,6 +2290,65 @@ export function canSwapCurrentTurnWithNextAlly(): boolean {
   if (currentChar.hp <= 0 || nextChar.hp <= 0) return false;
   if (!currentChar.isPlayer || !nextChar.isPlayer) return false;
 
+  return true;
+}
+
+/**
+ * Returns true when `targetCharacterId` is a living ally in the uninterrupted
+ * ally chain that starts at the current queue index and ends before the first
+ * living enemy turn.
+ */
+export function canSelectUninterruptedAllyTurn(targetCharacterId: string): boolean {
+  const gameState = getGameState();
+  if (!targetCharacterId) return false;
+  if (gameState.combatResult !== 'ongoing' || gameState.isProcessingTurn) return false;
+  if (gameState.turnQueueIndex < 0 || gameState.turnQueueIndex >= gameState.turnQueue.length) return false;
+
+  const currentIndex = gameState.turnQueueIndex;
+  const targetIndex = gameState.turnQueue.indexOf(targetCharacterId);
+  if (targetIndex < currentIndex) return false;
+  if (targetIndex === -1) return false;
+
+  const targetChar = gameState.characters.find(c => c.id === targetCharacterId);
+  if (!targetChar || targetChar.hp <= 0 || !targetChar.isPlayer) return false;
+
+  for (let i = currentIndex; i <= targetIndex; i += 1) {
+    const id = gameState.turnQueue[i];
+    const character = gameState.characters.find(c => c.id === id);
+    if (!character || character.hp <= 0) continue;
+    if (!character.isPlayer) return false;
+  }
+
+  return true;
+}
+
+/**
+ * Promotes a selectable uninterrupted ally turn to the active queue slot.
+ */
+export function selectUninterruptedAllyTurn(
+  targetCharacterId: string,
+  renderCallback?: () => void
+): boolean {
+  if (!canSelectUninterruptedAllyTurn(targetCharacterId)) return false;
+  const gameState = getGameState();
+  const currentIndex = gameState.turnQueueIndex;
+  const targetIndex = gameState.turnQueue.indexOf(targetCharacterId);
+  if (targetIndex < 0) return false;
+
+  if (targetIndex !== currentIndex) {
+    const [targetId] = gameState.turnQueue.splice(targetIndex, 1);
+    gameState.turnQueue.splice(currentIndex, 0, targetId);
+  }
+
+  gameState.currentPlayerId = targetCharacterId;
+  const selectedChar = gameState.characters.find(c => c.id === targetCharacterId);
+  if (selectedChar) {
+    addToCombatLog(`${selectedChar.name} takes point this turn`);
+  }
+
+  if (renderCallback) {
+    renderCallback();
+  }
   return true;
 }
 
@@ -2150,6 +2406,20 @@ export function processRoundStart(renderCallback?: () => void): void {
     if (renderCallback) renderCallback();
     return;
   }
+
+  // Lane buff triggers resolve before lane buff duration decay so a 1-turn
+  // lane sustain can still trigger once at the next round transition.
+  for (const character of gameState.characters.filter(c => c.hp > 0)) {
+    executeLaneBuffTriggers(character, 'round_start');
+  }
+
+  for (const buff of gameState.laneBuffs) {
+    buff.remainingTurns--;
+    if (buff.remainingTurns <= 0) {
+      addToCombatLog(`Lane buff on lane ${buff.slotIndex} fades`);
+    }
+  }
+  gameState.laneBuffs = gameState.laneBuffs.filter(b => b.remainingTurns > 0);
 
   gameState.roundNumber++;
 
@@ -2342,15 +2612,16 @@ function delay(ms: number): Promise<void> {
 function getMaxMoves(char: Character): number {
   let moves = char.moveCharges;
   let energy = char.energy;
+  const effectiveSpeed = getEffectiveSpeed(char);
 
-  if (char.speed < 0) {
+  if (effectiveSpeed < 0) {
     // Each move costs (1 + |speed|) energy, no charges ever banked
-    const costPerMove = 1 + Math.abs(char.speed);
+    const costPerMove = 1 + Math.abs(effectiveSpeed);
     moves += Math.floor(energy / costPerMove);
   } else {
     // speed 0 or 1: 1 move per energy (no bonus charges)
     // speed N (N >= 2): each energy gives N moves (1 paid + N-1 charges)
-    const movesPerEnergy = Math.max(1, char.speed);
+    const movesPerEnergy = Math.max(1, effectiveSpeed);
     moves += energy * movesPerEnergy;
   }
   return moves;

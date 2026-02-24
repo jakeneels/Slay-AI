@@ -1,7 +1,7 @@
 // Templated card tooltip text generation
 // Pure logic — no PIXI dependency. Generates structured tooltip data from a Card object.
 
-import type { Card, CardEffect, BaseCardEffect, BlockEffect, StatusEffect, StatusModifyEffect, StatusSpreadEffect, ThornsEffect, KnockbackEffect, DeckInjectEffect, ModifierEffect, LaneHazardEffect, Character } from '../core/types.js';
+import type { Card, CardEffect, BaseCardEffect, BlockEffect, StatusEffect, StatusModifyEffect, StatusSpreadEffect, ThornsEffect, KnockbackEffect, DeckInjectEffect, ModifierEffect, LaneHazardEffect, LaneBuffEffect, Character } from '../core/types.js';
 import { RANGE_OPTIMAL_BONUS, RANGE_PENALTY_PER_SLOT, RANGE_MODIFIER_MIN } from '../core/constants.js';
 import { resolveDisplayAmount } from './displayAmountResolver.js';
 
@@ -10,7 +10,7 @@ import { resolveDisplayAmount } from './displayAmountResolver.js';
 // ---------------------------------------------------------------------------
 
 export interface TooltipEffectLine {
-  /** Icon key matching the icon factory names: 'damage' | 'heal' | 'energy' | 'speed' | 'shield' | 'exhaust' | 'range' | 'lane_hazard' */
+  /** Icon key matching the icon factory names: 'damage' | 'heal' | 'energy' | 'speed' | 'shield' | 'exhaust' | 'range' | 'lane_hazard' | 'lane_buff' */
   icon: string | null;
   /** Primary text, e.g. "Deals 8 damage" */
   text: string;
@@ -346,6 +346,69 @@ function describeEffect(effect: CardEffect, card: Card, caster?: Character): Too
         icon: 'lane_hazard',
         text: `Ignites lane${laneLabel}: ${lh.damage} damage/turn for ${lh.duration_turns} turn${lh.duration_turns !== 1 ? 's' : ''}`,
         subLines: ['Creates a hazard on the target\'s lane. Enemies in that lane take damage each turn.'],
+        targetLabel,
+      };
+    }
+
+    case 'lane_buff': {
+      const lb = effect as LaneBuffEffect;
+      const slots = Math.max(1, Math.floor((lb as BaseCardEffect).aoeSlots ?? card.aoeSlots ?? 1));
+      const laneLabel = slots > 1 ? ` (${slots} slots)` : '';
+      const parts: string[] = [];
+      for (const mod of lb.modifiers ?? []) {
+        if (mod.target === 'damage_dealt' && mod.op === 'multiply') {
+          const pct = Math.round((mod.value - 1) * 100);
+          parts.push(`Damage ${pct > 0 ? '+' : ''}${pct}%`);
+          continue;
+        }
+        if (mod.target === 'block_amount' && mod.op === 'multiply') {
+          const pct = Math.round((mod.value - 1) * 100);
+          parts.push(`Block gain ${pct > 0 ? '+' : ''}${pct}%`);
+          continue;
+        }
+        if (mod.target === 'speed' && mod.op === 'add') {
+          parts.push(`Speed ${mod.value > 0 ? '+' : ''}${mod.value}`);
+          continue;
+        }
+        if (mod.target === 'friendly_heal_outgoing' && mod.op === 'multiply') {
+          const pct = Math.round((mod.value - 1) * 100);
+          parts.push(`Outgoing heals ${pct > 0 ? '+' : ''}${pct}%`);
+          continue;
+        }
+        if (mod.target === 'heal_amount' && mod.op === 'multiply') {
+          const pct = Math.round((mod.value - 1) * 100);
+          parts.push(`Healing ${pct > 0 ? '+' : ''}${pct}%`);
+          continue;
+        }
+        parts.push(`${mod.target} ${mod.op} ${mod.value}`);
+      }
+      const sustainParts: string[] = [];
+      if (Array.isArray(lb.triggers)) {
+        for (const trigger of lb.triggers) {
+          if (trigger.when === 'round_start') {
+            if (trigger.action === 'heal') {
+              sustainParts.push(`Round start: Heal ${trigger.amount}`);
+            } else if (trigger.action === 'apply_status') {
+              const stacks = Math.max(1, Math.floor(trigger.stacks ?? 1));
+              sustainParts.push(`Round start: +${stacks} ${capitalise(trigger.status)}`);
+            }
+          }
+        }
+      }
+      const appliesTo = lb.appliesTo ?? 'lane_allies';
+      const affectedLabel = appliesTo === 'lane_occupants'
+        ? 'all occupants'
+        : appliesTo === 'lane_enemies'
+        ? 'enemies'
+        : 'allies';
+      return {
+        icon: 'lane_buff',
+        text: `Buffs lane${laneLabel} for ${lb.duration_turns} turn${lb.duration_turns !== 1 ? 's' : ''}`,
+        subLines: [
+          parts.length > 0 ? parts.join(', ') : 'No stat change',
+          ...sustainParts,
+          `Active while standing in the lane (${affectedLabel})`,
+        ],
         targetLabel,
       };
     }

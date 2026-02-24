@@ -171,6 +171,12 @@ export function renderStatusTooltip(app: Application): void {
       stackLabel = `Block bonus: +${stacks}%`;
     } else if (statusId === 'damage_up') {
       stackLabel = `Damage bonus: +${stacks}%`;
+    } else if (statusId === 'lane_light_block') {
+      stackLabel = `Block bonus: ${stacks > 0 ? '+' : ''}${stacks}%`;
+    } else if (statusId === 'lane_light_damage') {
+      stackLabel = `Damage bonus: ${stacks > 0 ? '+' : ''}${stacks}%`;
+    } else if (statusId === 'lane_light_speed') {
+      stackLabel = `Speed bonus: ${stacks > 0 ? '+' : ''}${stacks}`;
     } else {
       stackLabel = `Stacks: ${stacks}`;
     }

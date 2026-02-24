@@ -68,7 +68,7 @@ describe('preFight', () => {
     expect(state.candidateAllyIds).toEqual(['ally_a', 'ally_b']);
     expect(state.selectedAllyIds).toEqual(['ally_a', 'ally_b']);
     expect(state.requiredLineupSize).toBe(2);
-    expect(state.threatBudget).toBe(40);
+    expect(state.threatBudget).toBe(500);
   });
 
   it('supports editing deck slot only with card from pre-fight pool', () => {

@@ -1,6 +1,6 @@
 schemaVersion: 1
 id: heirophant
-name: "heirophant"
+name: "Heirophant"
 title: "AI Worshipper"
 description: "Human worshipper of AI overlords, armed with stolen tech relics."
 role: dps
@@ -25,9 +25,8 @@ stats:
   aggression: 3
 mechanics:
   - "Gains attack buffs when injured"
-  - "Can 'advance' slots aggressively"
   - "Poor defense"
-tags: ["human", "fanatic", "normal", "enemy", "aggressive"]
+tags: ["human", "fanatic", "normal", "enemy"]
 startingDeck:
   - "heal"
   - "rad_regen"

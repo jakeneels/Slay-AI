@@ -1,6 +1,6 @@
 // Status effect management — data-driven via StatusDefinition from YAML
 
-import type { Character, Status, StatusCadence, StatusDefinition } from './types.js';
+import type { Character, Status, StatusCadence, StatusDefinition, LaneBuff, ModifierTarget } from './types.js';
 import { addToCombatLog, getGameState } from './gameState.js';
 import { getTotalBlock } from './block.js';
 import { getModifierRegistry } from './modifiers.js';
@@ -10,6 +10,61 @@ import { getModifierRegistry } from './modifiers.js';
 /** Look up a StatusDefinition from the game state's statusLibrary. */
 function getStatusDef(statusId: string): StatusDefinition | undefined {
   return getGameState().statusLibrary[statusId];
+}
+
+function getCharacterSlotSize(character: Character): number {
+  return Math.max(1, Math.floor(character.slotSize ?? 1));
+}
+
+function getOccupiedSlots(character: Character): number[] {
+  const occupied: number[] = [];
+  const slotSize = getCharacterSlotSize(character);
+  for (let i = 0; i < slotSize; i++) {
+    occupied.push(character.slotIndex + i);
+  }
+  return occupied;
+}
+
+function laneBuffAffectsCharacter(buff: LaneBuff, character: Character): boolean {
+  if (buff.appliesTo === 'lane_occupants') return true;
+  const isAllyToOwner = buff.ownerIsPlayer === character.isPlayer;
+  if (buff.appliesTo === 'lane_allies') return isAllyToOwner;
+  return !isAllyToOwner;
+}
+
+function getActiveLaneModifiersForCharacter(character: Character) {
+  const gameState = getGameState();
+  if (character.hp <= 0) return [];
+  const occupied = getOccupiedSlots(character);
+  return gameState.laneBuffs
+    .filter(buff =>
+      buff.remainingTurns > 0
+      && occupied.includes(buff.slotIndex)
+      && laneBuffAffectsCharacter(buff, character)
+    )
+    .flatMap(buff => buff.modifiers)
+    .filter(mod => Number.isFinite(mod.value));
+}
+
+function resolveLaneBuffValue(character: Character | undefined, target: ModifierTarget, base: number): number {
+  if (!character) return base;
+  const mods = getActiveLaneModifiersForCharacter(character).filter(m => m.target === target);
+  if (mods.length === 0) return base;
+
+  let value = base;
+  const sets = mods.filter(m => m.op === 'set');
+  if (sets.length > 0) value = sets[sets.length - 1].value;
+  for (const mod of mods) {
+    if (mod.op === 'add') value += mod.value;
+  }
+  for (const mod of mods) {
+    if (mod.op === 'multiply') value *= mod.value;
+  }
+  const mins = mods.filter(m => m.op === 'min');
+  if (mins.length > 0) value = Math.max(value, Math.max(...mins.map(m => m.value)));
+  const maxes = mods.filter(m => m.op === 'max');
+  if (maxes.length > 0) value = Math.min(value, Math.min(...maxes.map(m => m.value)));
+  return value;
 }
 
 // ── Application ──────────────────────────────────────────────────────
@@ -142,10 +197,24 @@ export function getStatusStacks(character: Character, statusId: string): number 
  * Apply DoT damage for a single status based on its definition.
  * Returns the actual HP damage dealt (after block interaction).
  */
-function applyDot(character: Character, statusId: string, stacks: number, def: StatusDefinition): number {
+function applyDot(
+  character: Character,
+  status: Status,
+  def: StatusDefinition,
+  sourceCharacter?: Character,
+): number {
   if (!def.dot) return 0;
 
-  const totalDamage = stacks * def.dot.damage_per_stack;
+  let totalDamage = status.stacks * def.dot.damage_per_stack;
+  if (totalDamage <= 0) return 0;
+
+  if (sourceCharacter) {
+    totalDamage = resolveLaneBuffValue(sourceCharacter, 'damage_dealt', totalDamage);
+    totalDamage = getModifierRegistry().resolve('damage_dealt', totalDamage, { character: sourceCharacter });
+  }
+  totalDamage = resolveLaneBuffValue(character, 'damage_received', totalDamage);
+  totalDamage = getModifierRegistry().resolve('damage_received', totalDamage, { character });
+  totalDamage = Math.max(0, Math.round(totalDamage));
   if (totalDamage <= 0) return 0;
 
   if (def.dot.ignores_block) {
@@ -162,7 +231,7 @@ function applyDot(character: Character, statusId: string, stacks: number, def: S
 
   if (actualDamage > 0) {
     character.hp = Math.max(0, character.hp - actualDamage);
-    addToCombatLog(`${character.name} takes ${actualDamage} ${statusId} damage`);
+    addToCombatLog(`${character.name} takes ${actualDamage} ${status.id} damage`);
   }
   if (blockReduction > 0) {
     let remaining = blockReduction;
@@ -187,10 +256,14 @@ function applyHot(character: Character, stacks: number, def: StatusDefinition, s
 
   let totalHeal = stacks * def.hot.heal_per_stack;
   if (totalHeal <= 0) return 0;
+  totalHeal = resolveLaneBuffValue(character, 'heal_amount', totalHeal);
+  totalHeal = getModifierRegistry().resolve('heal_amount', totalHeal, { character });
   if (sourceCharacter && sourceCharacter.isPlayer === character.isPlayer) {
-    const registry = getModifierRegistry();
-    totalHeal = registry.resolve('friendly_heal_outgoing', totalHeal, { character: sourceCharacter });
+    totalHeal = resolveLaneBuffValue(sourceCharacter, 'friendly_heal_outgoing', totalHeal);
+    totalHeal = getModifierRegistry().resolve('friendly_heal_outgoing', totalHeal, { character: sourceCharacter });
   }
+  totalHeal = Math.max(0, Math.round(totalHeal));
+  if (totalHeal <= 0) return 0;
 
   const hpBefore = character.hp;
   character.hp = Math.min(character.maxHp, character.hp + totalHeal);
@@ -252,6 +325,7 @@ export function processStatusEffects(character: Character, cadence: StatusCadenc
 }
 
 export interface StatusTickContext {
+  resolveStatusSourceCharacter?: (target: Character, status: Status) => Character | undefined;
   resolveHotSourceCharacter?: (target: Character, status: Status) => Character | undefined;
 }
 
@@ -273,14 +347,16 @@ export function processStatusEffectsWithContext(
     const statusCadence = def?.cadence ?? 'round_start';
     if (statusCadence !== cadence) continue;
 
+    const sourceCharacter = context.resolveStatusSourceCharacter?.(character, status)
+      ?? context.resolveHotSourceCharacter?.(character, status);
+
     // Apply DoT damage if defined
     if (def?.dot) {
-      applyDot(character, status.id, status.stacks, def);
+      applyDot(character, status, def, sourceCharacter);
     }
 
     // Apply HoT healing if defined
     if (def?.hot) {
-      const sourceCharacter = context.resolveHotSourceCharacter?.(character, status);
       applyHot(character, status.stacks, def, sourceCharacter);
     }
 

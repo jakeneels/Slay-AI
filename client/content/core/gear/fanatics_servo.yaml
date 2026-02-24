@@ -1,10 +1,10 @@
-schemaVersion: 1
-id: fanatics_servo
-name: "Fanatic's Servo"
-description: "Servo motor worn as sacred amulet. +1 suppression."
-slot: trinket
-rarity: common
-modifiers:
-  - target: suppression
-    op: add
-    value: 1
+# schemaVersion: 1
+# id: fanatics_servo
+# name: "Fanatic's Servo"
+# description: "Servo motor worn as sacred amulet. +1 suppression."
+# slot: trinket
+# rarity: common
+# modifiers:
+#   - target: supressionResistance
+#     op: add
+#     value: 1

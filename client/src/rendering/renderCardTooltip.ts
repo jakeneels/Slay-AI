@@ -21,6 +21,7 @@ import { createRangeIcon } from './icons/rangeIcon.js';
 import { createKnockbackIcon } from './icons/knockbackIcon.js';
 import { createPullIcon } from './icons/pullIcon.js';
 import { createLaneHazardIcon } from './icons/laneHazardIcon.js';
+import { createLaneBuffIcon } from './icons/laneBuffIcon.js';
 import { createThornsIcon } from './icons/thornsIcon.js';
 
 // ---------------------------------------------------------------------------
@@ -51,6 +52,7 @@ function createIconForKey(key: string, size: number): Graphics | null {
   switch (key) {
     case 'damage': return createDamageIcon(size);
     case 'lane_hazard': return createLaneHazardIcon(size);
+    case 'lane_buff': return createLaneBuffIcon(size);
     case 'heal': return createHealIcon(size);
     case 'energy': return createEnergyIcon(size);
     case 'speed': return createSpeedIcon(size);

@@ -431,6 +431,141 @@ describe('status', () => {
 
       expect(target.hp).toBe(86); // base 2 -> (2 + 1) * 2 = 6
     });
+
+    it('applies source and target damage modifiers to DoT ticks', () => {
+      const registry = getModifierRegistry();
+      const source = createMockCharacter({
+        id: 'dot_source',
+        name: 'DoT Source',
+        isPlayer: false,
+      });
+      const target = createMockCharacter({
+        id: 'dot_target',
+        name: 'DoT Target',
+        hp: 100,
+        maxHp: 100,
+        isPlayer: true,
+        statuses: [{ id: 'bleed', stacks: 4, metadata: { sourceCharacterId: 'dot_source' } }],
+      });
+
+      setupGameState({
+        characters: [source, target],
+        statusLibrary: ALL_STATUS_DEFS,
+      });
+
+      registry.add({
+        id: 'status-test-dot-source-multiply',
+        target: 'damage_dealt',
+        op: 'multiply',
+        value: 2,
+        source: 'test',
+        scope: { kind: 'character', characterId: 'dot_source' },
+      });
+      registry.add({
+        id: 'status-test-dot-target-multiply',
+        target: 'damage_received',
+        op: 'multiply',
+        value: 0.5,
+        source: 'test',
+        scope: { kind: 'character', characterId: 'dot_target' },
+      });
+
+      processStatusEffectsWithContext(target, 'round_start', {
+        resolveStatusSourceCharacter: (_target, status) => {
+          const sourceCharacterId = status.metadata?.sourceCharacterId;
+          if (typeof sourceCharacterId !== 'string') return undefined;
+          return getGameState().characters.find(c => c.id === sourceCharacterId);
+        },
+      });
+
+      expect(target.hp).toBe(96); // base 4 -> source x2 -> target x0.5 = 4
+    });
+
+    it('applies lane buff modifiers to DoT and HoT status ticks', () => {
+      const source = createMockCharacter({
+        id: 'lane_source',
+        name: 'Lane Source',
+        isPlayer: true,
+        slotIndex: 0,
+      });
+      const target = createMockCharacter({
+        id: 'lane_target',
+        name: 'Lane Target',
+        hp: 90,
+        maxHp: 100,
+        isPlayer: true,
+        slotIndex: 1,
+        statuses: [
+          { id: 'bleed', stacks: 2, metadata: { sourceCharacterId: 'lane_source' } },
+          { id: 'regeneration', stacks: 2, metadata: { sourceCharacterId: 'lane_source' } },
+        ],
+      });
+
+      setupGameState({
+        characters: [source, target],
+        statusLibrary: ALL_STATUS_DEFS,
+        laneBuffs: [
+          {
+            slotIndex: 0,
+            remainingTurns: 2,
+            ownerIsPlayer: true,
+            appliesTo: 'lane_allies',
+            modifiers: [{ target: 'damage_dealt', op: 'multiply', value: 2 }],
+          },
+          {
+            slotIndex: 1,
+            remainingTurns: 2,
+            ownerIsPlayer: true,
+            appliesTo: 'lane_allies',
+            modifiers: [
+              { target: 'damage_received', op: 'multiply', value: 0.5 },
+              { target: 'heal_amount', op: 'multiply', value: 1.5 },
+            ],
+          },
+        ],
+      });
+
+      processStatusEffectsWithContext(target, 'round_start', {
+        resolveStatusSourceCharacter: (_target, status) => {
+          const sourceCharacterId = status.metadata?.sourceCharacterId;
+          if (typeof sourceCharacterId !== 'string') return undefined;
+          return getGameState().characters.find(c => c.id === sourceCharacterId);
+        },
+      });
+
+      // bleed: 2 -> source x2 -> target x0.5 = 2 damage; regeneration: 2 -> x1.5 = 3 heal
+      expect(target.hp).toBe(91);
+    });
+
+    it('applies incoming heal modifiers to HoT ticks', () => {
+      const registry = getModifierRegistry();
+      const target = createMockCharacter({
+        id: 'hot_target',
+        name: 'HoT Target',
+        hp: 90,
+        maxHp: 100,
+        isPlayer: true,
+        statuses: [{ id: 'regeneration', stacks: 2 }],
+      });
+
+      setupGameState({
+        characters: [target],
+        statusLibrary: ALL_STATUS_DEFS,
+      });
+
+      registry.add({
+        id: 'status-test-hot-heal-amount',
+        target: 'heal_amount',
+        op: 'multiply',
+        value: 2,
+        source: 'test',
+        scope: { kind: 'character', characterId: 'hot_target' },
+      });
+
+      processStatusEffects(target, 'round_start');
+
+      expect(target.hp).toBe(94); // base 2 -> x2 = 4
+    });
   });
 
   describe('processStatusEffects — all statuses tick on round_start', () => {

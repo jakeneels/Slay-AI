@@ -5,6 +5,7 @@ import { buildTurnQueue, processEnemyTurn } from './combat.js';
 import { computeDifficulty } from './waveGenerator.js';
 import { drawCards } from './deck.js';
 import { shuffleArray } from '../utils/shuffle.js';
+import { getThreatBudgetSetting } from '../rendering/preFightDisplaySettings.js';
 
 interface BeginPreFightOptions {
   candidateAllyIds?: string[];
@@ -155,7 +156,7 @@ export function beginPreFightSetup(options: BeginPreFightOptions = {}): void {
     cardsByAlly,
     threatBudget: 0,
   };
-  gameState.preFight.threatBudget = computeSelectedLineupThreat();
+  gameState.preFight.threatBudget = getThreatBudgetSetting();
   gameState.selectedCardId = null;
 }
 
