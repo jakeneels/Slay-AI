@@ -7,7 +7,7 @@ rarity: legendary
 modifiers:
   - target: block_amount
     op: multiply
-    value: 1.35
+    value: 1.40
   - target: maxHp
     op: add
-    value: 25
+    value: 40

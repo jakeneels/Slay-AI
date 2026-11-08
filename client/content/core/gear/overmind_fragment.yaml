@@ -5,9 +5,12 @@ description: "Shard of a fallen AI core, humming with residual intelligence. +2 
 slot: trinket
 rarity: mythic
 modifiers:
-  - target: maxEnergy
+  - target: energy
     op: add
     value: 2
+  - target: maxEnergy
+    op: add
+    value: 2  
   - target: drawCount
     op: add
     value: 1

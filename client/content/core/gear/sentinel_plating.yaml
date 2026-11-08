@@ -7,7 +7,7 @@ rarity: epic
 modifiers:
   - target: block_amount
     op: multiply
-    value: 1.25
+    value: 1.30
   - target: maxHp
     op: add
-    value: 15
+    value: 25

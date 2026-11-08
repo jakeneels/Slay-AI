@@ -3,7 +3,7 @@ id: behemoths_plate
 name: "Behemoth's Plate"
 description: "Behemoth's plate. +30 max HP."
 slot: armor
-rarity: common
+rarity: rare
 modifiers:
   - target: maxHp
     op: add

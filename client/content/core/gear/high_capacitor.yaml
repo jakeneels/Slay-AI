@@ -8,3 +8,6 @@ modifiers:
   - target: maxEnergy
     op: add
     value: 2
+  - target: energy
+    op: add
+    value: 2
